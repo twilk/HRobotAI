@@ -21,6 +21,14 @@ The Foundation sub-project delivers the structural bedrock that every subsequent
 - Subdomain-based tenant routing in Next.js middleware
 - Auth.js v5 OIDC integration with dynamic Keycloak realm selection
 - Design system migration from demo (glassmorphism, Navy/Cyan tokens, all UI components)
+- DESIGN.md: design system documentation (color tokens, glassmorphism spec, typography, component inventory, Keycloak theme spec)
+- Keycloak login theme: Navy/Cyan glassmorphism applied via FreeMarker templates, deployed in KEYCLOAK_SETUP provisioning step
+- Signup page: full-width centered glassmorphism form with live slug preview + debounced availability check
+- Provisioning status page: step tracker + per-step Polish benefit copy + failure state (email saved + ops notified)
+- Sidebar: grouped nav (MODUŁY HR / ADMINISTRACJA), mobile drawer, RBAC-visibility-aware
+- Dashboard: welcome screen with greeting, 3 quick-action cards, setup checklist (not a blank stub)
+- Employees list empty state: onboarding treatment with explanation + primary CTA + secondary CTA (CSV import, "coming soon")
+- `GET /api/slugs/check/{slug}`: slug availability check endpoint (no auth, called by signup form)
 - RBAC: 5 roles (Pracownik, Manager, HR, Admin klienta, Admin globalny)
 - Audit log: append-only, per-tenant DB, DB-enforced immutability
 - Structured logging (Pino), Prometheus metrics, OpenTelemetry tracing
@@ -39,10 +47,15 @@ The Foundation sub-project delivers the structural bedrock that every subsequent
 ### Definition of Done
 
 - `docker compose up` starts the full local stack (Postgres, Redis, RabbitMQ, Keycloak, API, web)
-- Signup flow completes: form → provisioning progress → ACTIVE tenant
-- ADMIN_KLIENTA can log in at `{slug}.localhost:3000`, see the employees list (empty), and get a 403 when accessing another tenant's subdomain
+- Signup flow completes: form (slug live preview works) → provisioning progress (5 steps + benefit copy) → ACTIVE tenant
+- Keycloak first-login screen uses HRobot Navy/Cyan theme, not default Keycloak UI
+- ADMIN_KLIENTA lands on welcome dashboard (greeting + quick actions + setup checklist), not a blank page
+- Employees list shows onboarding empty state (explanation + two CTAs), not "No items found."
+- Mobile sidebar drawer opens on hamburger tap at 375px
+- ADMIN_KLIENTA gets a 403 when accessing another tenant's subdomain
 - All tests pass in CI: unit → integration → E2E
 - `infra/terraform/` plan applies without error against an empty EU-region environment
+- DESIGN.md committed to repo root
 
 ---
 
@@ -356,6 +369,110 @@ Migrated verbatim into `apps/web/`:
 
 Demo mock data (`lib/mockData.ts`) and Zustand stores are discarded.
 
+**DESIGN.md** is a Foundation deliverable. Created at repo root, it documents: color tokens, glassmorphism spec (blur radius, bg-opacity, border-opacity values), typography scale (Inter weights/sizes), spacing scale, component inventory with props, and Keycloak theme spec. Every subsequent sub-project references DESIGN.md rather than reverse-engineering the demo.
+
+### Signup page design
+
+Full-width centered layout on Navy `#0B1F3B` background. Single glassmorphism card (16px horizontal padding on mobile, max-w-md on desktop). Card edge-to-edge at 375px.
+
+**Field order:**
+1. Logo + "HRobot.AI" wordmark (centered top)
+2. Heading: "Utwórz konto" / subheading: "Bezpłatne 14 dni. Bez karty kredytowej."
+3. Company name (`<input>`)
+4. Subdomain slug (`<input>`) with live preview: auto-lowercases, replaces spaces with hyphens, shows `Twój adres: {slug}.hrobot.ai` below field. Debounced availability check (300ms) → green checkmark when available, red X + "Ta nazwa jest już zajęta" when taken. Calls `GET /api/slugs/check/{slug}`.
+5. Admin email (`<input type="email">`)
+6. Password (`<input type="password">`) with strength indicator (weak/medium/strong bar)
+7. CTA: Cyan `#00C1D4` button "Utwórz konto"
+8. Footer: "Masz już konto? [Zaloguj się]" link
+
+**Validation errors:** inline, below each field, red text `#EF4444`. On submit error (server-side): error banner at top of card.
+
+**Loading state:** Button shows spinner + "Tworzenie konta..." while POST /api/auth/signup is in flight.
+
+### Provisioning status page design
+
+Two-column layout (desktop): left = step progress, right = active benefit copy. Stacked (left over right) at 375px.
+
+**Left column — step tracker:**
+- 5 step indicators (circle + step name): CREATE_DB, RUN_MIGRATIONS, SEED, KEYCLOAK_SETUP, DONE
+- Active step: Cyan circle, pulsing animation, step name bold
+- Completed step: checkmark circle, dimmed
+- Pending step: empty circle, dimmed
+- Step progress bar: thin horizontal line connecting circles
+
+**Right column — benefit copy per step:**
+| Step | Copy (Polish) |
+|------|---------------|
+| CREATE_DB | "Tworzymy izolowaną bazę danych — Twoje dane nigdy nie dotykają systemów innych firm." |
+| RUN_MIGRATIONS | "Konfigurujemy strukturę Twojej przestrzeni roboczej." |
+| SEED | "Dodajemy domyślne ustawienia i pierwszą jednostkę organizacyjną." |
+| KEYCLOAK_SETUP | "Konfigurujemy bezpieczne logowanie zgodne z RODO." |
+| DONE | "Gotowe! Twoja przestrzeń robocza HRobot jest gotowa." |
+
+**Failure state (step = FAILED after 3 attempts):**
+- Heading: "Coś poszło nie tak"
+- Body: "Twój adres email został zapisany — odezwiemy się w ciągu 1 godziny."
+- Support link: "lub napisz na pomoc@hrobot.ai"
+- Ops team receives Slack/email alert (already specified in Section 6)
+
+### Sidebar navigation design
+
+**Grouped nav — two labeled sections:**
+
+```
+[HRobot logo + wordmark]
+
+MODUŁY HR
+  📊 Dashboard
+  👥 Pracownicy
+  📅 Grafik
+  📋 Wnioski
+  🔑 Dostępy
+
+ADMINISTRACJA
+  ⚙️ Ustawienia
+  👤 Użytkownicy (ADMIN_KLIENTA only)
+```
+
+Group labels: uppercase, 11px, muted color (`#6B7280`). Active item: Cyan left border + light Cyan background. Role-based visibility: Pracownik sees only modules relevant to their role, ADMIN group hidden for Pracownik.
+
+**Mobile (≤768px):** Sidebar hides. Hamburger icon in TopBar opens a drawer overlay (full-height, slides from left, Navy background, same nav structure). Drawer closes on nav item click or outside tap.
+
+### Dashboard page design
+
+Welcome screen — not a blank stub. Content:
+
+- Heading: "Witaj w HRobot, {tenantName}!" (personalized from JWT)
+- Subheading: "Zacznij od kilku kroków, aby skonfigurować swój zespół."
+- 3 quick-action Cards (glassmorphism):
+  - "Dodaj pracownika" → links to `/pracownicy` (or future add-employee route)
+  - "Skonfiguruj grafik" → links to `/grafik` (stub, visible future intent)
+  - "Zaproś użytkowników" → links to `/ustawienia/uzytkownicy`
+- Setup checklist (persisted per-tenant in localStorage until dismissed):
+  - ☐ Dodaj pierwszego pracownika
+  - ☐ Utwórz jednostkę organizacyjną
+  - ☐ Ustaw strefy czasowe i godziny pracy
+
+### Employees list empty state
+
+```
+[icon: Users or document-person, 48px, Cyan tint]
+Heading: "Brak pracowników"
+Body: "Dodaj pracowników, aby zacząć planować grafiki i obsługiwać wnioski urlopowe."
+Primary CTA: [Cyan button] "Dodaj pracownika"
+Secondary CTA: [ghost button] "Importuj z CSV" → tooltip "Dostępne wkrótce" (feature not yet built)
+```
+
+### Keycloak login theme
+
+A custom Keycloak theme (`apps/web/keycloak-theme/`) is applied during the `KEYCLOAK_SETUP` provisioning step. The theme uses FreeMarker templates (Keycloak.v2) to apply:
+- Navy `#0B1F3B` background
+- Glassmorphism card for login/password-change form
+- Inter font (loaded from CDN)
+- Cyan CTA button
+
+The `KEYCLOAK_SETUP` pipeline step uploads the theme to the Keycloak realm via the Admin REST API (theme file upload or pre-deployed to Keycloak's `themes/` directory). Password-change on first login appears in HRobot's design language, not Keycloak's default.
+
 ### Subdomain routing (`apps/web/middleware.ts`)
 
 Runs on every request before any page renders:
@@ -370,6 +487,22 @@ Runs on every request before any page renders:
 
 All Server Components and Route Handlers read `headers().get('x-tenant-id')` — no prop drilling.
 
+### Responsive behavior
+
+| Breakpoint | Sidebar | Signup card | Status page | Employees list |
+|------------|---------|-------------|-------------|----------------|
+| 375px | Drawer (hamburger) | Full-width, 16px padding | Stacked (steps over copy) | Single column |
+| 768px | Sidebar visible | max-w-md centered | Two-column | Single column |
+| 1280px | Sidebar visible | max-w-md centered | Two-column | Table view |
+
+### Accessibility
+
+- Form inputs: `<label for>` on all fields, no placeholder-as-label
+- Progress bar: `role="progressbar"`, `aria-valuenow={step}`, `aria-valuemax={5}`, `aria-valuetext={stepName}`
+- Touch targets: ≥ 44px for all interactive elements
+- Color contrast: WCAG 2.1 AA (Cyan `#00C1D4` on Navy `#0B1F3B` passes at 4.7:1)
+- SkipLink component (already in demo): present on all authenticated pages
+
 ### Route structure
 
 ```
@@ -377,15 +510,15 @@ apps/web/app/
 ├── (marketing)/
 │   ├── page.tsx                    # Landing page
 │   ├── signup/
-│   │   ├── page.tsx                # Signup form
-│   │   └── status/page.tsx         # Provisioning progress (polls /api/provision/status)
+│   │   ├── page.tsx                # Signup form (centered card, slug preview, live validation)
+│   │   └── status/page.tsx         # Provisioning progress (steps + benefit copy + failure state)
 │   └── layout.tsx                  # Minimal layout, no sidebar
 │
 ├── (tenant)/
-│   ├── layout.tsx                  # Auth gate + Sidebar + TopBar
-│   ├── dashboard/page.tsx
+│   ├── layout.tsx                  # Auth gate + Sidebar (grouped nav) + TopBar
+│   ├── dashboard/page.tsx          # Welcome dashboard: greeting + 3 quick actions + setup checklist
 │   ├── pracownicy/
-│   │   ├── page.tsx                # Proof-of-stack: real API call, rendered employee list
+│   │   ├── page.tsx                # Proof-of-stack: real API call + onboarding empty state
 │   │   └── [id]/page.tsx           # Stub
 │   ├── grafik/page.tsx             # Stub
 │   ├── wnioski/page.tsx            # Stub
@@ -393,6 +526,7 @@ apps/web/app/
 │
 └── api/
     ├── auth/[...nextauth]/route.ts
+    ├── slugs/check/[slug]/route.ts  # Debounced slug availability check (no auth)
     └── provision/status/[jobId]/route.ts   # No-auth status polling
 ```
 
