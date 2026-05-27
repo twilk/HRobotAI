@@ -38,7 +38,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 30s
 
+  # start-dev uses embedded H2 (ephemeral) — intentional for local dev.
+  # For a persistent dev Keycloak, add KC_DB/KC_DB_URL env vars and a keycloak DB in postgres-init.
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     command: start-dev
@@ -47,9 +50,6 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin
     ports:
       - "8080:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
 
 volumes:
   pgdata:
