@@ -650,3 +650,42 @@ Additional: provisioning pipeline happy path (CREATE_DB → DONE), each failure 
 - Short access token TTL + refresh token rotation in Keycloak realm config
 - Data residency: all infrastructure in EU region (Terraform enforced)
 - EU AI Act: AI agents (Grafik Manager, Analityk HR, Voice Agent) are deferred to post-Foundation sub-projects; DPIA required before AI features go live
+
+---
+
+## Not in scope (design review)
+
+- Landing/marketing page design — Foundation ships a minimal `/` redirect to `/signup`; landing page is a separate sub-project
+- Email templates (invite email, ops alert email) — visual design deferred; Foundation only specifies the trigger points
+- Onboarding tour / product walkthrough — setup checklist on dashboard covers first-session orientation; full tour is post-MVP
+- Dark/light mode toggle — Navy theme is fixed; no theme switching in Foundation
+
+## What already exists (design system)
+
+All components below exist in `C:\WORKSPACE\startup\demo\` and migrate verbatim:
+
+| Component | Path | Status |
+|-----------|------|--------|
+| Button | `components/ui/Button.tsx` | Migrate as-is |
+| Card | `components/ui/Card.tsx` | Migrate as-is |
+| Badge | `components/ui/Badge.tsx` | Migrate as-is |
+| Input | `components/ui/Input.tsx` | Migrate as-is |
+| Modal | `components/ui/Modal.tsx` | Migrate as-is |
+| SkipLink | `components/ui/SkipLink.tsx` | Migrate as-is |
+| Sidebar | `components/layout/Sidebar.tsx` | Migrate + extend: add grouped nav, mobile drawer |
+| TopBar | `components/layout/TopBar.tsx` | Migrate + wire to real auth |
+
+New components added by Foundation: `SignupForm`, `SlugInput` (with live preview), `ProvisioningStatus`, `WelcomeDashboard`, `EmptyState`.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | — |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 0 | — | — |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | CLEAR (FULL) | score: 4/10 → 9/10, 10 decisions |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+**UNRESOLVED:** 0
+**VERDICT:** Design Review CLEARED — eng review required before implementation.
