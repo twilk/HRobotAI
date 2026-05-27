@@ -381,7 +381,7 @@ Full-width centered layout on Navy `#0B1F3B` background. Single glassmorphism ca
 3. Company name (`<input>`)
 4. Subdomain slug (`<input>`) with live preview: auto-lowercases, replaces spaces with hyphens, shows `Twój adres: {slug}.hrobot.ai` below field. Debounced availability check (300ms) → green checkmark when available, red X + "Ta nazwa jest już zajęta" when taken. Calls `GET /api/slugs/check/{slug}`.
 5. Admin email (`<input type="email">`)
-6. Password (`<input type="password">`) with strength indicator (weak/medium/strong bar)
+6. Password (`<input type="password">`) with strength indicator: `zxcvbn` library, 3-segment bar (red score 0-1 / orange score 2 / green score 3-4)
 7. CTA: Cyan `#00C1D4` button "Utwórz konto"
 8. Footer: "Masz już konto? [Zaloguj się]" link
 
@@ -460,7 +460,7 @@ Welcome screen — not a blank stub. Content:
 Heading: "Brak pracowników"
 Body: "Dodaj pracowników, aby zacząć planować grafiki i obsługiwać wnioski urlopowe."
 Primary CTA: [Cyan button] "Dodaj pracownika"
-Secondary CTA: [ghost button] "Importuj z CSV" → tooltip "Dostępne wkrótce" (feature not yet built)
+Secondary CTA: [ghost button, disabled] "Importuj z CSV" → `title="Dostępne wkrótce"` tooltip on hover; `aria-disabled="true"`, cursor-not-allowed. Data module team activates this button when import is implemented.
 ```
 
 ### Keycloak login theme
