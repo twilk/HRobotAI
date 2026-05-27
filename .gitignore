@@ -11,6 +11,13 @@ packages/db/generated/
 .env.local
 !.env.example
 
+# TypeScript incremental build info (generated per-package on build)
+*.tsbuildinfo
+
 # OS / editor
 .DS_Store
+Thumbs.db
 *.log
+
+# Claude Code / gstack harness files (not project source)
+docs/superpowers/
