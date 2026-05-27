@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../generated/tenant"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PRACOWNIK
+  MANAGER
+  HR
+  ADMIN_KLIENTA
+}
+
+enum EmploymentType {
+  UMOWA_O_PRACE
+  UMOWA_ZLECENIE
+  UMOWA_O_DZIELO
+  B2B
+}
+
+model User {
+  id           String               @id
+  email        String               @unique
+  keycloakSub  String               @unique @map("keycloak_sub")
+  active       Boolean              @default(true)
+  createdAt    DateTime             @default(now()) @map("created_at")
+  roles        UserRole[]
+  managedUnits OrganizationalUnit[] @relation("UnitManager")
+  employee     Employee?
+
+  @@map("users")
+}
+
+model UserRole {
+  id     Int                 @id @default(autoincrement())
+  userId String              @map("user_id")
+  user   User                @relation(fields: [userId], references: [id])
+  role   Role
+  unitId String?             @map("unit_id")
+  unit   OrganizationalUnit? @relation(fields: [unitId], references: [id])
+
+  @@unique([userId, role, unitId])
+  @@map("user_roles")
+}
+
+model OrganizationalUnit {
+  id            String               @id @default(uuid())
+  name          String
+  parentId      String?              @map("parent_id")
+  parent        OrganizationalUnit?  @relation("UnitTree", fields: [parentId], references: [id])
+  children      OrganizationalUnit[] @relation("UnitTree")
+  managerUserId String?              @map("manager_user_id")
+  manager       User?                @relation("UnitManager", fields: [managerUserId], references: [id])
+  roles         UserRole[]
+  employees     Employee[]
+
+  @@map("organizational_units")
+}
+
+model Employee {
+  id             String             @id @default(uuid())
+  userId         String?            @unique @map("user_id")
+  user           User?              @relation(fields: [userId], references: [id])
+  firstName      String             @map("first_name")
+  lastName       String             @map("last_name")
+  pesel          String
+  position       String
+  employmentType EmploymentType     @map("employment_type")
+  hiredAt        DateTime           @map("hired_at")
+  unitId         String             @map("unit_id")
+  unit           OrganizationalUnit @relation(fields: [unitId], references: [id])
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  @@map("employees")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String   @map("actor_user_id")
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
+  payload     Json
+  ipAddress   String   @map("ip_address")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("audit_log")
+}
