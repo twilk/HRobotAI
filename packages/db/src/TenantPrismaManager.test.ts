@@ -81,4 +81,18 @@ describe('TenantPrismaManager', () => {
     expect(clients.get('a')!.$disconnect).toHaveBeenCalledTimes(1)
     expect(clients.get('b')!.$disconnect).not.toHaveBeenCalled()
   })
+
+  it('deduplicates concurrent getClient calls (only one $connect)', async () => {
+    const factory = jest.fn((url: string) => makeFakeClient(url) as never)
+    const mgr = new TenantPrismaManager(
+      { resolveDbUrl: async (id) => `url/${id}` },
+      factory,
+    )
+    // Fire two concurrent cold-start calls for the same tenant
+    const [first, second] = await Promise.all([mgr.getClient('t1'), mgr.getClient('t1')])
+    expect(first).toBe(second)
+    expect(factory).toHaveBeenCalledTimes(1)
+    const client = first as unknown as FakeClient
+    expect(client.$connect).toHaveBeenCalledTimes(1)
+  })
 })

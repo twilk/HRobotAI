@@ -35,6 +35,7 @@ model Tenant {
   slug                String            @unique
   name                String
   status              TenantStatus      @default(PENDING)
+  /// ENCRYPTED: encrypt with EncryptionService before INSERT; decrypt before use
   dbUrl               String?           @map("db_url")
   plan                PlanType          @default(TRIAL)
   metadata            Json              @default("{}")

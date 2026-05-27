@@ -25,6 +25,10 @@ const DEFAULT_TTL_MS = 1000 * 60 * 10
  */
 export class TenantPrismaManager {
   private readonly cache: LRUCache<string, TenantClient>
+  // Deduplicates concurrent cold-start calls for the same tenant: the second
+  // concurrent getClient('t') awaits the same Promise as the first instead of
+  // creating a second connection that would immediately get evicted.
+  private readonly inflight = new Map<string, Promise<TenantClient>>()
 
   constructor(
     private readonly resolver: TenantConnectionResolver,
@@ -45,11 +49,22 @@ export class TenantPrismaManager {
     const cached = this.cache.get(tenantId)
     if (cached) return cached
 
-    const url = await this.resolver.resolveDbUrl(tenantId)
-    const client = this.clientFactory(url)
-    await client.$connect()
-    this.cache.set(tenantId, client)
-    return client
+    const pending = this.inflight.get(tenantId)
+    if (pending) return pending
+
+    const promise = (async () => {
+      const url = await this.resolver.resolveDbUrl(tenantId)
+      const client = this.clientFactory(url)
+      await client.$connect()
+      this.cache.set(tenantId, client)
+      return client
+    })()
+    this.inflight.set(tenantId, promise)
+    try {
+      return await promise
+    } finally {
+      this.inflight.delete(tenantId)
+    }
   }
 
   /** Explicit eviction (e.g. on tenant suspension); triggers $disconnect via dispose. */
