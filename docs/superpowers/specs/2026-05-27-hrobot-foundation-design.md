@@ -1,0 +1,518 @@
+# HRobot.AI — Foundation Sub-project Design
+
+**Date:** 2026-05-27  
+**Sub-project:** Foundation (1 of N)  
+**Status:** Approved — ready for implementation planning
+
+---
+
+## 1. Scope
+
+The Foundation sub-project delivers the structural bedrock that every subsequent HR module is built on. It produces no end-user HR functionality beyond a single proof-of-stack "employees list" page, but it makes the entire SaaS production-worthy from day one.
+
+### Included
+
+- Turborepo monorepo scaffolding (`apps/web`, `apps/api`, `packages/db`, `packages/shared`, `packages/config`, `infra/`)
+- Two-plane NestJS architecture: control plane + tenant runtime
+- DB-per-tenant: control-plane Postgres + per-tenant Postgres with LRU-cached connection manager
+- Prisma schemas: control-plane schema + tenant schema (with migration fan-out tooling)
+- Keycloak realm-per-tenant: provisioning via Admin REST API
+- Self-serve signup + fully automated async provisioning pipeline (CREATE_DB → RUN_MIGRATIONS → SEED → KEYCLOAK_SETUP → DONE) with rollback
+- Subdomain-based tenant routing in Next.js middleware
+- Auth.js v5 OIDC integration with dynamic Keycloak realm selection
+- Design system migration from demo (glassmorphism, Navy/Cyan tokens, all UI components)
+- RBAC: 5 roles (Pracownik, Manager, HR, Admin klienta, Admin globalny)
+- Audit log: append-only, per-tenant DB, DB-enforced immutability
+- Structured logging (Pino), Prometheus metrics, OpenTelemetry tracing
+- Health check endpoints
+- Docker Compose (local dev) + Terraform skeleton (EU region)
+- Test suite: unit + integration (tenant isolation) + E2E (Playwright)
+
+### Excluded (next sub-projects)
+
+- All HR module business logic (employees CRUD, scheduling, leave requests, access management)
+- AI agents (Grafik Manager, Analityk HR, Voice Agent)
+- Mobile app (React Native + Expo)
+- External integrations (ZUS/Płatnik, ERP, RCP/RFID)
+- Billing / subscription management
+
+### Definition of Done
+
+- `docker compose up` starts the full local stack (Postgres, Redis, RabbitMQ, Keycloak, API, web)
+- Signup flow completes: form → provisioning progress → ACTIVE tenant
+- ADMIN_KLIENTA can log in at `{slug}.localhost:3000`, see the employees list (empty), and get a 403 when accessing another tenant's subdomain
+- All tests pass in CI: unit → integration → E2E
+- `infra/terraform/` plan applies without error against an empty EU-region environment
+
+---
+
+## 2. Monorepo Structure
+
+```
+hrobot/
+├── apps/
+│   ├── web/                  # Next.js 16 App Router — signup site + tenant HR panel
+│   └── api/                  # NestJS modular monolith — control plane + tenant runtime
+├── packages/
+│   ├── shared/               # TypeScript types, DTOs, Zod schemas, role/permission enums
+│   ├── db/                   # Prisma schemas (control-plane + tenant) + migration tooling
+│   └── config/               # Shared eslint / tsconfig / prettier configs
+├── infra/
+│   ├── docker/               # Dockerfiles + docker-compose.yml (local dev)
+│   └── terraform/            # IaC skeleton, EU region, per-env modules
+└── turbo.json
+    package.json              # pnpm workspaces
+```
+
+**Toolchain:** pnpm workspaces, Turborepo for build/lint/test orchestration, TypeScript strict mode everywhere, ESLint + Prettier via shared `packages/config`.
+
+`apps/mobile/` (React Native + Expo) slots in as a later sub-project — directory reserved, not scaffolded.
+
+---
+
+## 3. Two-plane NestJS Architecture
+
+### Control plane
+
+Handles: tenant registry, provisioning orchestration, global admin operations. Connects exclusively to the control-plane Postgres DB. Never touches a tenant DB directly.
+
+NestJS modules: `TenantsModule`, `ProvisioningModule`, `AuthModule` (global admin JWT), `HealthModule`.
+
+### Tenant runtime
+
+Handles: all HR domain logic. Every request is scoped to one tenant — the tenant DB connection is resolved at request time and never crosses tenants.
+
+Request processing chain:
+```
+Incoming request
+  → AuthGuard          — verifies Keycloak JWT signature
+  → TenantContextInterceptor — extracts tenant slug from JWT iss claim
+                               → Redis-cached control-plane lookup → tenant_id
+                               → TenantPrismaManager.getClient(tenant_id)
+                               → binds PrismaClient to request context
+  → RbacGuard          — reads hrobot_roles from JWT, checks against route decorator
+  → Service method     — uses injected tenant PrismaClient, never global client
+  → AuditInterceptor   — writes append-only audit_log row on mutations
+  → Response
+```
+
+**Defense-in-depth:** Isolation is physical (separate DB connections, separate Postgres databases), not logical (no shared DB + WHERE clauses). A bug that drops a filter condition cannot leak cross-tenant data.
+
+---
+
+## 4. Data Model
+
+### Control-plane schema (`packages/db/prisma/control-plane.prisma`)
+
+**`tenants`**
+```
+id              String    @id @default(uuid())
+slug            String    @unique
+name            String
+status          TenantStatus  // PENDING | ACTIVE | SUSPENDED | DEPROVISIONED
+db_url          String    // AES-256 encrypted connection string
+plan            PlanType  // TRIAL | STANDARD | ENTERPRISE
+metadata        Json      // { realmName, keycloakClientId }
+created_at      DateTime  @default(now())
+provisioned_at  DateTime?
+```
+
+**`provisioning_jobs`**
+```
+id              String    @id @default(uuid())
+tenant_id       String    @relation(fields: [tenant_id], references: [id])
+step            ProvisioningStep  // CREATE_DB | RUN_MIGRATIONS | SEED | KEYCLOAK_SETUP | DONE | FAILED
+attempt_count   Int       @default(0)
+last_error      String?
+created_at      DateTime  @default(now())
+updated_at      DateTime  @updatedAt
+```
+
+**`global_admins`**
+```
+id              String    @id @default(uuid())
+email           String    @unique
+password_hash   String
+created_at      DateTime  @default(now())
+```
+
+Global admins (HRobot SaaS operators) authenticate via the control-plane directly, independent of Keycloak, so platform access survives Keycloak outages.
+
+### Tenant schema (`packages/db/prisma/tenant.prisma`)
+
+**`users`** — mirrors Keycloak subject for local role assignment
+```
+id              String    @id  // matches Keycloak sub (UUID)
+email           String    @unique
+keycloak_sub    String    @unique
+active          Boolean   @default(true)
+created_at      DateTime  @default(now())
+```
+
+**`user_roles`**
+```
+user_id         String
+role            Role      // PRACOWNIK | MANAGER | HR | ADMIN_KLIENTA
+unit_id         String?   // FK → organizational_units (scope Manager to a team)
+@@id([user_id, role, unit_id])
+```
+
+Admin globalny (HRobot SaaS operator) never lives in a tenant DB — authenticated via control-plane.
+
+**`organizational_units`**
+```
+id              String    @id @default(uuid())
+name            String
+parent_id       String?   @relation("UnitTree", fields: [parent_id], references: [id])
+manager_user_id String?   @relation(fields: [manager_user_id], references: [id])
+```
+
+**`employees`** (proof-of-stack entity — validates the full request chain end-to-end)
+```
+id              String    @id @default(uuid())
+user_id         String?   @relation(fields: [user_id], references: [id])
+first_name      String
+last_name       String
+pesel           String    // AES-256 encrypted at application layer before write
+position        String
+employment_type EmploymentType
+hired_at        DateTime
+unit_id         String    @relation(fields: [unit_id], references: [id])
+created_at      DateTime  @default(now())
+updated_at      DateTime  @updatedAt
+```
+
+PESEL is encrypted in the application layer before every write and decrypted after every read. Plaintext PESEL never touches the DB or any log line.
+
+**`audit_log`** — append-only
+```
+id              String    @id @default(uuid())
+actor_user_id   String
+action          String    // e.g. "employee.update"
+entity_type     String
+entity_id       String
+payload         Json      // { before: {...}, after: {...} }
+ip_address      String
+created_at      DateTime  @default(now())
+```
+
+A Postgres `BEFORE UPDATE OR DELETE` trigger on `audit_log` raises an exception — immutability enforced at the DB layer as a second line of defense after the application-layer INSERT-only policy.
+
+### Prisma connection manager
+
+`packages/db/src/TenantPrismaManager.ts` — NestJS singleton:
+
+- LRU cache: max 100 entries, 10-minute idle TTL
+- Cache miss: decrypt `tenants.db_url` → instantiate `new PrismaClient({ datasourceUrl })` → `$connect()` → cache
+- LRU eviction: `client.$disconnect()` called before entry removal
+- `evict(tenantId)`: called explicitly on tenant suspension/deprovisioning
+- At 100 active connections per API replica, horizontal scaling requires PgBouncer or Prisma Accelerate in production
+
+### Migration fan-out
+
+`packages/db/scripts/migrate-all-tenants.ts` — runs at deploy time after control-plane migration:
+
+1. `SELECT id, db_url FROM tenants WHERE status = 'ACTIVE'`
+2. For each tenant (concurrency limit: 10): `prisma migrate deploy --schema=tenant.prisma` with `DATABASE_URL` set to decrypted tenant URL
+3. Collect failures; exit non-zero if any tenant failed → blocks deployment, triggers API rollback
+
+New tenant DBs also run `migrate deploy` inline during the `RUN_MIGRATIONS` provisioning step.
+
+---
+
+## 5. Auth — Keycloak Isolation Model
+
+**Decision: realm-per-tenant.**
+
+Each provisioned tenant gets its own Keycloak realm (`hrobot-{tenant-slug}`). This is physically consistent with DB-per-tenant — complete isolation at every layer. A realm is self-contained: its own users, sessions, client configs, password policies, and login page branding. Deleting a tenant means deleting one realm with no residual user records in a shared space.
+
+### JWT structure
+
+```json
+{
+  "sub": "{keycloak-user-uuid}",
+  "iss": "https://auth.hrobot.ai/realms/hrobot-acme",
+  "hrobot_roles": ["MANAGER"],
+  "exp": ...
+}
+```
+
+`TenantContextInterceptor` extracts the tenant slug from the `iss` claim — no custom header needed. `RbacGuard` reads `hrobot_roles` from the verified JWT — no DB roundtrip for role checks on read operations.
+
+### Auth.js v5 configuration (`apps/web/auth.ts`)
+
+```typescript
+export const { handlers, auth, signIn, signOut } = NextAuth((req) => {
+  const realm = req?.headers.get('x-keycloak-realm') ?? 'hrobot-default'
+  return {
+    providers: [
+      Keycloak({
+        clientId: env.KEYCLOAK_CLIENT_ID,
+        issuer: `${env.KEYCLOAK_URL}/realms/${realm}`,
+      }),
+    ],
+    callbacks: {
+      jwt({ token, profile }) {
+        if (profile?.hrobot_roles) token.roles = profile.hrobot_roles
+        return token
+      },
+      session({ session, token }) {
+        session.user.roles = token.roles
+        return session
+      },
+    },
+  }
+})
+```
+
+The `x-keycloak-realm` header is set by Next.js middleware based on the subdomain → Redis-cached tenant lookup.
+
+---
+
+## 6. Self-serve Provisioning Pipeline
+
+### Phase 1 — Signup request (synchronous, <100ms)
+
+`POST /api/auth/signup`:
+1. Validate: slug availability, email format, password strength
+2. Create `tenants` row: `status = PENDING`
+3. Create `provisioning_jobs` row: `step = CREATE_DB`, `attempt_count = 0`
+4. Publish `{ jobId, tenantId }` to RabbitMQ exchange `tenant.provision`
+5. Return `202 Accepted { jobId }`
+
+Frontend navigates to `/signup/status?job={jobId}`, polls `GET /api/provision/status/{jobId}` every 3 seconds.
+
+### Phase 2 — Async pipeline worker
+
+NestJS `@MessagePattern('tenant.provision')` consumer. Each step is **idempotent** — the worker reads `provisioning_jobs.step` on pickup and resumes from the current step. Steps never repeat completed work.
+
+```
+CREATE_DB → RUN_MIGRATIONS → SEED → KEYCLOAK_SETUP → DONE
+```
+
+**CREATE_DB**
+- Generate: `db_name = hrobot_t_{tenant_id_8chars}`, `db_user = hu_{tenant_id_8chars}`, 32-char random password
+- Execute against Postgres superuser: `CREATE USER ... WITH PASSWORD ...; CREATE DATABASE ... OWNER ...`
+- AES-256 encrypt connection URL, store in `tenants.db_url`
+- Advance step → `RUN_MIGRATIONS`
+
+**RUN_MIGRATIONS**
+- Decrypt `tenants.db_url`; shell out: `prisma migrate deploy --schema=packages/db/prisma/tenant.prisma`
+- `DATABASE_URL` env var set to tenant connection string for the duration
+- Advance step → `SEED`
+
+**SEED**
+- Open tenant PrismaClient
+- Insert: root `organizational_units` row ("Cała firma"), system config defaults
+- Advance step → `KEYCLOAK_SETUP`
+
+**KEYCLOAK_SETUP**
+- Call Keycloak Admin REST API:
+  1. `POST /admin/realms` → create realm `hrobot-{slug}` with RODO-compliant session TTL policy (short access token TTL, refresh token rotation)
+  2. `POST /admin/realms/hrobot-{slug}/clients` → create client `hrobot-web`, redirect URIs to `https://{slug}.hrobot.ai/*`
+  3. `POST /admin/realms/hrobot-{slug}/users` → create initial ADMIN_KLIENTA user, `temporaryPassword = true`
+  4. Trigger credential-reset email (Keycloak built-in)
+- Store `{ realmName, keycloakClientId }` in `tenants.metadata`
+- Advance step → `DONE`
+
+**DONE**
+- `UPDATE tenants SET status = 'ACTIVE', provisioned_at = NOW()`
+- Frontend poll receives `step = DONE` → redirects to `https://{slug}.hrobot.ai` (Keycloak prompts first-login password set)
+
+### Failure handling and rollback
+
+On any step exception:
+1. `provisioning_jobs.last_error = error.message`, `attempt_count++`
+2. If `attempt_count < 3`: re-enqueue with exponential backoff (30s → 2min → 10min) via RabbitMQ dead-letter + TTL
+3. If `attempt_count >= 3`: `step = FAILED`, alert ops (email/Slack webhook)
+
+Compensating actions (run in reverse order of what succeeded):
+- KEYCLOAK_SETUP partially created realm → `DELETE /admin/realms/hrobot-{slug}`
+- CREATE_DB succeeded but later step failed → `DROP DATABASE {db_name}; DROP USER {db_user}`
+- `tenants.status` remains `PENDING`; never set to ACTIVE
+
+### Status API
+
+`GET /api/provision/status/{jobId}` (no auth — job ID is a secret UUID):
+```json
+{ "step": "KEYCLOAK_SETUP", "attemptCount": 1, "error": null }
+```
+Frontend renders a 5-step progress bar. On `step = FAILED`, shows error message + support contact.
+
+---
+
+## 7. App Shell
+
+### Design system migration
+
+Source: `C:\WORKSPACE\startup\demo\` (existing Next.js mockup).
+
+Migrated verbatim into `apps/web/`:
+- `components/ui/` — Button, Card, Badge, Input, Modal, SkipLink
+- `components/layout/` — Sidebar, TopBar (wired to real auth: user name, role, logout)
+- `app/globals.css` — glassmorphism styles, CSS variables (Navy `#0B1F3B`, Cyan `#00C1D4`)
+- `tailwind.config.ts` — custom color tokens, `backdrop-filter` / `backdrop-blur` utilities
+- Inter font via `next/font/google` in root `layout.tsx`
+
+Demo mock data (`lib/mockData.ts`) and Zustand stores are discarded.
+
+### Subdomain routing (`apps/web/middleware.ts`)
+
+Runs on every request before any page renders:
+
+1. Read `host` header → extract subdomain (`acme.hrobot.ai` → `acme`)
+2. If no subdomain (or `www`/`hrobot.ai`) → marketing site, no tenant context
+3. If subdomain present:
+   - Check Redis cache for `{ tenantId, status, realmName }` keyed by slug (5-min TTL)
+   - Cache miss → fetch from control-plane API → populate cache
+   - If `status ≠ ACTIVE` → return 503 "Account suspended" page
+   - Set request headers: `x-tenant-id`, `x-keycloak-realm`
+
+All Server Components and Route Handlers read `headers().get('x-tenant-id')` — no prop drilling.
+
+### Route structure
+
+```
+apps/web/app/
+├── (marketing)/
+│   ├── page.tsx                    # Landing page
+│   ├── signup/
+│   │   ├── page.tsx                # Signup form
+│   │   └── status/page.tsx         # Provisioning progress (polls /api/provision/status)
+│   └── layout.tsx                  # Minimal layout, no sidebar
+│
+├── (tenant)/
+│   ├── layout.tsx                  # Auth gate + Sidebar + TopBar
+│   ├── dashboard/page.tsx
+│   ├── pracownicy/
+│   │   ├── page.tsx                # Proof-of-stack: real API call, rendered employee list
+│   │   └── [id]/page.tsx           # Stub
+│   ├── grafik/page.tsx             # Stub
+│   ├── wnioski/page.tsx            # Stub
+│   └── dostepy/page.tsx            # Stub
+│
+└── api/
+    ├── auth/[...nextauth]/route.ts
+    └── provision/status/[jobId]/route.ts   # No-auth status polling
+```
+
+`(tenant)/layout.tsx` auth gate:
+```typescript
+const session = await auth()
+if (!session) redirect('/api/auth/signin')
+```
+
+### Proof-of-stack page
+
+`pracownicy/page.tsx` makes a real authenticated `GET /api/employees` call and renders the response using existing Card + Badge components. This validates the full chain: subdomain → middleware → Auth.js session → Bearer token → NestJS TenantContextInterceptor → tenant PrismaClient → response → UI.
+
+---
+
+## 8. Cross-cutting Concerns
+
+### Config and secrets
+
+All env vars validated at startup via Zod schemas in `packages/config/env.ts`. App crashes on boot if any required variable is missing — no silent fallbacks.
+
+Key secrets:
+- `CONTROL_PLANE_DATABASE_URL` — control-plane Postgres
+- `TENANT_DB_ENCRYPTION_KEY` — AES-256 key for `tenants.db_url` at-rest encryption
+- `KEYCLOAK_ADMIN_CLIENT_SECRET` — provisioning pipeline Admin API
+- `REDIS_URL`, `RABBITMQ_URL`
+- `NEXTAUTH_SECRET` — Auth.js JWT signing
+
+Key rotation for `TENANT_DB_ENCRYPTION_KEY` requires a migration script that re-encrypts all `tenants.db_url` rows; documented in `infra/docs/key-rotation.md`.
+
+### Audit log
+
+`AuditService` (NestJS injectable) is called by `AuditInterceptor` at the end of every mutating request, using the tenant's PrismaClient:
+
+```typescript
+await auditService.log({
+  actorUserId: session.sub,
+  action: 'employee.update',
+  entityType: 'Employee',
+  entityId: employee.id,
+  payload: { before: oldData, after: newData },
+  ipAddress: req.ip,
+})
+```
+
+Application-layer policy: INSERT-only against `audit_log`. Postgres trigger enforces this at DB level: `BEFORE UPDATE OR DELETE ON audit_log → RAISE EXCEPTION`.
+
+### Observability
+
+**Structured logging:** Pino (JSON). Every log line includes: `tenantId`, `requestId` (UUID injected by middleware, propagated via AsyncLocalStorage), `userId`, `durationMs`. No `console.log` in application code.
+
+**Metrics:** Prometheus-compatible, exposed at `/metrics` (internal port only). Tracked: request count, p50/p95/p99 latency per route, active tenant connection count, provisioning job duration per step, RabbitMQ queue depth.
+
+**Tracing:** OpenTelemetry SDK wired into NestJS and Prisma query events. Spans cover: HTTP request → DB query → outbound Keycloak calls. OTLP export to Jaeger (local dev) / cloud tracing (production). `requestId` correlates logs and traces.
+
+**Health checks:**
+- `GET /health/live` — process alive
+- `GET /health/ready` — control-plane DB + Redis + RabbitMQ reachable
+Used by Docker/k8s liveness and readiness probes.
+
+---
+
+## 9. Testing Strategy
+
+### Philosophy
+
+Foundation tests prove two things type-checking cannot: **tenant isolation holds** (physically separate DB connections make cross-tenant leakage structurally impossible), and **the provisioning pipeline produces a usable tenant** from signup to first login.
+
+### Test layers
+
+**Unit tests (Jest, no DB)**
+- `TenantPrismaManager`: LRU eviction calls `$disconnect`, correct connection string per tenant
+- `TenantContextInterceptor`: tenant resolution, 401 on invalid JWT, 403 on suspended tenant
+- Provisioning state machine: each step transition, rollback logic on simulated failure
+- `AuditService`: correct payload shape, INSERT called on mutations
+
+**Integration tests (Jest + Docker Compose Postgres)**
+
+`jest.globalSetup` starts a test Postgres instance. Each test suite provisions two tenant DBs using production provisioning code.
+
+Critical isolation test:
+```typescript
+it('tenant A query cannot return tenant B rows', async () => {
+  const clientA = await manager.getClient(tenantA.id)
+  const clientB = await manager.getClient(tenantB.id)
+  await clientB.employee.create({ data: employeeFixture })
+
+  const result = await clientA.employee.findMany()
+  expect(result).toHaveLength(0)
+})
+```
+
+Additional: provisioning pipeline happy path (CREATE_DB → DONE), each failure step triggers correct compensating actions, migration fan-out script runs cleanly against two tenant DBs.
+
+**E2E tests (Playwright)**
+- Signup flow: form → progress screen → DONE (Keycloak calls mocked via WireMock in CI)
+- Auth isolation: user authenticated on `tenant-a.localhost` receives 403 on `tenant-b.localhost` routes even with a valid tenant-A token
+- Proof-of-stack: ADMIN_KLIENTA logs in → employees list loads (empty) → no console errors
+
+**CI pipeline order:** unit → integration → E2E. Each stage must pass before the next runs. Migration fan-out script runs as final CI step against integration test DBs before any deploy proceeds.
+
+---
+
+## RBAC Summary
+
+| Role | Scope | Capabilities |
+|------|-------|-------------|
+| Pracownik | Own records | View own profile, own schedule, submit leave requests |
+| Manager | Assigned unit | View/manage team records, approve team leave, set team schedule |
+| HR | Whole tenant | Manage all employees, all leave, reports |
+| Admin klienta | Whole tenant | All HR capabilities + user/access management, billing |
+| Admin globalny | Control plane | Cross-tenant access, provisioning management (HRobot SaaS operator) |
+
+---
+
+## RODO / EU AI Act Compliance Notes
+
+- PESEL encrypted at application layer before every write; never logged
+- Audit log append-only with Postgres-enforced immutability
+- Tenant data physically isolated — no cross-tenant DB access possible
+- Short access token TTL + refresh token rotation in Keycloak realm config
+- Data residency: all infrastructure in EU region (Terraform enforced)
+- EU AI Act: AI agents (Grafik Manager, Analityk HR, Voice Agent) are deferred to post-Foundation sub-projects; DPIA required before AI features go live
