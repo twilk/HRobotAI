@@ -1,0 +1,26 @@
+{
+  "name": "@hrobot/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint src",
+    "test": "jest",
+    "db:generate": "echo \"no db in @hrobot/shared\""
+  },
+  "devDependencies": {
+    "@hrobot/config": "workspace:*",
+    "@types/jest": "^29.5.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.13.0",
+    "typescript-eslint": "^8.10.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.0",
+    "typescript": "^5.6.0"
+  }
+}
