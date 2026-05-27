@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.turbo/
+coverage/
+
+# Prisma generated clients (regenerated via `pnpm db:generate`)
+packages/db/generated/
+
+# Env files (never commit secrets)
+.env
+.env.local
+!.env.example
+
+# OS / editor
+.DS_Store
+*.log
