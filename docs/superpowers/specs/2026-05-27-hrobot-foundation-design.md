@@ -101,6 +101,7 @@ Incoming request
   → AuthGuard          — verifies Keycloak JWT signature
   → TenantContextInterceptor — extracts tenant slug from JWT iss claim
                                → Redis-cached control-plane lookup → tenant_id
+                               → on Redis error: fallback to Postgres + log warning
                                → TenantPrismaManager.getClient(tenant_id)
                                → binds PrismaClient to request context
   → RbacGuard          — reads hrobot_roles from JWT, checks against route decorator
@@ -108,6 +109,8 @@ Incoming request
   → AuditInterceptor   — writes append-only audit_log row on mutations
   → Response
 ```
+
+**Redis fallback:** If Redis throws on the tenant cache lookup, `TenantContextInterceptor` falls back to a direct control-plane Postgres query, logs a warning (`logger.warn('Redis unavailable, falling back to DB for tenant resolution')`), and increments a Prometheus counter (`tenant_redis_fallback_total`). The request succeeds — a Redis pod restart does not cause user-visible errors.
 
 **Defense-in-depth:** Isolation is physical (separate DB connections, separate Postgres databases), not logical (no shared DB + WHERE clauses). A bug that drops a filter condition cannot leak cross-tenant data.
 
@@ -125,9 +128,10 @@ name            String
 status          TenantStatus  // PENDING | ACTIVE | SUSPENDED | DEPROVISIONED
 db_url          String    // AES-256 encrypted connection string
 plan            PlanType  // TRIAL | STANDARD | ENTERPRISE
-metadata        Json      // { realmName, keycloakClientId }
-created_at      DateTime  @default(now())
-provisioned_at  DateTime?
+metadata              Json      // { realmName, keycloakClientId }
+onboarding_checklist  Json      @default("{}") // { addEmployees: bool, configureSchedule: bool, inviteUsers: bool }
+created_at            DateTime  @default(now())
+provisioned_at        DateTime?
 ```
 
 **`provisioning_jobs`**
@@ -140,6 +144,17 @@ last_error      String?
 created_at      DateTime  @default(now())
 updated_at      DateTime  @updatedAt
 ```
+
+**`outbox_events`**
+```
+id              String    @id @default(uuid())
+exchange        String    // e.g. "tenant.provision"
+routing_key     String
+payload         Json
+published_at    DateTime?
+created_at      DateTime  @default(now())
+```
+Relay process polls `WHERE published_at IS NULL` every 5 seconds, publishes to RabbitMQ, marks `published_at`. Written in the same DB transaction as the provisioning_job row — if the transaction fails, no event is created; if RabbitMQ is down, the event waits for the next poll cycle.
 
 **`global_admins`**
 ```
@@ -164,11 +179,13 @@ created_at      DateTime  @default(now())
 
 **`user_roles`**
 ```
+id              Int       @id @default(autoincrement())
 user_id         String
 role            Role      // PRACOWNIK | MANAGER | HR | ADMIN_KLIENTA
 unit_id         String?   // FK → organizational_units (scope Manager to a team)
-@@id([user_id, role, unit_id])
+@@unique([user_id, role, unit_id])
 ```
+Surrogate `id` PK avoids Prisma's known bug where nullable fields in composite PKs break `upsert` — global roles (no unit_id) would silently duplicate without this.
 
 Admin globalny (HRobot SaaS operator) never lives in a tenant DB — authenticated via control-plane.
 
@@ -197,6 +214,8 @@ updated_at      DateTime  @updatedAt
 
 PESEL is encrypted in the application layer before every write and decrypted after every read. Plaintext PESEL never touches the DB or any log line.
 
+**Encryption implementation:** `packages/shared/src/encryption.ts` — shared `EncryptionService` using Node.js built-in `crypto` module, AES-256-GCM mode. AES-GCM provides authenticated encryption (integrity check included — any tampering is detectable). Same service used for both `employees.pesel` and `tenants.db_url`. IV is randomly generated per encryption call (16 bytes), prepended to ciphertext. Key sourced from `TENANT_DB_ENCRYPTION_KEY` env var (32-byte hex). Never AES-ECB (ECB leaks patterns; GCM is mandatory for RODO data integrity compliance).
+
 **`audit_log`** — append-only
 ```
 id              String    @id @default(uuid())
@@ -219,7 +238,7 @@ A Postgres `BEFORE UPDATE OR DELETE` trigger on `audit_log` raises an exception 
 - Cache miss: decrypt `tenants.db_url` → instantiate `new PrismaClient({ datasourceUrl })` → `$connect()` → cache
 - LRU eviction: `client.$disconnect()` called before entry removal
 - `evict(tenantId)`: called explicitly on tenant suspension/deprovisioning
-- At 100 active connections per API replica, horizontal scaling requires PgBouncer or Prisma Accelerate in production
+- **Scaling threshold:** At ~50 active tenants per API replica (100 Postgres connections), add PgBouncer in transaction-pooling mode. Foundation launches with ≤20 tenants; headroom is safe. PgBouncer is explicitly out of Foundation scope — add it before the 50-tenant mark.
 
 ### Migration fan-out
 
@@ -288,10 +307,15 @@ The `x-keycloak-realm` header is set by Next.js middleware based on the subdomai
 
 `POST /api/auth/signup`:
 1. Validate: slug availability, email format, password strength
-2. Create `tenants` row: `status = PENDING`
-3. Create `provisioning_jobs` row: `step = CREATE_DB`, `attempt_count = 0`
-4. Publish `{ jobId, tenantId }` to RabbitMQ exchange `tenant.provision`
-5. Return `202 Accepted { jobId }`
+2. In a single DB transaction:
+   - Create `tenants` row: `status = PENDING`
+   - Create `provisioning_jobs` row: `step = CREATE_DB`, `attempt_count = 0`
+   - Create `outbox_events` row: `exchange = tenant.provision`, `payload = { jobId, tenantId }`
+3. Return `202 Accepted { jobId }`
+
+**Race condition:** Step 1 validation is a check-then-act. Two simultaneous signups with the same slug will both pass the check; the second insert hits Prisma's `P2002` unique constraint error. The handler must catch `P2002` on `tenants.slug` and return `409 Conflict { field: "slug", message: "Ta nazwa jest już zajęta" }` — same message as the debounced availability check.
+
+The outbox relay process (polls every 5s) publishes pending `outbox_events` to RabbitMQ and marks them `published_at`. If RabbitMQ is down at signup time, the event waits in the DB until the broker recovers — the user's 202 is unaffected.
 
 Frontend navigates to `/signup/status?job={jobId}`, polls `GET /api/provision/status/{jobId}` every 3 seconds.
 
@@ -350,6 +374,15 @@ Compensating actions (run in reverse order of what succeeded):
 ```json
 { "step": "KEYCLOAK_SETUP", "attemptCount": 1, "error": null }
 ```
+
+### Onboarding checklist API
+
+`PATCH /api/tenants/me/onboarding-checklist` (JWT required, ADMIN_KLIENTA role):
+```json
+{ "addEmployees": true }
+```
+Partial update — merges into `tenants.onboarding_checklist` Json column. Checklist is org-level state shared across all admin users of the tenant.
+
 Frontend renders a 5-step progress bar. On `step = FAILED`, shows error message + support contact.
 
 ---
@@ -448,7 +481,7 @@ Welcome screen — not a blank stub. Content:
   - "Dodaj pracownika" → links to `/pracownicy` (or future add-employee route)
   - "Skonfiguruj grafik" → links to `/grafik` (stub, visible future intent)
   - "Zaproś użytkowników" → links to `/ustawienia/uzytkownicy`
-- Setup checklist (persisted per-tenant in localStorage until dismissed):
+- Setup checklist (persisted in `tenants.onboarding_checklist` DB column — org-level, visible to all admin users, survives device switching):
   - ☐ Dodaj pierwszego pracownika
   - ☐ Utwórz jednostkę organizacyjną
   - ☐ Ustaw strefy czasowe i godziny pracy
@@ -557,6 +590,21 @@ Key secrets:
 
 Key rotation for `TENANT_DB_ENCRYPTION_KEY` requires a migration script that re-encrypts all `tenants.db_url` rows; documented in `infra/docs/key-rotation.md`.
 
+### Rate limiting
+
+Unauthenticated endpoints are rate-limited via `@nestjs/throttler` with Redis storage (so limits survive pod restarts and scale across replicas):
+
+| Endpoint | Limit | Window | Rationale |
+|---|---|---|---|
+| `GET /api/slugs/check/{slug}` | 10 req | 1 min per IP | Prevents slug enumeration (slug list = client list) |
+| `GET /api/provision/status/{jobId}` | 30 req | 1 min per IP | jobId is a secret UUID; still cap polling abuse |
+
+All other API routes are authenticated (JWT required) — no additional throttler needed for them in Foundation.
+
+Rate limit exceeded returns `429 Too Many Requests`. The signup form debounce (300ms) means a human user never hits the 10 req/min slug-check limit; only automated scanners do.
+
+ThrottlerModule configured with `ThrottlerStorageRedisService` — uses the same Redis instance as tenant lookup cache.
+
 ### Audit log
 
 `AuditService` (NestJS injectable) is called by `AuditInterceptor` at the end of every mutating request, using the tenant's PrismaClient:
@@ -599,9 +647,12 @@ Foundation tests prove two things type-checking cannot: **tenant isolation holds
 
 **Unit tests (Jest, no DB)**
 - `TenantPrismaManager`: LRU eviction calls `$disconnect`, correct connection string per tenant
-- `TenantContextInterceptor`: tenant resolution, 401 on invalid JWT, 403 on suspended tenant
+- `TenantContextInterceptor`: tenant resolution, 401 on invalid JWT, 403 on suspended tenant, Redis error → Postgres fallback (fallback increments `tenant_redis_fallback_total` counter)
 - Provisioning state machine: each step transition, rollback logic on simulated failure
 - `AuditService`: correct payload shape, INSERT called on mutations
+- `EncryptionService`: encrypt→decrypt round-trip returns original value; two encryptions of the same plaintext produce different ciphertext (IV is not static); decryption of tampered ciphertext throws (GCM auth tag check)
+- `OutboxRelayService`: publishes pending events to RabbitMQ, marks `published_at`; on RabbitMQ connection failure, leaves `published_at` null and retries on next poll cycle
+- Signup handler: `P2002` constraint error on `tenants.slug` returns 409 Conflict with correct Polish message
 
 **Integration tests (Jest + Docker Compose Postgres)**
 
@@ -620,6 +671,8 @@ it('tenant A query cannot return tenant B rows', async () => {
 ```
 
 Additional: provisioning pipeline happy path (CREATE_DB → DONE), each failure step triggers correct compensating actions, migration fan-out script runs cleanly against two tenant DBs.
+
+- Rate limiting: `GET /api/slugs/check/{slug}` returns 429 after 10 requests/min from same IP; `GET /api/provision/status/{jobId}` returns 429 after 30 requests/min — verified against Redis-backed throttler in integration test (in-memory throttler is NOT used in tests, as it wouldn't catch Redis config issues)
 
 **E2E tests (Playwright)**
 - Signup flow: form → progress screen → DONE (Keycloak calls mocked via WireMock in CI)
@@ -683,9 +736,9 @@ New components added by Foundation: `SignupForm`, `SlugInput` (with live preview
 |--------|---------|-----|------|--------|----------|
 | CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
 | Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | — |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 0 | — | — |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR (FULL) | 10 decisions: rate limiting, user_roles PK, outbox pattern, AES-256-GCM spec, setup checklist DB, slug race 409, Redis fallback, 7 test gaps, PgBouncer threshold |
 | Design Review | `/plan-design-review` | UI/UX gaps | 1 | CLEAR (FULL) | score: 4/10 → 9/10, 10 decisions |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
 
 **UNRESOLVED:** 0
-**VERDICT:** Design Review CLEARED — eng review required before implementation.
+**VERDICT:** Design Review CLEARED + Eng Review CLEARED — ready for implementation planning.
