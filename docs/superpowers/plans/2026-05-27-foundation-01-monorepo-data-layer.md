@@ -125,7 +125,7 @@ packages:
 {
   "name": "hrobot",
   "private": true,
-  "packageManager": "pnpm@9.12.0",
+  "packageManager": "pnpm@10.30.3",
   "engines": {
     "node": ">=22"
   },
