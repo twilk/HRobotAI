@@ -1,0 +1,81 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../generated/control-plane"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("CONTROL_PLANE_DATABASE_URL")
+}
+
+enum TenantStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  DEPROVISIONED
+}
+
+enum PlanType {
+  TRIAL
+  STANDARD
+  ENTERPRISE
+}
+
+enum ProvisioningStep {
+  CREATE_DB
+  RUN_MIGRATIONS
+  SEED
+  KEYCLOAK_SETUP
+  DONE
+  FAILED
+}
+
+model Tenant {
+  id                  String            @id @default(uuid())
+  slug                String            @unique
+  name                String
+  status              TenantStatus      @default(PENDING)
+  dbUrl               String?           @map("db_url")
+  plan                PlanType          @default(TRIAL)
+  metadata            Json              @default("{}")
+  onboardingChecklist Json              @default("{}") @map("onboarding_checklist")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  provisionedAt       DateTime?         @map("provisioned_at")
+  provisioningJobs    ProvisioningJob[]
+
+  @@map("tenants")
+}
+
+model ProvisioningJob {
+  id           String           @id @default(uuid())
+  tenantId     String           @map("tenant_id")
+  tenant       Tenant           @relation(fields: [tenantId], references: [id])
+  step         ProvisioningStep @default(CREATE_DB)
+  attemptCount Int              @default(0) @map("attempt_count")
+  lastError    String?          @map("last_error")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  @@map("provisioning_jobs")
+}
+
+model OutboxEvent {
+  id          String    @id @default(uuid())
+  exchange    String
+  routingKey  String    @map("routing_key")
+  payload     Json
+  publishedAt DateTime? @map("published_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([publishedAt])
+  @@map("outbox_events")
+}
+
+model GlobalAdmin {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("global_admins")
+}
