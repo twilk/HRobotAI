@@ -37,6 +37,8 @@ describe('CreateDbStep', () => {
         { provide: ControlPlanePrismaService, useValue: mockPrisma },
         { provide: 'SUPERUSER_PG_CLIENT', useValue: mockPg },
         { provide: EncryptionService, useValue: encryption },
+        { provide: 'POSTGRES_HOST', useValue: 'localhost' },
+        { provide: 'POSTGRES_PORT', useValue: '5433' },
       ],
     }).compile()
     step = module.get(CreateDbStep)

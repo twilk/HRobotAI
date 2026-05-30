@@ -9,12 +9,19 @@ import type { ProvisioningStepHandler } from '../provisioning.service.js'
 @Injectable()
 export class CreateDbStep implements ProvisioningStepHandler {
   private readonly logger = new Logger(CreateDbStep.name)
+  private readonly dbHost: string
+  private readonly dbPort: string
 
   constructor(
     private readonly prisma: ControlPlanePrismaService,
     @Inject('SUPERUSER_PG_CLIENT') private readonly pg: PgClient,
     private readonly encryption: EncryptionService,
-  ) {}
+    @Inject('POSTGRES_HOST') dbHost: string,
+    @Inject('POSTGRES_PORT') dbPort: string,
+  ) {
+    this.dbHost = dbHost
+    this.dbPort = dbPort
+  }
 
   async execute(job: { id: string; tenantId: string; step: string; attemptCount: number }): Promise<void> {
     const tenant = await this.prisma.tenant.findUniqueOrThrow({
@@ -35,11 +42,7 @@ export class CreateDbStep implements ProvisioningStepHandler {
       `CREATE DATABASE "${dbName}" OWNER "${dbUser}"`,
     )
 
-    // Extract host/port from superuser URL for the tenant connection string
-    const superuserUrl = new URL(process.env['POSTGRES_SUPERUSER_URL'] ?? 'postgresql://localhost:5432/postgres')
-    const host = superuserUrl.hostname
-    const port = superuserUrl.port || '5432'
-    const dbUrl = `postgresql://${dbUser}:${dbPassword}@${host}:${port}/${dbName}`
+    const dbUrl = `postgresql://${dbUser}:${dbPassword}@${this.dbHost}:${this.dbPort}/${dbName}`
     const encryptedUrl = this.encryption.encrypt(dbUrl)
 
     await this.prisma.tenant.update({

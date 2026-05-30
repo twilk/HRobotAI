@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { TenantStatus } from '@hrobot/shared'
+import { ProvisioningStep, TenantStatus } from '@hrobot/shared'
 import { ControlPlanePrismaService } from '../../common/prisma/control-plane-prisma.service.js'
 import type { ProvisioningStepHandler } from '../provisioning.service.js'
 
@@ -17,7 +17,7 @@ export class DoneStep implements ProvisioningStepHandler {
 
     await this.prisma.provisioningJob.update({
       where: { id: job.id },
-      data: { step: 'DONE' },
+      data: { step: ProvisioningStep.DONE },
     })
 
     this.logger.log({ tenantId: job.tenantId }, 'Tenant provisioned and ACTIVE')

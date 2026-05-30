@@ -46,6 +46,14 @@ import { DoneStep } from './steps/done.step.js'
       useFactory: (): EncryptionService =>
         new EncryptionService(Buffer.from(parseEnv().TENANT_DB_ENCRYPTION_KEY, 'hex')),
     },
+    {
+      provide: 'POSTGRES_HOST',
+      useFactory: (): string => new URL(parseEnv().POSTGRES_SUPERUSER_URL).hostname,
+    },
+    {
+      provide: 'POSTGRES_PORT',
+      useFactory: (): string => new URL(parseEnv().POSTGRES_SUPERUSER_URL).port || '5432',
+    },
     { provide: 'SPAWN_SYNC', useValue: spawnSync },
     {
       provide: 'TENANT_CLIENT_FACTORY',
