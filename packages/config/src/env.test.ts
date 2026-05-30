@@ -9,6 +9,8 @@ const valid = {
   REDIS_URL: 'redis://localhost:6379',
   RABBITMQ_URL: 'amqp://localhost:5672',
   NEXTAUTH_SECRET: 'nextauth-secret',
+  POSTGRES_SUPERUSER_URL: 'postgresql://postgres:postgres@localhost:5433/postgres',
+  GLOBAL_ADMIN_JWT_SECRET: 'a'.repeat(32),
 }
 
 describe('parseEnv', () => {

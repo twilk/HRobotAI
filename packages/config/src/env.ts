@@ -12,6 +12,11 @@ export const envSchema = z.object({
   REDIS_URL: z.string().url(),
   RABBITMQ_URL: z.string().url(),
   NEXTAUTH_SECRET: z.string().min(1),
+  // Plan 2 additions
+  POSTGRES_SUPERUSER_URL: z.string().url(),
+  GLOBAL_ADMIN_JWT_SECRET: z
+    .string()
+    .min(32, 'GLOBAL_ADMIN_JWT_SECRET must be at least 32 characters'),
 })
 
 export type Env = z.infer<typeof envSchema>
