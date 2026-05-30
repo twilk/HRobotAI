@@ -1,5 +1,14 @@
 name: hrobot-foundation
 
+# Port map (all shifted to avoid local tool conflicts):
+#   Postgres        5433  (container: 5432)
+#   Redis           6380  (container: 6379)
+#   RabbitMQ AMQP   5673  (container: 5672)
+#   RabbitMQ UI     15673 (container: 15672)
+#   Keycloak        8180  (container: 8080)
+#   Virtual Tour    4321  (container: 80)
+#   cloudflared     —     (no host port; prints trycloudflare.com URL to stdout)
+
 services:
   postgres:
     image: postgres:16
@@ -21,7 +30,7 @@ services:
   redis:
     image: redis:7
     ports:
-      - "6379:6379"
+      - "6380:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -31,8 +40,8 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "5673:5672"
+      - "15673:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
@@ -49,7 +58,32 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin
     ports:
-      - "8080:8080"
+      - "8180:8080"
+
+  # ─────────────────────────────────────────────────────
+  # Virtual Tour — auto-cycling kiosk of every built screen
+  # Grows with the platform: add screenshots to infra/tour/www/screenshots/
+  # or update slides.json when new screens ship.
+  # ─────────────────────────────────────────────────────
+  tour:
+    build:
+      context: ../tour
+      dockerfile: Dockerfile
+    ports:
+      - "4321:80"
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────
+  # Cloudflare free tunnel — no account or token needed.
+  # Prints a *.trycloudflare.com URL to stdout on startup.
+  # Run: docker compose logs -f cloudflared | grep trycloudflare.com
+  # ─────────────────────────────────────────────────────
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --url http://tour:80
+    depends_on:
+      - tour
+    restart: unless-stopped
 
 volumes:
   pgdata:

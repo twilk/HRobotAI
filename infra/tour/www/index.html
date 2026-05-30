@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HRobot.AI — Virtual Tour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --navy: #0B1F3B;
+  --navy-light: #112847;
+  --navy-mid: #0d2545;
+  --cyan: #00C1D4;
+  --cyan-dim: rgba(0,193,212,0.15);
+  --cyan-glow: rgba(0,193,212,0.3);
+  --glass-bg: rgba(255,255,255,0.06);
+  --glass-border: rgba(255,255,255,0.12);
+  --text-muted: #6B7280;
+  --text-dim: rgba(255,255,255,0.5);
+  --red: #EF4444;
+  --green: #22C55E;
+  --amber: #F59E0B;
+  --transition: 600ms cubic-bezier(0.4,0,0.2,1);
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background: var(--navy);
+  color: #fff;
+  font-family: 'Inter', system-ui, sans-serif;
+  height: 100vh;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ── Progress bar ── */
+#progress-bar {
+  position: fixed; top:0; left:0; right:0; height:3px;
+  background: rgba(255,255,255,0.08); z-index:200;
+}
+#progress-fill {
+  height:100%; background: var(--cyan); width:0%;
+  box-shadow: 0 0 12px var(--cyan-glow);
+  transition: width linear;
+}
+
+/* ── Header ── */
+#header {
+  position: fixed; top:0; left:0; right:0;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 40px;
+  background: linear-gradient(180deg, rgba(11,31,59,0.95) 0%, transparent 100%);
+  z-index:100; pointer-events: none;
+}
+.logo {
+  display: flex; align-items: center; gap:12px;
+}
+.logo-mark {
+  width:36px; height:36px; border-radius:8px;
+  background: linear-gradient(135deg, var(--cyan) 0%, #0099aa 100%);
+  display: flex; align-items:center; justify-content:center;
+  font-weight:800; font-size:18px; color: var(--navy);
+}
+.logo-text { font-size:18px; font-weight:700; letter-spacing:-0.5px; }
+.logo-text span { color: var(--cyan); }
+#slide-counter {
+  font-size:13px; color: var(--text-dim); font-weight:500; letter-spacing:0.5px;
+}
+
+/* ── Main slide area ── */
+#stage {
+  position: fixed; inset:0;
+  display: flex; align-items:center; justify-content:center;
+  padding: 80px 40px 100px;
+}
+
+.slide {
+  display: none; flex-direction: row; gap: 48px;
+  align-items: center; width: 100%; max-width: 1280px;
+  opacity:0; transform: translateY(20px);
+  transition: opacity var(--transition), transform var(--transition);
+}
+.slide.active { display: flex; }
+.slide.visible { opacity:1; transform: translateY(0); }
+
+/* Left — info panel */
+.slide-info {
+  flex: 0 0 380px;
+  display: flex; flex-direction: column; gap: 20px;
+}
+.slide-badge {
+  display: inline-flex; align-items:center; gap:8px;
+  background: var(--cyan-dim); border: 1px solid var(--cyan-glow);
+  border-radius: 20px; padding: 6px 14px;
+  font-size:12px; font-weight:600; color: var(--cyan); letter-spacing:0.3px;
+  align-self: flex-start;
+}
+.status-dot {
+  width:6px; height:6px; border-radius:50%;
+  background: var(--cyan);
+}
+.status-dot.planned { background: var(--text-muted); }
+.status-dot.backend-ready { background: var(--amber); }
+.slide-title {
+  font-size: clamp(28px, 4vw, 46px);
+  font-weight: 800; line-height: 1.1; letter-spacing: -1.5px;
+}
+.slide-title .accent { color: var(--cyan); }
+.slide-desc {
+  font-size: 15px; line-height: 1.7; color: rgba(255,255,255,0.7);
+  font-weight: 400;
+}
+.slide-status {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 13px; color: var(--text-dim); font-weight: 500;
+}
+.status-pill {
+  padding: 4px 12px; border-radius: 12px;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.3px;
+}
+.status-pill.live { background: rgba(34,197,94,0.15); color: #22C55E; border: 1px solid rgba(34,197,94,0.3); }
+.status-pill.planned { background: rgba(107,114,128,0.15); color: #9CA3AF; border: 1px solid rgba(107,114,128,0.3); }
+.status-pill.backend-ready { background: rgba(245,158,11,0.15); color: #F59E0B; border: 1px solid rgba(245,158,11,0.3); }
+
+/* Right — mockup area */
+.slide-mockup {
+  flex: 1; min-height: 480px; max-height: 560px;
+  border-radius: 16px; overflow: hidden;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  position: relative;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.05) inset;
+}
+.slide-mockup img {
+  width:100%; height:100%; object-fit: cover; object-position: top;
+  display: block;
+}
+.mockup-placeholder {
+  width:100%; height:100%; display: flex; align-items:center; justify-content:center;
+  flex-direction: column; position: relative; overflow: hidden;
+}
+
+/* ── Navigation dots ── */
+#dots {
+  position: fixed; bottom: 36px; left:50%; transform: translateX(-50%);
+  display: flex; gap: 8px; align-items: center; z-index:100;
+}
+.dot {
+  width:8px; height:8px; border-radius: 4px;
+  background: rgba(255,255,255,0.2);
+  cursor: pointer; transition: all 0.3s ease;
+}
+.dot.active {
+  background: var(--cyan); width: 24px;
+  box-shadow: 0 0 8px var(--cyan-glow);
+}
+.dot:hover:not(.active) { background: rgba(255,255,255,0.4); }
+
+/* ── Time indicator ── */
+#time-ring {
+  position: fixed; bottom: 28px; right: 40px;
+  width: 44px; height: 44px; z-index:100;
+}
+#time-ring svg { transform: rotate(-90deg); }
+#time-ring circle.bg { fill:none; stroke: rgba(255,255,255,0.08); stroke-width: 3; }
+#time-ring circle.fill {
+  fill:none; stroke: var(--cyan); stroke-width: 3;
+  stroke-dasharray: 113; stroke-dashoffset: 113;
+  transition: stroke-dashoffset linear;
+  stroke-linecap: round;
+}
+#time-num {
+  position: absolute; inset:0;
+  display: flex; align-items:center; justify-content:center;
+  font-size: 12px; font-weight: 600; color: var(--cyan);
+}
+
+/* ═══════════════════════════════════════════
+   MOCKUP DESIGNS — Each screen recreation
+═══════════════════════════════════════════ */
+
+/* Architecture overview */
+.m-architecture {
+  background: linear-gradient(135deg, #0d2545 0%, #0B1F3B 100%);
+  padding: 32px; gap: 16px; flex-direction: column;
+  align-items: flex-start; justify-content: center;
+}
+.arch-layer {
+  width: 100%;
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: 10px; padding: 14px 18px;
+  display: flex; align-items: center; gap: 14px;
+}
+.arch-icon {
+  width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
+  display: flex; align-items:center; justify-content:center; font-size:16px;
+}
+.arch-label { font-size: 13px; font-weight: 600; }
+.arch-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.arch-badge {
+  margin-left: auto; padding: 3px 10px; border-radius: 8px;
+  font-size: 11px; font-weight: 600;
+  background: rgba(0,193,212,0.15); color: var(--cyan);
+  border: 1px solid var(--cyan-glow); white-space: nowrap;
+}
+
+/* Signup form */
+.m-signup {
+  background: var(--navy);
+  align-items: center; justify-content: center;
+  flex-direction: column; gap: 0;
+}
+.signup-card {
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: 16px; padding: 32px; width: 320px;
+  backdrop-filter: blur(20px); flex-direction: column; display: flex; gap: 16px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.3);
+}
+.signup-logo { text-align: center; margin-bottom: 4px; }
+.signup-logo .mark { font-size: 28px; font-weight: 800; letter-spacing:-1px; }
+.signup-logo .mark span { color: var(--cyan); }
+.signup-heading { text-align: center; }
+.signup-heading h3 { font-size: 18px; font-weight: 700; }
+.signup-heading p { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+.fake-input {
+  background: rgba(255,255,255,0.06); border: 1px solid var(--glass-border);
+  border-radius: 8px; padding: 10px 14px;
+  font-size: 13px; color: rgba(255,255,255,0.7);
+}
+.fake-input.has-value { color: #fff; border-color: var(--cyan-glow); }
+.slug-preview {
+  font-size: 11px; color: var(--cyan); margin-top: -10px; padding-left: 2px;
+  display: flex; align-items: center; gap: 6px;
+}
+.slug-tick { color: #22C55E; font-size: 13px; }
+.strength-bar {
+  height: 4px; border-radius: 2px; background: rgba(255,255,255,0.1);
+  margin-top: -10px; overflow: hidden;
+}
+.strength-fill { height: 100%; width: 75%; background: var(--cyan); border-radius: 2px; }
+.cta-btn {
+  background: var(--cyan); color: var(--navy);
+  border: none; border-radius: 8px; padding: 12px;
+  font-size: 14px; font-weight: 700; text-align: center; cursor: pointer;
+}
+
+/* Provisioning */
+.m-provisioning {
+  background: var(--navy);
+  align-items: stretch; padding: 32px;
+  flex-direction: row; gap: 24px;
+}
+.prov-steps { flex: 1; display: flex; flex-direction: column; gap: 12px; justify-content: center; }
+.prov-step {
+  display: flex; align-items: center; gap: 14px; position: relative;
+}
+.step-circle {
+  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700;
+  border: 2px solid var(--glass-border);
+  background: var(--glass-bg); position: relative; z-index:1;
+}
+.step-circle.done { background: var(--cyan); border-color: var(--cyan); color: var(--navy); }
+.step-circle.active {
+  border-color: var(--cyan); color: var(--cyan);
+  box-shadow: 0 0 16px var(--cyan-glow);
+  animation: pulse-ring 1.5s ease infinite;
+}
+@keyframes pulse-ring {
+  0%,100% { box-shadow: 0 0 0 0 var(--cyan-glow); }
+  50% { box-shadow: 0 0 0 8px transparent; }
+}
+.step-circle.pending { color: var(--text-dim); }
+.step-name { font-size: 13px; font-weight: 500; }
+.step-name.active { color: #fff; font-weight: 600; }
+.step-name.done { color: rgba(255,255,255,0.6); }
+.step-name.pending { color: var(--text-dim); }
+.prov-benefit {
+  flex: 1; display: flex; flex-direction: column; justify-content: center;
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: 12px; padding: 20px;
+}
+.prov-benefit-step { font-size: 11px; color: var(--cyan); font-weight: 600; letter-spacing: 0.5px; margin-bottom: 8px; }
+.prov-benefit-text { font-size: 14px; line-height: 1.6; color: rgba(255,255,255,0.85); }
+
+/* Dashboard */
+.m-dashboard {
+  background: var(--navy); padding: 24px;
+  flex-direction: column; gap: 16px; align-items: stretch; justify-content: flex-start;
+}
+.dash-welcome { }
+.dash-welcome h3 { font-size: 22px; font-weight: 700; }
+.dash-welcome h3 span { color: var(--cyan); }
+.dash-welcome p { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+.dash-cards { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+.dash-card {
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: 12px; padding: 16px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.dash-card-icon { font-size: 22px; }
+.dash-card-title { font-size: 13px; font-weight: 600; }
+.dash-card-sub { font-size: 11px; color: var(--text-dim); }
+.dash-checklist { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 12px; padding: 16px; }
+.dash-checklist h4 { font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+.check-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+  font-size: 13px;
+}
+.check-item:last-child { border-bottom: none; padding-bottom: 0; }
+.check-box {
+  width: 18px; height: 18px; border-radius: 4px;
+  border: 2px solid rgba(255,255,255,0.2);
+  flex-shrink: 0;
+}
+.check-box.done { background: var(--cyan); border-color: var(--cyan); }
+
+/* Sidebar nav */
+.m-sidebar {
+  background: var(--navy); flex-direction: row; gap: 0;
+}
+.sidebar-panel {
+  width: 220px; flex-shrink: 0; height: 100%;
+  background: rgba(11,31,59,0.9); border-right: 1px solid var(--glass-border);
+  padding: 20px 0; display: flex; flex-direction: column; gap: 8px;
+}
+.sidebar-logo {
+  padding: 0 16px 16px; display: flex; align-items: center; gap: 10px;
+  border-bottom: 1px solid var(--glass-border); margin-bottom: 8px;
+}
+.sidebar-logo .mark { width:28px; height:28px; border-radius:6px; background: var(--cyan); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:14px; color: var(--navy); }
+.sidebar-logo .name { font-size: 14px; font-weight: 700; }
+.sidebar-logo .name span { color: var(--cyan); }
+.nav-group-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 1px;
+  color: var(--text-muted); padding: 8px 16px 4px; text-transform: uppercase;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 16px; font-size: 13px; font-weight: 500;
+  border-radius: 0; cursor: pointer; color: var(--text-dim);
+  position: relative;
+}
+.nav-item.active {
+  color: #fff; background: var(--cyan-dim);
+  border-left: 3px solid var(--cyan);
+}
+.nav-item.active .nav-icon { filter: drop-shadow(0 0 6px var(--cyan)); }
+.nav-icon { font-size: 16px; }
+.sidebar-content {
+  flex: 1; padding: 24px; background: var(--navy);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-dim); font-size: 13px;
+}
+
+/* Employees empty state */
+.m-employees {
+  background: var(--navy); flex-direction: column;
+  align-items: center; justify-content: center; gap: 16px;
+}
+.emp-icon { font-size: 56px; opacity: 0.4; margin-bottom: 4px; }
+.emp-title { font-size: 20px; font-weight: 700; }
+.emp-sub { font-size: 14px; color: rgba(255,255,255,0.6); text-align: center; max-width: 280px; line-height: 1.6; }
+.emp-actions { display: flex; gap: 12px; margin-top: 8px; }
+.emp-btn-primary {
+  background: var(--cyan); color: var(--navy);
+  border: none; border-radius: 8px; padding: 11px 24px;
+  font-size: 14px; font-weight: 700;
+}
+.emp-btn-ghost {
+  background: transparent; color: var(--text-dim);
+  border: 1px solid var(--glass-border); border-radius: 8px; padding: 11px 24px;
+  font-size: 14px; font-weight: 500; cursor: not-allowed; opacity: 0.6;
+}
+.emp-backend {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3);
+  border-radius: 8px; padding: 8px 14px;
+  font-size: 12px; color: #F59E0B; font-weight: 500;
+}
+
+/* Keycloak login */
+.m-keycloak {
+  background: var(--navy); align-items: center; justify-content: center;
+}
+.kc-card {
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: 16px; padding: 36px 32px; width: 300px;
+  backdrop-filter: blur(20px); display: flex; flex-direction: column;
+  gap: 16px; align-items: center;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.35);
+}
+.kc-logo { display: flex; align-items: center; gap: 10px; }
+.kc-logo .mark { width:40px; height:40px; border-radius:10px; background: linear-gradient(135deg, var(--cyan) 0%, #0099aa 100%); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:20px; color: var(--navy); }
+.kc-logo .name { font-size:20px; font-weight:800; letter-spacing:-0.5px; }
+.kc-logo .name span { color: var(--cyan); }
+.kc-title { font-size: 15px; font-weight: 600; color: rgba(255,255,255,0.8); }
+.kc-form { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+.kc-input {
+  background: rgba(255,255,255,0.07); border: 1px solid var(--glass-border);
+  border-radius: 8px; padding: 11px 14px; width: 100%;
+  font-size: 13px; color: rgba(255,255,255,0.5);
+}
+.kc-submit {
+  background: var(--cyan); color: var(--navy);
+  border: none; border-radius: 8px; padding: 12px;
+  font-size: 14px; font-weight: 700; width: 100%;
+}
+.kc-note { font-size: 11px; color: var(--text-dim); text-align: center; }
+
+/* ── Ambient background ── */
+.ambient {
+  position: absolute; inset:0; overflow: hidden; pointer-events: none; z-index:-1;
+}
+.orb {
+  position: absolute; border-radius: 50%;
+  filter: blur(80px); opacity: 0.12;
+}
+.orb1 { width: 400px; height: 400px; background: var(--cyan); top: -100px; right: -100px; }
+.orb2 { width: 300px; height: 300px; background: #0055ff; bottom: -80px; left: -60px; }
+</style>
+</head>
+<body>
+
+<!-- Ambient orbs -->
+<div class="ambient">
+  <div class="orb orb1"></div>
+  <div class="orb orb2"></div>
+</div>
+
+<!-- Progress bar -->
+<div id="progress-bar"><div id="progress-fill"></div></div>
+
+<!-- Header -->
+<div id="header">
+  <div class="logo">
+    <div class="logo-mark">H</div>
+    <div class="logo-text">HRobot<span>.AI</span></div>
+  </div>
+  <div id="slide-counter">1 / 7</div>
+</div>
+
+<!-- Main stage -->
+<div id="stage"></div>
+
+<!-- Dot nav -->
+<div id="dots"></div>
+
+<!-- Time ring -->
+<div id="time-ring">
+  <svg viewBox="0 0 40 40" width="44" height="44">
+    <circle class="bg" cx="20" cy="20" r="18"/>
+    <circle class="fill" id="ring-fill" cx="20" cy="20" r="18"/>
+  </svg>
+  <div id="time-num">6</div>
+</div>
+
+<script>
+(async () => {
+  let config;
+  try {
+    const r = await fetch('slides.json');
+    config = await r.json();
+  } catch {
+    config = { title:'HRobot.AI', autoAdvanceSec:6, transitionMs:600, slides:[] };
+  }
+
+  const { slides, autoAdvanceSec, transitionMs } = config;
+  const stage = document.getElementById('stage');
+  const dots = document.getElementById('dots');
+  const counter = document.getElementById('slide-counter');
+  const progressFill = document.getElementById('progress-fill');
+  const ringFill = document.getElementById('ring-fill');
+  const timeNum = document.getElementById('time-num');
+
+  let current = 0;
+  let timer = null;
+  let startTime = null;
+  let rafId = null;
+
+  /* ── Build slides ── */
+  slides.forEach((s, i) => {
+    const el = document.createElement('div');
+    el.className = 'slide';
+    el.id = 'slide-' + i;
+    el.innerHTML = buildSlide(s);
+    stage.appendChild(el);
+
+    const dot = document.createElement('div');
+    dot.className = 'dot';
+    dot.addEventListener('click', () => goto(i));
+    dots.appendChild(dot);
+  });
+
+  function buildSlide(s) {
+    const statusLabel = { live:'● Live', planned:'○ Planowane', 'backend-ready':'◐ Backend gotowy' }[s.status] || s.status;
+    const statusClass = s.status;
+    const mockupHtml = buildMockup(s.mockup);
+    return `
+      <div class="slide-info">
+        <div class="slide-badge">
+          <span class="status-dot ${statusClass}"></span>
+          ${s.badge}
+        </div>
+        <div class="slide-title">${s.title}</div>
+        <div class="slide-desc">${s.description}</div>
+        <div class="slide-status">
+          <span class="status-pill ${statusClass}">${statusLabel}</span>
+        </div>
+      </div>
+      <div class="slide-mockup">
+        ${s.screenshot
+          ? `<img src="${s.screenshot}" alt="${s.title}" onerror="this.parentNode.innerHTML='${mockupHtml.replace(/'/g,'&#39;')}'">`
+          : mockupHtml}
+      </div>`;
+  }
+
+  function buildMockup(type) {
+    switch(type) {
+      case 'architecture': return `<div class="mockup-placeholder m-architecture">
+        ${archLayer('🏗️','#1a4070','Monorepo','pnpm · Turborepo · TypeScript 5 strict','Plan 1 ✓')}
+        ${archLayer('🗄️','#0d5e2e','Data Layer','Prisma · PostgreSQL per-tenant · AES-256-GCM','Plan 1 ✓')}
+        ${archLayer('⚙️','#5e3a0d','Control Plane','NestJS · Provisioning Pipeline · Keycloak Admin API','Plan 2 ✓')}
+        ${archLayer('🔐','#2d0d5e','Tenant Runtime','JWT JWKS · TenantContextInterceptor · RBAC · Audit','Plan 3 ✓')}
+        ${archLayer('🖥️','rgba(255,255,255,0.04)','Frontend','Next.js 16 · Auth.js · Middleware · Design System','Plan 4–5')}
+      </div>`;
+      case 'signup': return `<div class="mockup-placeholder m-signup">
+        <div class="signup-card">
+          <div class="signup-logo"><div class="mark">HRobot<span>.AI</span></div></div>
+          <div class="signup-heading"><h3>Utwórz konto</h3><p>Bezpłatne 14 dni. Bez karty kredytowej.</p></div>
+          <div class="fake-input">Nazwa firmy</div>
+          <div class="fake-input has-value">acme-corp</div>
+          <div class="slug-preview"><span class="slug-tick">✓</span> Twój adres: <strong>acme-corp.hrobot.ai</strong></div>
+          <div class="fake-input">admin@acme-corp.pl</div>
+          <div class="fake-input">••••••••••••</div>
+          <div class="strength-bar"><div class="strength-fill"></div></div>
+          <div class="cta-btn">Utwórz konto</div>
+        </div>
+      </div>`;
+      case 'provisioning': return `<div class="mockup-placeholder m-provisioning">
+        <div class="prov-steps">
+          ${provStep('done','✓','CREATE_DB','done')}
+          ${provStep('done','✓','RUN_MIGRATIONS','done')}
+          ${provStep('done','✓','SEED','done')}
+          ${provStep('active','◉','KEYCLOAK_SETUP','active')}
+          ${provStep('pending','○','DONE','pending')}
+        </div>
+        <div class="prov-benefit">
+          <div class="prov-benefit-step">KEYCLOAK_SETUP</div>
+          <div class="prov-benefit-text">Konfigurujemy bezpieczne logowanie zgodne z RODO dla Twojego konta.</div>
+        </div>
+      </div>`;
+      case 'dashboard': return `<div class="mockup-placeholder m-dashboard">
+        <div class="dash-welcome">
+          <h3>Witaj w HRobot, <span>Acme Corp</span>! 👋</h3>
+          <p>Zacznij od kilku kroków, aby skonfigurować swój zespół.</p>
+        </div>
+        <div class="dash-cards">
+          ${dashCard('👥','Dodaj pracownika','Onboarding nowego członka zespołu')}
+          ${dashCard('📅','Skonfiguruj grafik','Ustaw harmonogram pracy')}
+          ${dashCard('✉️','Zaproś użytkowników','Nadaj dostęp do systemu')}
+        </div>
+        <div class="dash-checklist">
+          <h4>Konfiguracja konta</h4>
+          ${checkItem(true,'Utwórz konto HRobot')}
+          ${checkItem(false,'Dodaj pierwszego pracownika')}
+          ${checkItem(false,'Utwórz jednostkę organizacyjną')}
+        </div>
+      </div>`;
+      case 'sidebar': return `<div class="mockup-placeholder m-sidebar">
+        <div class="sidebar-panel">
+          <div class="sidebar-logo"><div class="mark">H</div><div class="name">HRobot<span>.AI</span></div></div>
+          <div class="nav-group-label">Moduły HR</div>
+          ${navItem('📊','Dashboard',true)}
+          ${navItem('👥','Pracownicy',false)}
+          ${navItem('📅','Grafik',false)}
+          ${navItem('📋','Wnioski',false)}
+          ${navItem('🔑','Dostępy',false)}
+          <div class="nav-group-label" style="margin-top:8px;">Administracja</div>
+          ${navItem('⚙️','Ustawienia',false)}
+          ${navItem('👤','Użytkownicy',false)}
+        </div>
+        <div class="sidebar-content">Witaj w HRobot 👋</div>
+      </div>`;
+      case 'employees': return `<div class="mockup-placeholder m-employees">
+        <div class="emp-icon">👥</div>
+        <div class="emp-title">Brak pracowników</div>
+        <div class="emp-sub">Dodaj pracowników, aby zacząć planować grafiki i obsługiwać wnioski urlopowe.</div>
+        <div class="emp-actions">
+          <div class="emp-btn-primary">Dodaj pracownika</div>
+          <div class="emp-btn-ghost" title="Dostępne wkrótce">Importuj z CSV</div>
+        </div>
+        <div class="emp-backend">⚡ GET /api/employees gotowe — backend Plan 3</div>
+      </div>`;
+      case 'keycloak': return `<div class="mockup-placeholder m-keycloak">
+        <div class="kc-card">
+          <div class="kc-logo"><div class="mark">H</div><div class="name">HRobot<span>.AI</span></div></div>
+          <div class="kc-title">Zaloguj się do Acme Corp</div>
+          <div class="kc-form">
+            <div class="kc-input">Adres e-mail</div>
+            <div class="kc-input">Hasło</div>
+            <div class="kc-submit">Zaloguj się</div>
+          </div>
+          <div class="kc-note">Motyw HRobot Navy/Cyan • Realm: hrobot-acme</div>
+        </div>
+      </div>`;
+      default: return `<div class="mockup-placeholder" style="padding:32px;align-items:center;justify-content:center;"><div style="color:var(--text-dim);font-size:14px;">Wkrótce</div></div>`;
+    }
+  }
+
+  function archLayer(icon, bg, name, sub, badge) {
+    return `<div class="arch-layer" style="background:${bg};border-color:rgba(255,255,255,0.08)">
+      <div class="arch-icon" style="background:rgba(255,255,255,0.08)">${icon}</div>
+      <div><div class="arch-label">${name}</div><div class="arch-sub">${sub}</div></div>
+      <div class="arch-badge">${badge}</div>
+    </div>`;
+  }
+  function provStep(type, sym, name, cls) {
+    return `<div class="prov-step"><div class="step-circle ${type}">${sym}</div><div class="step-name ${cls}">${name}</div></div>`;
+  }
+  function dashCard(icon, title, sub) {
+    return `<div class="dash-card"><div class="dash-card-icon">${icon}</div><div class="dash-card-title">${title}</div><div class="dash-card-sub">${sub}</div></div>`;
+  }
+  function checkItem(done, label) {
+    return `<div class="check-item"><div class="check-box ${done?'done':''}"></div><span>${label}</span></div>`;
+  }
+  function navItem(icon, label, active) {
+    return `<div class="nav-item ${active?'active':''}"><span class="nav-icon">${icon}</span>${label}</div>`;
+  }
+
+  /* ── Navigation ── */
+  function allSlides() { return document.querySelectorAll('.slide'); }
+  function allDots() { return document.querySelectorAll('.dot'); }
+
+  function goto(idx, fromUser=true) {
+    const n = slides.length;
+    idx = ((idx % n) + n) % n;
+    if (idx === current && !fromUser) return;
+
+    const prev = document.getElementById('slide-' + current);
+    if (prev) { prev.classList.remove('visible'); setTimeout(() => prev.classList.remove('active'), transitionMs); }
+
+    current = idx;
+
+    const next = document.getElementById('slide-' + current);
+    if (next) {
+      next.classList.add('active');
+      requestAnimationFrame(() => setTimeout(() => next.classList.add('visible'), 16));
+    }
+
+    allDots().forEach((d, i) => d.classList.toggle('active', i === current));
+    counter.textContent = `${current+1} / ${n}`;
+
+    resetTimer();
+  }
+
+  /* ── Timer (progress + ring) ── */
+  const TOTAL = autoAdvanceSec * 1000;
+  const CIRCUMFERENCE = 2 * Math.PI * 18; // r=18
+
+  function resetTimer() {
+    cancelAnimationFrame(rafId);
+    clearTimeout(timer);
+    startTime = performance.now();
+    progressFill.style.transition = 'none';
+    progressFill.style.width = '0%';
+    ringFill.style.transition = 'none';
+    ringFill.style.strokeDashoffset = CIRCUMFERENCE;
+    timeNum.textContent = autoAdvanceSec;
+
+    // Force reflow
+    progressFill.getBoundingClientRect();
+    ringFill.getBoundingClientRect();
+
+    animateTick();
+
+    timer = setTimeout(() => {
+      goto(current + 1, false);
+    }, TOTAL);
+  }
+
+  function animateTick() {
+    rafId = requestAnimationFrame((now) => {
+      const elapsed = now - startTime;
+      const pct = Math.min(elapsed / TOTAL, 1);
+      const remaining = Math.max(0, Math.ceil((TOTAL - elapsed) / 1000));
+
+      progressFill.style.transition = 'none';
+      progressFill.style.width = (pct * 100) + '%';
+
+      ringFill.style.transition = 'none';
+      ringFill.style.strokeDashoffset = CIRCUMFERENCE * (1 - pct);
+
+      timeNum.textContent = remaining;
+
+      if (pct < 1) animateTick();
+    });
+  }
+
+  /* ── Init ── */
+  goto(0, true);
+})();
+</script>
+</body>
+</html>
