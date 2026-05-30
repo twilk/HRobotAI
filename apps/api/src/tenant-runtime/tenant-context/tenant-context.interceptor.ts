@@ -22,6 +22,17 @@ interface RequestWithTenant {
   tenantClient: unknown
 }
 
+/**
+ * Resolves tenant context after Passport guards run (NestJS guard phase).
+ *
+ * NestJS execution order: guards (all) → interceptors → pipes → handler.
+ * Accordingly: KeycloakJwtGuard → RbacGuard → this interceptor → handler.
+ *
+ * This ordering is intentionally safe: RbacGuard reads only `request.user.hrobot_roles`
+ * (set by Passport during KeycloakJwtGuard), not anything this interceptor stamps.
+ * Future guards MUST NOT depend on `request.tenantId` or `request.tenantClient` —
+ * those are only available starting from the interceptor phase.
+ */
 @Injectable()
 export class TenantContextInterceptor implements NestInterceptor {
   private readonly logger = new Logger(TenantContextInterceptor.name)

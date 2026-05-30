@@ -4,6 +4,7 @@ import { OnboardingController, OnboardingDto } from './onboarding.controller.js'
 import { ControlPlanePrismaService } from '../common/prisma/control-plane-prisma.service.js'
 import { KeycloakJwtGuard } from '../tenant-runtime/keycloak/keycloak-jwt.guard.js'
 import { TenantContextInterceptor } from '../tenant-runtime/tenant-context/tenant-context.interceptor.js'
+import { AuditInterceptor } from '../tenant-runtime/audit/audit.interceptor.js'
 import { RbacGuard } from '../tenant-runtime/rbac/rbac.guard.js'
 
 const mockPrisma = { tenant: { findUniqueOrThrow: jest.fn(), update: jest.fn() } }
@@ -21,6 +22,7 @@ describe('OnboardingController', () => {
       .overrideGuard(KeycloakJwtGuard).useValue(bypass)
       .overrideGuard(RbacGuard).useValue(bypass)
       .overrideInterceptor(TenantContextInterceptor).useValue(bypassI)
+      .overrideInterceptor(AuditInterceptor).useValue(bypassI)
       .compile()
     controller = module.get(OnboardingController)
     jest.clearAllMocks()

@@ -4,6 +4,7 @@ import { Role } from '@hrobot/shared'
 import { ControlPlanePrismaService } from '../common/prisma/control-plane-prisma.service.js'
 import { KeycloakJwtGuard } from '../tenant-runtime/keycloak/keycloak-jwt.guard.js'
 import { TenantContextInterceptor } from '../tenant-runtime/tenant-context/tenant-context.interceptor.js'
+import { AuditInterceptor } from '../tenant-runtime/audit/audit.interceptor.js'
 import { RbacGuard } from '../tenant-runtime/rbac/rbac.guard.js'
 import { Roles } from '../tenant-runtime/rbac/roles.decorator.js'
 import { CurrentTenantId } from '../tenant-runtime/tenant-context/current-tenant-client.decorator.js'
@@ -16,7 +17,7 @@ export class OnboardingDto {
 
 @Controller('tenants/me')
 @UseGuards(KeycloakJwtGuard, RbacGuard)
-@UseInterceptors(TenantContextInterceptor)
+@UseInterceptors(TenantContextInterceptor, AuditInterceptor)
 export class OnboardingController {
   constructor(private readonly prisma: ControlPlanePrismaService) {}
 
