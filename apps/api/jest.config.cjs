@@ -17,8 +17,14 @@ module.exports = {
     '^.+\\.ts$': ['ts-jest', {
       tsconfig: {
         module: 'CommonJS',
+        moduleResolution: 'node',
         experimentalDecorators: true,
         emitDecoratorMetadata: true,
+        paths: {
+          '@hrobot/db': [path.join(monorepoRoot, 'packages/db/src/index.ts')],
+          '@hrobot/config': [path.join(monorepoRoot, 'packages/config/src/index.ts')],
+          '@hrobot/shared': [path.join(monorepoRoot, 'packages/shared/src/index.ts')],
+        },
       },
     }],
   },
