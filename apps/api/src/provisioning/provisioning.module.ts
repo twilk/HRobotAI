@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common'
 import { ClientsModule, Transport } from '@nestjs/microservices'
+import { spawnSync } from 'node:child_process'
+import { Client as PgClient } from 'pg'
 import { parseEnv } from '@hrobot/config'
+import { EncryptionService } from '@hrobot/shared'
+import { TenantClient } from '@hrobot/db'
 import { ProvisioningService } from './provisioning.service.js'
 import { ProvisioningConsumer } from './provisioning.consumer.js'
 import { ProvisioningController } from './provisioning.controller.js'
@@ -29,11 +33,30 @@ import { DoneStep } from './steps/done.step.js'
   providers: [
     ProvisioningService,
     ProvisioningConsumer,
+    {
+      provide: 'SUPERUSER_PG_CLIENT',
+      useFactory: async (): Promise<PgClient> => {
+        const client = new PgClient({ connectionString: parseEnv().POSTGRES_SUPERUSER_URL })
+        await client.connect()
+        return client
+      },
+    },
+    {
+      provide: EncryptionService,
+      useFactory: (): EncryptionService =>
+        new EncryptionService(Buffer.from(parseEnv().TENANT_DB_ENCRYPTION_KEY, 'hex')),
+    },
+    { provide: 'SPAWN_SYNC', useValue: spawnSync },
+    {
+      provide: 'TENANT_CLIENT_FACTORY',
+      useValue: (datasourceUrl: string) => new TenantClient({ datasourceUrl }),
+    },
     { provide: 'CREATE_DB_STEP', useClass: CreateDbStep },
     { provide: 'RUN_MIGRATIONS_STEP', useClass: RunMigrationsStep },
     { provide: 'SEED_STEP', useClass: SeedStep },
     { provide: 'KEYCLOAK_SETUP_STEP', useClass: KeycloakSetupStep },
     { provide: 'DONE_STEP', useClass: DoneStep },
+    { provide: 'FETCH', useValue: fetch },
   ],
   controllers: [ProvisioningController],
 })
