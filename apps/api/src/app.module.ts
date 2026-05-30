@@ -11,6 +11,8 @@ import { AuthModule } from './auth/auth.module.js'
 import { TenantsModule } from './tenants/tenants.module.js'
 import { OutboxModule } from './outbox/outbox.module.js'
 import { ProvisioningModule } from './provisioning/provisioning.module.js'
+import { EmployeesModule } from './employees/employees.module.js'
+import { OnboardingModule } from './onboarding/onboarding.module.js'
 import { RedisService } from './common/redis/redis.service.js'
 
 @Module({
@@ -37,6 +39,8 @@ import { RedisService } from './common/redis/redis.service.js'
     TenantsModule,
     OutboxModule,
     ProvisioningModule,
+    EmployeesModule,
+    OnboardingModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
