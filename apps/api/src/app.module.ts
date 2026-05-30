@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
 import { ThrottlerStorageRedisService } from 'nestjs-throttler-storage-redis'
 import { PrometheusModule } from '@willsoto/nestjs-prometheus'
 import { CommonModule } from './common/common.module.js'
+import { TenantRuntimeModule } from './tenant-runtime/tenant-runtime.module.js'
 import { HealthModule } from './health/health.module.js'
 import { AuthModule } from './auth/auth.module.js'
 import { TenantsModule } from './tenants/tenants.module.js'
@@ -30,6 +31,7 @@ import { RedisService } from './common/redis/redis.service.js'
     }),
     PrometheusModule.register({ defaultMetrics: { enabled: true } }),
     CommonModule,
+    TenantRuntimeModule,
     HealthModule,
     AuthModule,
     TenantsModule,
