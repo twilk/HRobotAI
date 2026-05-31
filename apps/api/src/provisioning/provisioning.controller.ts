@@ -12,10 +12,21 @@ export class ProvisioningController {
   async status(@Param('jobId') jobId: string): Promise<{
     step: string
     attemptCount: number
-    error: string | null
+    done: boolean
+    failed: boolean
+    errorCode: string | null
   }> {
     const job = await this.prisma.provisioningJob.findUnique({ where: { id: jobId } })
     if (!job) throw new NotFoundException('Provisioning job not found')
-    return { step: job.step, attemptCount: job.attemptCount, error: job.lastError }
+    // Never return raw lastError here: this endpoint is unauthenticated and lastError can
+    // contain the tenant DATABASE_URL + password (e.g. prisma migrate stderr). Coarse shape only.
+    const failed = job.step === 'FAILED' // matches ProvisioningStep.FAILED
+    return {
+      step: job.step,
+      attemptCount: job.attemptCount,
+      done: failed || job.step === 'DONE',
+      failed,
+      errorCode: failed ? 'PROVISIONING_FAILED' : null,
+    }
   }
 }

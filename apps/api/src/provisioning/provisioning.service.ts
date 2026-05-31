@@ -53,7 +53,12 @@ export class ProvisioningService {
     try {
       await handler.execute(job)
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err)
+      const raw = err instanceof Error ? err.message : String(err)
+      // Strip credentials before persisting: lastError can carry the tenant DATABASE_URL
+      // (with password) from e.g. prisma migrate stderr, and is read by ops tooling.
+      const message = raw
+        .replace(/postgresql:\/\/[^@\s]*@/gi, 'postgresql://***@')
+        .replace(/Bearer\s+[\w.-]+/gi, 'Bearer ***')
       const nextAttempt = job.attemptCount + 1
 
       if (nextAttempt >= 3) {
