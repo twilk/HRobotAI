@@ -13,6 +13,11 @@ export async function runWithConcurrency<T>(
   limit: number,
   worker: (item: T) => Promise<void>,
 ): Promise<ItemFailure<T>[]> {
+  // Guard: limit < 1 would create zero runners and silently process NOTHING — a
+  // migration fan-out footgun that "succeeds" (exit 0) while migrating no tenants.
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw new Error(`runWithConcurrency: limit must be a positive integer, got ${limit}`)
+  }
   const failures: ItemFailure<T>[] = []
   let cursor = 0
 

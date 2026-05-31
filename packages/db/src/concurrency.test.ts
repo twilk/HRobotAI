@@ -30,4 +30,18 @@ describe('runWithConcurrency', () => {
     expect(failures[0]!.item).toBe(2)
     expect(failures[0]!.error.message).toBe('boom on 2')
   })
+
+  it('throws on a non-positive or non-integer limit (would silently run nothing)', async () => {
+    const seen: number[] = []
+    await expect(runWithConcurrency([1, 2], 0, async (n) => void seen.push(n))).rejects.toThrow(
+      /positive integer/,
+    )
+    await expect(runWithConcurrency([1, 2], -1, async (n) => void seen.push(n))).rejects.toThrow(
+      /positive integer/,
+    )
+    await expect(runWithConcurrency([1, 2], 1.5, async (n) => void seen.push(n))).rejects.toThrow(
+      /positive integer/,
+    )
+    expect(seen).toEqual([]) // nothing ran
+  })
 })

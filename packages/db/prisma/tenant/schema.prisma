@@ -67,8 +67,10 @@ model Employee {
   user           User?              @relation(fields: [userId], references: [id])
   firstName      String             @map("first_name")
   lastName       String             @map("last_name")
-  /// ENCRYPTED: encrypt with EncryptionService before INSERT; decrypt before use (RODO PII)
+  /// ENCRYPTED (AES-256-GCM, AAD-bound): build via @hrobot/db encryptEmployeePesel() — never assign a plaintext PESEL (RODO PII)
   pesel          String
+  /// Blind index of pesel (HMAC-SHA256) for UNIQUE + lookup-by-PESEL; set via encryptEmployeePesel()
+  peselHash      String             @unique @map("pesel_hash")
   position       String
   employmentType EmploymentType     @map("employment_type")
   hiredAt        DateTime           @map("hired_at")

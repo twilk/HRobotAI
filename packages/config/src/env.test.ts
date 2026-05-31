@@ -34,4 +34,12 @@ describe('parseEnv', () => {
       /TENANT_DB_ENCRYPTION_KEY/,
     )
   })
+
+  it('rejects a URL with the wrong scheme (silent prod misconfig)', () => {
+    expect(() => parseEnv({ ...valid, REDIS_URL: 'postgres://localhost:5432' })).toThrow(/REDIS_URL/)
+    expect(() =>
+      parseEnv({ ...valid, CONTROL_PLANE_DATABASE_URL: 'https://localhost:5432/db' }),
+    ).toThrow(/CONTROL_PLANE_DATABASE_URL/)
+    expect(() => parseEnv({ ...valid, RABBITMQ_URL: 'http://localhost:5672' })).toThrow(/RABBITMQ_URL/)
+  })
 })

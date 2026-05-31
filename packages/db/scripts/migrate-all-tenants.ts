@@ -12,7 +12,7 @@ async function main(): Promise<void> {
   if (!encryptionKey) {
     throw new Error('TENANT_DB_ENCRYPTION_KEY is required to decrypt tenant db urls')
   }
-  const encryption = new EncryptionService(Buffer.from(encryptionKey, 'hex'))
+  const encryption = EncryptionService.fromHexKey(encryptionKey)
 
   const here = dirname(fileURLToPath(import.meta.url))
   const tenantSchemaPath = resolve(here, '../prisma/tenant/schema.prisma')

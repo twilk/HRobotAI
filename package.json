@@ -10,6 +10,7 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "db:generate": "turbo run db:generate",
+    "postinstall": "turbo run db:generate",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,md}\""
   },
   "devDependencies": {
