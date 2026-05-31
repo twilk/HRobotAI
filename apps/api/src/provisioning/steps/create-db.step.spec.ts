@@ -49,12 +49,24 @@ describe('CreateDbStep', () => {
     mockPrisma.provisioningJob.update.mockResolvedValue({})
   })
 
-  it('executes CREATE USER and CREATE DATABASE SQL', async () => {
+  it('creates the role and database when neither exists', async () => {
     await step.execute(job)
-    expect(mockPg.query).toHaveBeenCalledTimes(2)
-    const calls = mockPg.query.mock.calls as [[string], [string]]
-    expect(calls[0]![0]).toMatch(/CREATE USER/)
-    expect(calls[1]![0]).toMatch(/CREATE DATABASE/)
+    const sql = mockPg.query.mock.calls.map((c) => String(c[0]))
+    expect(sql.some((s) => /CREATE ROLE/.test(s))).toBe(true)
+    expect(sql.some((s) => /CREATE DATABASE/.test(s))).toBe(true)
+  })
+
+  it('is idempotent on retry: ALTERs an existing role and skips an existing database', async () => {
+    // pg_roles / pg_database existence checks return a row → resource already exists
+    mockPg.query.mockImplementation((sql: string) =>
+      /pg_roles|pg_database/.test(sql)
+        ? Promise.resolve({ rows: [{ exists: 1 }] })
+        : Promise.resolve({ rows: [] }),
+    )
+    await step.execute(job)
+    const sql = mockPg.query.mock.calls.map((c) => String(c[0]))
+    expect(sql.some((s) => /ALTER ROLE/.test(s))).toBe(true)
+    expect(sql.some((s) => /CREATE DATABASE/.test(s))).toBe(false)
   })
 
   it('stores an encrypted db_url in tenants and advances step to RUN_MIGRATIONS', async () => {

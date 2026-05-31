@@ -28,27 +28,37 @@ export class CreateDbStep implements ProvisioningStepHandler {
       where: { id: job.tenantId },
     })
 
-    const shortId = tenant.id.replace(/-/g, '').slice(0, 8)
-    const dbName = `hrobot_t_${shortId}`
-    const dbUser = `hu_${shortId}`
+    // C2/M1: use the FULL tenant id (hyphens stripped); an 8-char slice collides across tenants.
+    const safeId = tenant.id.replace(/-/g, '')
+    const dbName = `hrobot_t_${safeId}`
+    const dbUser = `hu_${safeId}`
     const dbPassword = randomBytes(24).toString('base64url')
+    const dbUrl = `postgresql://${dbUser}:${dbPassword}@${this.dbHost}:${this.dbPort}/${dbName}`
 
     this.logger.log({ tenantId: tenant.id, dbName }, 'Creating tenant database')
 
-    await this.pg.query(
-      `CREATE USER "${dbUser}" WITH PASSWORD '${dbPassword}'`,
-    )
-    await this.pg.query(
-      `CREATE DATABASE "${dbName}" OWNER "${dbUser}"`,
-    )
-
-    const dbUrl = `postgresql://${dbUser}:${dbPassword}@${this.dbHost}:${this.dbPort}/${dbName}`
-    const encryptedUrl = this.encryption.encrypt(dbUrl)
-
+    // C2: persist the encrypted url BEFORE issuing DDL, and keep the role password in lock-step
+    // (ALTER on retry) so a regenerated password can never drift from the stored url. dbUser is
+    // hex-only and dbPassword is base64url (no quotes) → the interpolated DDL is injection-safe;
+    // CREATE ROLE / CREATE DATABASE are utility statements that cannot take bind parameters.
     await this.prisma.tenant.update({
       where: { id: job.tenantId },
-      data: { dbUrl: encryptedUrl },
+      data: { dbUrl: this.encryption.encrypt(dbUrl) },
     })
+
+    const roleExists =
+      (await this.pg.query(`SELECT 1 FROM pg_roles WHERE rolname = $1`, [dbUser])).rows.length > 0
+    if (roleExists) {
+      await this.pg.query(`ALTER ROLE "${dbUser}" WITH PASSWORD '${dbPassword}'`)
+    } else {
+      await this.pg.query(`CREATE ROLE "${dbUser}" LOGIN PASSWORD '${dbPassword}'`)
+    }
+
+    const dbExists =
+      (await this.pg.query(`SELECT 1 FROM pg_database WHERE datname = $1`, [dbName])).rows.length > 0
+    if (!dbExists) {
+      await this.pg.query(`CREATE DATABASE "${dbName}" OWNER "${dbUser}"`)
+    }
 
     await this.prisma.provisioningJob.update({
       where: { id: job.id },

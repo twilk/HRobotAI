@@ -1,20 +1,18 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { of } from 'rxjs'
+import { of, throwError } from 'rxjs'
 import { OutboxRelayService } from './outbox-relay.service.js'
 import { ControlPlanePrismaService } from '../common/prisma/control-plane-prisma.service.js'
 
-const pendingEvent = {
+const claimedEvent = {
   id: 'evt-1',
-  exchange: 'tenant.provision',
   routingKey: 'tenant.provision',
   payload: { jobId: 'job-1', tenantId: 'tenant-1' },
-  publishedAt: null,
-  createdAt: new Date(),
 }
 
 const mockPrisma = {
+  // C3: the relay now claims rows via a raw FOR UPDATE SKIP LOCKED UPDATE ... RETURNING.
+  $queryRaw: jest.fn(),
   outboxEvent: {
-    findMany: jest.fn(),
     update: jest.fn(),
   },
 }
@@ -38,9 +36,8 @@ describe('OutboxRelayService', () => {
     jest.clearAllMocks()
   })
 
-  it('emits pending events to RabbitMQ and marks them published', async () => {
-    mockPrisma.outboxEvent.findMany.mockResolvedValue([pendingEvent])
-    mockPrisma.outboxEvent.update.mockResolvedValue({ ...pendingEvent, publishedAt: new Date() })
+  it('claims pending events with SKIP LOCKED and emits them (no extra update on success)', async () => {
+    mockPrisma.$queryRaw.mockResolvedValue([claimedEvent])
 
     await service.publishPending()
 
@@ -48,15 +45,25 @@ describe('OutboxRelayService', () => {
       jobId: 'job-1',
       tenantId: 'tenant-1',
     })
-    expect(mockPrisma.outboxEvent.update).toHaveBeenCalledWith({
-      where: { id: 'evt-1' },
-      data: { publishedAt: expect.any(Date) as Date },
-    })
+    // the claim already set published_at; the success path issues no further update
+    expect(mockPrisma.outboxEvent.update).not.toHaveBeenCalled()
   })
 
   it('does nothing when there are no pending events', async () => {
-    mockPrisma.outboxEvent.findMany.mockResolvedValue([])
+    mockPrisma.$queryRaw.mockResolvedValue([])
     await service.publishPending()
     expect(mockClient.emit).not.toHaveBeenCalled()
+  })
+
+  it('releases the claim (re-null published_at) when emit fails so it retries', async () => {
+    mockPrisma.$queryRaw.mockResolvedValue([claimedEvent])
+    mockClient.emit.mockReturnValueOnce(throwError(() => new Error('RMQ down')))
+
+    await service.publishPending()
+
+    expect(mockPrisma.outboxEvent.update).toHaveBeenCalledWith({
+      where: { id: 'evt-1' },
+      data: { publishedAt: null },
+    })
   })
 })

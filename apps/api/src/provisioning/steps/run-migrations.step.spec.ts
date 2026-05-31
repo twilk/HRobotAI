@@ -16,16 +16,16 @@ const job = { id: 'job-1', tenantId: 'tenant-1', step: ProvisioningStep.RUN_MIGR
 
 describe('RunMigrationsStep', () => {
   let step: RunMigrationsStep
-  let mockSpawn: jest.Mock
+  let mockExec: jest.Mock
 
   beforeEach(async () => {
-    mockSpawn = jest.fn().mockReturnValue({ status: 0, stderr: Buffer.from('') })
+    mockExec = jest.fn().mockResolvedValue({ stdout: '', stderr: '' })
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RunMigrationsStep,
         { provide: ControlPlanePrismaService, useValue: mockPrisma },
         { provide: EncryptionService, useValue: encryption },
-        { provide: 'SPAWN_SYNC', useValue: mockSpawn },
+        { provide: 'EXEC_FILE', useValue: mockExec },
       ],
     }).compile()
     step = module.get(RunMigrationsStep)
@@ -40,7 +40,7 @@ describe('RunMigrationsStep', () => {
 
     await step.execute(job)
 
-    expect(mockSpawn).toHaveBeenCalledWith(
+    expect(mockExec).toHaveBeenCalledWith(
       'pnpm',
       ['prisma', 'migrate', 'deploy', '--schema=packages/db/prisma/tenant/schema.prisma'],
       expect.objectContaining({
@@ -53,12 +53,12 @@ describe('RunMigrationsStep', () => {
     })
   })
 
-  it('throws when spawnSync returns non-zero exit code', async () => {
+  it('throws (sanitized) when the migration command exits non-zero', async () => {
     const plainUrl = 'postgresql://hu_abc:pw@localhost:5433/hrobot_t_abc'
     mockPrisma.tenant.findUniqueOrThrow.mockResolvedValue({
       dbUrl: encryption.encrypt(plainUrl),
     })
-    mockSpawn.mockReturnValue({ status: 1, stderr: Buffer.from('migration error') })
+    mockExec.mockRejectedValue(Object.assign(new Error('exit 1'), { stderr: 'migration error' }))
 
     await expect(step.execute(job)).rejects.toThrow('migration error')
   })

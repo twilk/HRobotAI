@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 import { ClientsModule, Transport } from '@nestjs/microservices'
-import { spawnSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { Client as PgClient } from 'pg'
 import { parseEnv } from '@hrobot/config'
 import { EncryptionService } from '@hrobot/shared'
@@ -54,7 +55,7 @@ import { DoneStep } from './steps/done.step.js'
       provide: 'POSTGRES_PORT',
       useFactory: (): string => new URL(parseEnv().POSTGRES_SUPERUSER_URL).port || '5432',
     },
-    { provide: 'SPAWN_SYNC', useValue: spawnSync },
+    { provide: 'EXEC_FILE', useValue: promisify(execFile) },
     {
       provide: 'TENANT_CLIENT_FACTORY',
       useValue: (datasourceUrl: string) => new TenantClient({ datasourceUrl }),
