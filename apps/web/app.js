@@ -3,16 +3,18 @@
 const $ = (sel) => document.querySelector(sel)
 const PROV_STEPS = ['CREATE_DB', 'RUN_MIGRATIONS', 'SEED', 'KEYCLOAK_SETUP', 'DONE']
 
-const state = { jobId: null, token: null, slug: 'acme', pollTimer: null }
+const state = { jobId: null, token: null, slug: 'acme', pollTimer: null, lastStep: null }
 
-/** fetch + JSON with uniform result shape; never throws. */
+/** fetch + JSON with uniform result shape; never throws. The bearer token is attached only to
+ *  tenant-runtime (/tapi) calls — the control-plane endpoints don't need it. */
 async function call(path, opts = {}) {
+  const wantAuth = path.startsWith('/tapi')
   try {
     const res = await fetch(path, {
       ...opts,
       headers: {
         ...(opts.body ? { 'content-type': 'application/json' } : {}),
-        ...(state.token ? { authorization: `Bearer ${state.token}` } : {}),
+        ...(state.token && wantAuth ? { authorization: `Bearer ${state.token}` } : {}),
         ...(opts.headers || {}),
       },
     })
@@ -31,6 +33,9 @@ async function call(path, opts = {}) {
   }
 }
 
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+}
 function set(id, html, cls) {
   const el = $(id)
   el.innerHTML = html
@@ -69,8 +74,8 @@ $('#slugBtn').addEventListener('click', async () => {
   set(
     '#slugOut',
     r.data.available
-      ? `✓ <strong>${slug}.hrobot.ai</strong> is available.`
-      : `✗ <strong>${slug}</strong> is taken — try another.`,
+      ? `✓ <strong>${escapeHtml(slug)}.hrobot.ai</strong> is available.`
+      : `✗ <strong>${escapeHtml(slug)}</strong> is taken — try another.`,
     r.data.available ? 'ok' : 'err',
   )
 })
@@ -89,7 +94,7 @@ $('#signupBtn').addEventListener('click', async () => {
     return set('#signupOut', `Signup failed: ${escapeHtml(String(msg))}`, 'err')
   }
   state.jobId = r.data.jobId
-  set('#signupOut', `✓ Workspace queued. Job <code>${r.data.jobId}</code> — watch provisioning below.`, 'ok')
+  set('#signupOut', `✓ Workspace queued. Job <code>${escapeHtml(r.data.jobId)}</code> — watch provisioning below.`, 'ok')
   startPolling()
 })
 
@@ -100,34 +105,50 @@ function renderSteps(current, failed) {
     const i = PROV_STEPS.indexOf(el.dataset.step)
     el.classList.remove('active', 'done', 'failed')
     if (failed && i === idx) el.classList.add('failed')
+    else if (failed && i < idx) el.classList.add('done')
     else if (current === 'DONE') el.classList.add('done')
-    else if (i < idx) el.classList.add('done')
-    else if (i === idx) el.classList.add('active')
+    else if (!failed && i < idx) el.classList.add('done')
+    else if (!failed && i === idx) el.classList.add('active')
   })
 }
 function startPolling() {
   if (!state.jobId) return
   if (state.pollTimer) clearInterval(state.pollTimer)
+  const myJob = state.jobId // capture this polling session's job id (guards against races)
+  state.lastStep = null
   let polls = 0
+  let errors = 0
   const tick = async () => {
+    if (state.jobId !== myJob) return // a newer session started — abandon this one
     polls += 1
-    const r = await call(`/api/provision/status/${state.jobId}`)
+    const r = await call(`/api/provision/status/${encodeURIComponent(myJob)}`)
+    if (state.jobId !== myJob) return // job changed while the request was in flight
     if (!r.ok) {
-      set('#provOut', `Status check failed (${r.status}).`, 'err')
-      return
+      errors += 1
+      if (errors >= 5 || polls >= 40) {
+        clearInterval(state.pollTimer)
+        return set('#provOut', `Stopped polling — status checks failing (${r.status || 'network'}).`, 'err')
+      }
+      return set('#provOut', `Status check failed (${r.status || 'network'}); retrying…`, 'warn')
     }
+    errors = 0
     const { step, attemptCount, done, failed, errorCode } = r.data
-    renderSteps(step, failed)
-    if (done) {
+    if (PROV_STEPS.includes(step)) state.lastStep = step
+    const shownStep = failed ? state.lastStep || step : step
+    renderSteps(shownStep, failed)
+    // Check `failed` BEFORE `done`: a failed job must never render as success even if the
+    // backend reports both flags.
+    if (failed) {
+      clearInterval(state.pollTimer)
+      const where = shownStep && shownStep !== 'FAILED' ? ` at <code>${escapeHtml(shownStep)}</code>` : ''
+      set('#provOut', `✗ Provisioning failed${where}${errorCode ? ' — ' + escapeHtml(String(errorCode)) : ''}.`, 'err')
+    } else if (done) {
       clearInterval(state.pollTimer)
       set('#provOut', `✓ Provisioning complete — tenant is ready.`, 'ok')
-    } else if (failed) {
-      clearInterval(state.pollTimer)
-      set('#provOut', `✗ Failed at <code>${step}</code>${errorCode ? ' — ' + escapeHtml(errorCode) : ''}.`, 'err')
     } else {
       set(
         '#provOut',
-        `Working… current step <code>${step}</code> (attempt ${attemptCount ?? 0}).` +
+        `Working… current step <code>${escapeHtml(String(step))}</code> (attempt ${Number(attemptCount) || 0}).` +
           (step === 'KEYCLOAK_SETUP'
             ? ' <span class="muted">Keycloak realm setup can pause in dev until the admin client is configured.</span>'
             : ''),
@@ -135,7 +156,7 @@ function startPolling() {
       )
       if (polls >= 40) {
         clearInterval(state.pollTimer)
-        set('#provOut', `Still at <code>${step}</code> after ${polls} checks — stopped polling. Re-track to resume.`, 'warn')
+        set('#provOut', `Still at <code>${escapeHtml(String(step))}</code> after ${polls} checks — stopped polling. Re-track to resume.`, 'warn')
       }
     }
   }
@@ -171,11 +192,11 @@ $('#loginBtn').addEventListener('click', async () => {
   }
   state.token = r.data.accessToken
   const claims = decodeJwt(state.token)
-  const roles = claims?.roles || claims?.hrobot_roles || []
+  const roles = Array.isArray(claims?.roles) ? claims.roles : Array.isArray(claims?.hrobot_roles) ? claims.hrobot_roles : []
   set(
     '#loginOut',
     `✓ Signed in. Token issued${roles.length ? `, roles: ${roles.map(escapeHtml).join(', ')}` : ''}.` +
-      ` <span class="muted">JWT <code>${state.token.slice(0, 24)}…</code></span>`,
+      ` <span class="muted">JWT <code>${escapeHtml(state.token.slice(0, 24))}…</code></span>`,
     'ok',
   )
 })
@@ -237,10 +258,6 @@ $('#checklistBtn').addEventListener('click', async () => {
   }
   set('#checklistOut', `Could not save (${r.status}).`, 'err')
 })
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
-}
 
 refreshHealth()
 setInterval(refreshHealth, 10000)
