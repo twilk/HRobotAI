@@ -3,6 +3,7 @@ import { ExecutionContext } from '@nestjs/common'
 import { EmployeesController } from './employees.controller.js'
 import { KeycloakJwtGuard } from '../tenant-runtime/keycloak/keycloak-jwt.guard.js'
 import { TenantContextInterceptor } from '../tenant-runtime/tenant-context/tenant-context.interceptor.js'
+import { AuditInterceptor } from '../tenant-runtime/audit/audit.interceptor.js'
 import { RbacGuard } from '../tenant-runtime/rbac/rbac.guard.js'
 import type { TenantClient } from '@hrobot/db'
 
@@ -24,6 +25,7 @@ describe('EmployeesController', () => {
       .overrideGuard(KeycloakJwtGuard).useValue(bypass)
       .overrideGuard(RbacGuard).useValue(bypass)
       .overrideInterceptor(TenantContextInterceptor).useValue(bypassI)
+      .overrideInterceptor(AuditInterceptor).useValue(bypassI)
       .compile()
     controller = module.get(EmployeesController)
     jest.clearAllMocks()

@@ -36,7 +36,10 @@ interface RequestWithTenant {
 @Injectable()
 export class TenantContextInterceptor implements NestInterceptor {
   private readonly logger = new Logger(TenantContextInterceptor.name)
-  private readonly CACHE_TTL = 300
+  // P3-5: short TTL so a SUSPENDED tenant loses access within ~30s instead of 5min. The full
+  // invalidation (Redis DEL + tenantManager.evict on a status-change signal) lands when tenant
+  // suspension is wired in the control plane; until then this caps the stale-access window.
+  private readonly CACHE_TTL = 30
 
   constructor(
     private readonly prisma: ControlPlanePrismaService,
