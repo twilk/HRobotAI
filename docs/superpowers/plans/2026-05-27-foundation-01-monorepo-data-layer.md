@@ -12,6 +12,24 @@
 
 ---
 
+## Premises & Rejected Alternatives (ADR — added by /autoplan 2026-05-31)
+
+**Decision:** HRobot uses **DB-per-tenant** (one physical Postgres database per tenant) + **Keycloak realm-per-tenant** + **app-layer AES-256-GCM** encryption for PII (`employees.pesel`) and secrets (`tenants.db_url`). Confirmed at the /autoplan premise gate after both reviewers (Claude + Codex) independently challenged it as an unearned premise; the user reconsidered shared-schema+RLS and re-affirmed DB-per-tenant.
+
+**Why (rejected alternatives):**
+- **Shared schema + Postgres RLS** — rejected as the default. ~10x cheaper to operate, but isolation is logical: one missing policy or a bad `WHERE` silently leaks employee PII across tenants, which is a reportable RODO breach. Unacceptable as the primary control for regulated Polish HR data.
+- **Schema-per-tenant** — rejected. Middle-ground isolation, but Prisma handles dynamic per-tenant schemas awkwardly and thousands of schemas bloat the catalog.
+- **Tiered (RLS for SMB + dedicated DB for enterprise)** — deferred, not rejected. Best cost/isolation tradeoff but premature pre-launch; revisit when an enterprise deal demands physical isolation.
+- **pgcrypto / DB-side encryption** — rejected for PII. Keeps the key inside the DB; app-layer encryption keeps the key out of a compromised database.
+
+**Accepted costs (tracked in TODOS.md):** migration fan-out across N tenant DBs; per-tenant backup/restore; connection-pool ceiling (needs PgBouncer + per-tenant `connection_limit`); no native cross-tenant analytics; non-atomic fan-out means tenant migrations MUST be expand/contract (the fleet is transiently mixed-version).
+
+**Revisit triggers:** re-evaluate **realm-per-tenant → single realm + Organizations** before ~1k tenants (Keycloak realm scaling cliff); re-evaluate **DB-per-tenant → shared+RLS** if GTM shifts to many-thousands of micro/freemium tenants where per-tenant ops cost dominates.
+
+**Fits the target:** hundreds-to-low-thousands of SMB tenants (10-500 employees each), where physical isolation is a compliance/procurement asset and per-tenant ops cost is tooling-solvable.
+
+---
+
 ## File Structure
 
 Files created in this plan, grouped by responsibility:
@@ -1740,3 +1758,39 @@ git commit -m "chore(db): verify foundation data layer builds, tests, and migrat
 ## Handoff to Plan 2
 
 With the data layer in place, **Plan 2 — Control Plane & Provisioning** builds the NestJS `apps/api`, the signup endpoint (transaction + outbox + P2002→409), the outbox relay, the provisioning worker (CREATE_DB → DONE with rollback/retry), the slug-check and status endpoints, rate limiting, and health checks — consuming `@hrobot/db` (control-plane client, `TenantPrismaManager`), `@hrobot/shared` (`EncryptionService`, enums), and `@hrobot/config` (`parseEnv`) from this plan. Re-invoke `/superpowers:writing-plans` against the spec once Plan 1 is implemented, so Plan 2's tasks reference the real exported signatures built here.
+
+---
+
+## GSTACK REVIEW REPORT
+
+**/autoplan** (CEO → Eng → DX), 2026-06-01. Reviewers per phase: Claude subagent + Codex (gpt-5.5), independent. Retrospective review of the implemented data layer on `feat/foundation-data-layer` (PR #1). Mode: SELECTIVE EXPANSION. Outcome: **APPROVED + implemented (`63eb310`, 42 unit tests green, was 17).**
+
+### Premise gate (the one non-auto-decided gate)
+Both models, independently, flagged DB-per-tenant / Keycloak realm-per-tenant / app-layer crypto as unearned premises. The user reconsidered shared-schema+RLS vs DB-per-tenant and **re-affirmed DB-per-tenant** for the RODO physical-isolation + per-tenant Art.17 erasure story (target: hundreds-to-low-thousands of SMB tenants). Rationale recorded in the "Premises & Rejected Alternatives (ADR)" section above.
+
+### Consensus (dual voices)
+- **CEO** 4/6 shared challenges: premises unearned · foundation-before-demand sequencing · alternatives undocumented · 6-month-regret gaps (key rotation, PESEL uniqueness, mixed-version fleet).
+- **Eng** 6/6 dimensions; 7 findings agreed by both models at file:line.
+- **DX** 5/5 consensus gaps: db:generate-on-install trap · 5433↔5432 port mismatch · raw error messages · no consumer quickstart · plaintext PESEL one `.create()` away.
+
+### Implemented (PR #1, `63eb310`)
+| Ref | Finding | Fix |
+|-----|---------|-----|
+| C1  | TenantPrismaManager LRU/TTL `$disconnect` aborts in-flight queries | `withClient()` lease/refcount; deferred disconnect; `disconnectAll()`; empty-id guard |
+| C2  | Encryption has no key version → rotation impossible | versioned keyring + 1-byte version prefix |
+| H6  | migrateTenant spreads full `process.env` (master key) into subprocess | env allowlist |
+| H4  | PESEL: no uniqueness / O(n)-decrypt lookup | `pesel_hash` blind index (UNIQUE) + AAD-bound guard-rail helpers |
+| H3  | decrypt() opaque crypto errors | input validation + typed `DecryptionError` |
+| M8  | no AAD binding (cut-and-paste) | optional AAD on encrypt/decrypt |
+| M9  | parseEnv accepts wrong URL scheme | scheme-narrowed validators + .env.example hint |
+| M10 | audit_log trigger misses TRUNCATE | `BEFORE TRUNCATE` trigger |
+| —   | runWithConcurrency limit<1 = silent no-op fan-out | reject limit<1 |
+| —   | enum drift (TS vs Prisma) untested | enum-parity guard test |
+| IV  | 16B IV (GCM standard 12) | IV → 12B |
+| DX  | db:generate not on install · port mismatch · `export *` barrel leak · hex→Buffer footgun | postinstall db:generate · port aligned to 5433 · barrel curated (`ControlPlanePrisma`/`TenantPrisma`) · `EncryptionService.fromHexKey()` |
+
+### Deferred → TODOS.md
+Migration orchestrator (resume/version-tracking/advisory-lock) · connection-pool ceiling + PgBouncer · audit_log retention/partitioning + RODO Art.17 erasure · two-key split + envelope/KMS · audit-trigger integration test.
+
+### Ripple
+Rebase #2 then #3 onto `63eb310`. APIs were kept backward-compatible (EncryptionService Buffer ctor, TenantPrismaManager `getClient` + `max`/`ttl` aliases), so the rebase is conflict-resolution-only in `packages/*`; no consumer rewrites. Tracked in TODOS.md.
