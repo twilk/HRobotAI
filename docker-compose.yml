@@ -1,0 +1,60 @@
+# HRobot control-plane dev stack: the backing services apps/api needs.
+# The API itself runs on the host (`pnpm --filter @hrobot/api dev`) for fast
+# iteration; a production Dockerfile for apps/api is a separate follow-up.
+#
+#   docker compose up -d        # start postgres, redis, rabbitmq, keycloak
+#   docker compose ps           # check health
+#   docker compose down         # stop (add -v to wipe data)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    # POSTGRES_DB creates hrobot_control on first boot; the `postgres`
+    # maintenance DB (used by POSTGRES_SUPERUSER_URL) always exists too.
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: hrobot_control
+    ports:
+      - "5432:5432"
+    volumes:
+      - hrobot_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    # Default guest/guest; management UI at http://localhost:15672
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    command: ["start-dev"]
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8080:8080"
+
+volumes:
+  hrobot_pgdata:
