@@ -1,0 +1,11 @@
+# Turborepo cache
+.turbo/
+
+# Dependencies & build output
+node_modules/
+dist/
+
+# Env files (never commit secrets)
+.env
+.env.local
+.env.*.local
