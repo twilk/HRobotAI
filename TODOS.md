@@ -30,11 +30,13 @@ review report, not here.
 
 ## Foundation Plan 3 — Tenant Runtime (review 2026-05-31)
 
-### Cross-plan blocker (verified in live worktree `hrobot-control-plane-api`)
-- [ ] **Keycloak roles never produced.** Plan 2's `keycloak-setup.step.ts` creates realm/client/user
+### Cross-plan blocker — RESOLVED 2026-05-31
+- [x] **Keycloak roles never produced.** ~~Plan 2's `keycloak-setup.step.ts` creates realm/client/user
       but no roles, no role assignment, and no `hrobot_roles` protocol mapper → Plan 3's RBAC is
-      unsatisfiable end-to-end (the tenant admin gets 403 on their own onboarding PATCH). Fix lives
-      in Plan 2's Keycloak step. (A task chip was spawned for this.)
+      unsatisfiable end-to-end.~~ Fixed via C4b on PR #2 (`feat/control-plane-api`): the Keycloak step
+      now creates one realm role per `@hrobot/shared` `Role`, registers an `oidc-usermodel-realm-role-mapper`
+      emitting the top-level multivalued `hrobot_roles` claim, and assigns `ADMIN_KLIENTA` to the initial
+      user (7 specs green). Plan 3 RBAC is now satisfiable end-to-end.
 
 ### Architecture gate (deferred — ties to held DB-per-tenant premise)
 - [ ] **Connection-pool ceiling under DB-per-tenant.** `TenantPrismaManager` caches up to 100
@@ -44,3 +46,24 @@ review report, not here.
 ### Audit model decision
 - [ ] Decide audit coverage for **control-plane** mutations (onboarding PATCH writes the
       control-plane DB, not a tenant DB — the tenant-client-only AuditInterceptor can't audit it).
+
+## Developer experience (Plan 2 first-run — surfaced 2026-05-31)
+
+- [ ] **Keycloak dev admin-client automation.** First-run docker-compose boots Keycloak with
+      `admin/admin`, but the provisioning `KEYCLOAK_SETUP` step needs a confidential admin client
+      (`KEYCLOAK_CLIENT_ID` / `KEYCLOAK_ADMIN_CLIENT_SECRET`) that must currently be created by hand.
+      Ship a realm/client import (`--import-realm` or a bootstrap script) so signup → DONE works with
+      zero manual Keycloak setup. Until then the pipeline parks before `KEYCLOAK_SETUP`.
+- [ ] **Production Dockerfile for `apps/api`.** docker-compose provides backing services only; the API
+      runs on the host via `pnpm dev`. A container image (+ compose service) is needed for CI/prod parity.
+
+## Resolved 2026-05-31 (post-/autoplan, this session)
+
+- [x] **H1 / M4 / C1–C5 / C4b** — Plan 2 security + correctness fixes committed + pushed to PR #2.
+- [x] **C1 migration verified** — `next_attempt_at` migration applies cleanly against a real Postgres 16;
+      durable-retry relay no longer relies on in-memory `setTimeout`.
+- [x] **P3-1 / P3-4 / P3-5 / P3-7** — Plan 3 fixes (JWT issuer validation, PESEL redaction in audit_log,
+      cache TTL 300→30s, `@TenantRoute()`) committed + pushed to PR #3.
+- [x] **M7** — signup throttled to 5/min/IP (was the loose global 100/min default). PR #2.
+- [x] **DX first-run** — docker-compose stack, `.env.example`, pgcrypto dev-admin seed, quickstart README.
+      Verified end-to-end against a throwaway Postgres. PR #2.
