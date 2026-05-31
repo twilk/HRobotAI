@@ -37,9 +37,13 @@ pnpm --filter @hrobot/api dev
 
 ## Verify it works
 
+All routes are under the `api` global prefix (`app.setGlobalPrefix('api')`).
+
 ```bash
 # Liveness
-curl localhost:3000/health/live           # -> {"status":"ok"}
+curl localhost:3000/api/health/live        # -> {"status":"ok"}
+# Readiness (checks control-plane DB + Redis)
+curl localhost:3000/api/health/ready
 
 # Global-admin login (returns a JWT)
 curl -sX POST localhost:3000/api/auth/global/login \
@@ -63,5 +67,9 @@ state machine (`CREATE_DB → RUN_MIGRATIONS → SEED → KEYCLOAK_SETUP → DON
   (master realm → Clients). Until then, the first four pipeline steps work and the
   job parks before `KEYCLOAK_SETUP`. Automating this (realm import) is tracked in
   `TODOS.md`.
+- **Run the API in a container** (CI / prod parity) instead of on the host:
+  `docker compose up --build api` (or `docker compose --profile full up -d --build`). It's gated
+  behind the `full` profile, so it won't collide with a host `pnpm dev` on :3000. The image was
+  verified end-to-end: boot, `/api/health/ready` (DB+Redis up), and global-admin login.
 - **Reset state:** `docker compose down -v` wipes the Postgres volume; re-run steps 4–6.
 - **Tests:** `pnpm --filter @hrobot/api exec jest --config jest.config.cjs`.

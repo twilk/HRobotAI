@@ -1,0 +1,22 @@
+# Reinstalled / regenerated inside the build — never ship host artifacts.
+**/node_modules
+**/dist
+**/.turbo
+**/coverage
+**/generated
+**/*.tsbuildinfo
+
+# VCS + editor
+.git
+.gitignore
+.vscode
+.idea
+
+# Secrets: keep .env out of the image; the example is harmless but unneeded.
+**/.env
+**/.env.*
+
+# Local infra + logs
+*.log
+docker-compose.yml
+README.md

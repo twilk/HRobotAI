@@ -1,10 +1,14 @@
-# HRobot control-plane dev stack: the backing services apps/api needs.
-# The API itself runs on the host (`pnpm --filter @hrobot/api dev`) for fast
-# iteration; a production Dockerfile for apps/api is a separate follow-up.
+# HRobot control-plane dev stack.
 #
-#   docker compose up -d        # start postgres, redis, rabbitmq, keycloak
-#   docker compose ps           # check health
-#   docker compose down         # stop (add -v to wipe data)
+#   docker compose up -d                  # backing services only (postgres, redis, rabbitmq, keycloak)
+#   docker compose --profile full up -d --build   # + the API container (or: docker compose up --build api)
+#   docker compose ps                     # check health
+#   docker compose down                   # stop (add -v to wipe data)
+#
+# For day-to-day dev, run the API on the host (`pnpm --filter @hrobot/api dev`)
+# against `docker compose up -d`. The containerized `api` service (profile "full")
+# is for CI / prod-parity and is NOT started by a bare `up -d`, so it never
+# collides with a host API on :3000.
 
 services:
   postgres:
@@ -55,6 +59,39 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: admin
     ports:
       - "8080:8080"
+
+  # The API as a container (CI/prod parity). For day-to-day dev, running it on
+  # the host (`pnpm --filter @hrobot/api dev`) is faster. Gated behind the
+  # "full" profile so a bare `docker compose up -d` starts only backing services
+  # (no :3000 collision with a host API). Start it with `docker compose up api`
+  # or `docker compose --profile full up -d`.
+  api:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    # Secrets come from .env (cp .env.example .env first); required:false so the
+    # other services still start if .env is absent. Connection URLs are
+    # overridden here to use compose service DNS names instead of localhost.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      CONTROL_PLANE_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/hrobot_control
+      POSTGRES_SUPERUSER_URL: postgresql://postgres:postgres@postgres:5432/postgres
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      KEYCLOAK_URL: http://keycloak:8080
+      PORT: "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
 
 volumes:
   hrobot_pgdata:
