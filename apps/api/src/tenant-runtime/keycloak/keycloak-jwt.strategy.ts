@@ -3,6 +3,7 @@ import { PassportStrategy } from '@nestjs/passport'
 import { ExtractJwt, Strategy } from 'passport-jwt'
 import * as jwt from 'jsonwebtoken'
 import jwksClient from 'jwks-rsa'
+import { parseEnv } from '@hrobot/config'
 
 export interface JwtPayload {
   sub: string
@@ -37,6 +38,15 @@ export class KeycloakJwtStrategy extends PassportStrategy(Strategy, 'keycloak-jw
             return
           }
 
+          // FIX-P3-1 (CRITICAL): iss is attacker-controlled (this is an UNVERIFIED decode).
+          // Reject any issuer that isn't our Keycloak host + a valid tenant realm slug BEFORE
+          // fetching its JWKS — otherwise an attacker hosts their own JWKS and forges a valid
+          // token for any tenant/role (full auth bypass + cross-tenant PII access).
+          if (!this.isTrustedIssuer(payload.iss, parseEnv().KEYCLOAK_URL)) {
+            done(new Error('Untrusted token issuer'))
+            return
+          }
+
           const jwksUri = `${payload.iss}/protocol/openid-connect/certs`
           const client = jwksClient({
             jwksUri,
@@ -60,6 +70,18 @@ export class KeycloakJwtStrategy extends PassportStrategy(Strategy, 'keycloak-jw
   extractSlug(iss: string): string {
     const match = /\/realms\/hrobot-(.+)$/.exec(iss)
     return match?.[1] ?? ''
+  }
+
+  /**
+   * True only if `iss` is our Keycloak host (`base`) followed by a well-formed tenant realm
+   * (`/realms/hrobot-<slug>`), where <slug> matches the signup slug shape. A bare
+   * startsWith('.../realms/hrobot-') would admit `hrobot-acme.evil` or a trailing path, so the
+   * full tail is matched + anchored. This is the guard that stops a forged token from pointing
+   * JWKS resolution at an attacker-controlled host.
+   */
+  isTrustedIssuer(iss: string, base: string): boolean {
+    if (!iss.startsWith(base)) return false
+    return /^\/realms\/hrobot-[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/.test(iss.slice(base.length))
   }
 
   validate(payload: JwtPayload): JwtPayload {
