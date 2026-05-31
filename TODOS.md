@@ -54,8 +54,9 @@ review report, not here.
       (`KEYCLOAK_CLIENT_ID` / `KEYCLOAK_ADMIN_CLIENT_SECRET`) that must currently be created by hand.
       Ship a realm/client import (`--import-realm` or a bootstrap script) so signup → DONE works with
       zero manual Keycloak setup. Until then the pipeline parks before `KEYCLOAK_SETUP`.
-- [ ] **Production Dockerfile for `apps/api`.** docker-compose provides backing services only; the API
-      runs on the host via `pnpm dev`. A container image (+ compose service) is needed for CI/prod parity.
+- [x] **Production Dockerfile for `apps/api`.** ~~docker-compose provides backing services only.~~ Done on
+      PR #2: multi-stage Dockerfile + profile-gated compose `api` service, verified booting end-to-end.
+      (Image is ~854MB — slimming via `pnpm deploy --prod` / distroless is a future optimization.)
 
 ## Resolved 2026-05-31 (post-/autoplan, this session)
 
@@ -67,3 +68,8 @@ review report, not here.
 - [x] **M7** — signup throttled to 5/min/IP (was the loose global 100/min default). PR #2.
 - [x] **DX first-run** — docker-compose stack, `.env.example`, pgcrypto dev-admin seed, quickstart README.
       Verified end-to-end against a throwaway Postgres. PR #2.
+- [x] **apps/api containerized** — multi-stage Dockerfile + profile-gated compose `api` service. PR #2.
+- [x] **Two latent boot-blockers fixed (found by actually booting the image — all-mocked tests missed both):**
+      (a) `amqp-connection-manager` was missing → NestJS RMQ transport threw PackageNotFound and the API
+      never started; (b) `bcrypt` was absent from `pnpm.onlyBuiltDependencies` → native addon never built,
+      so `node dist/main` would crash on first login. Both fixed + verified (login returns a JWT in-container). PR #2.
