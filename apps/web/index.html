@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HRobot — onboarding</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/shepherd.js@11.2.0/dist/css/shepherd.css" />
+    <style>
+      :root {
+        --bg: #0b1020; --panel: #ffffff; --ink: #0b1020; --muted: #5b6478;
+        --line: #e6e9f0; --brand: #4f46e5; --brand-ink: #ffffff; --ok: #16a34a;
+        --warn: #d97706; --err: #dc2626; --chip: #eef0fb; --radius: 14px;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        color: var(--ink); background: linear-gradient(180deg, #f6f7fb, #eef1f8 60%, #e9edf7);
+        min-height: 100vh;
+      }
+      header {
+        position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px;
+        padding: 14px 22px; background: rgba(255,255,255,.85); backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--line);
+      }
+      .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -.2px; }
+      .logo { width: 30px; height: 30px; border-radius: 8px; background: var(--brand); color: #fff;
+        display: grid; place-items: center; font-size: 16px; }
+      .spacer { flex: 1; }
+      .pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--chip); color: var(--muted); }
+      .pill.up { background: #e7f7ee; color: var(--ok); } .pill.down { background: #fdeaea; color: var(--err); }
+      button {
+        font: inherit; cursor: pointer; border: 1px solid transparent; border-radius: 10px;
+        padding: 9px 14px; background: var(--brand); color: var(--brand-ink); font-weight: 600;
+      }
+      button.ghost { background: #fff; color: var(--ink); border-color: var(--line); }
+      button:disabled { opacity: .55; cursor: not-allowed; }
+      main { max-width: 880px; margin: 0 auto; padding: 28px 20px 80px; }
+      .hero h1 { font-size: 30px; letter-spacing: -.5px; margin: 6px 0; }
+      .hero p { color: var(--muted); max-width: 60ch; }
+      .card {
+        background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+        padding: 20px 22px; margin: 18px 0; box-shadow: 0 1px 2px rgba(11,16,32,.04);
+      }
+      .card h2 { margin: 0 0 4px; font-size: 18px; }
+      .card .lead { color: var(--muted); margin: 0 0 14px; }
+      .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+      label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
+      input {
+        font: inherit; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; min-width: 220px;
+      }
+      .field { flex: 1; min-width: 220px; }
+      .out { margin-top: 12px; font-size: 14px; }
+      .muted { color: var(--muted); }
+      .ok { color: var(--ok); } .err { color: var(--err); } .warn { color: var(--warn); }
+      .steps { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 4px; }
+      .step { display: flex; align-items: center; gap: 7px; font-size: 13px; padding: 6px 10px; border-radius: 999px;
+        background: var(--chip); color: var(--muted); }
+      .step .dot { width: 9px; height: 9px; border-radius: 50%; background: #c3c9da; }
+      .step.active { background: #ecebfd; color: var(--brand); } .step.active .dot { background: var(--brand); }
+      .step.done { background: #e7f7ee; color: var(--ok); } .step.done .dot { background: var(--ok); }
+      .step.failed { background: #fdeaea; color: var(--err); } .step.failed .dot { background: var(--err); }
+      table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+      th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+      th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+      .check { display: flex; align-items: center; gap: 10px; padding: 10px 0; }
+      .check input { min-width: 0; width: 18px; height: 18px; }
+      code { background: #f1f3f9; padding: 1px 6px; border-radius: 6px; font-size: 13px; }
+      .note { font-size: 13px; background: #fbf7ec; border: 1px solid #f0e6c8; color: #6b5a1f;
+        padding: 10px 12px; border-radius: 10px; margin-top: 10px; }
+      footer { text-align: center; color: var(--muted); font-size: 13px; padding: 24px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand"><span class="logo">H</span> HRobot</div>
+      <span id="health" class="pill" data-tour="health">checking API…</span>
+      <div class="spacer"></div>
+      <button id="tourBtn" class="ghost" data-tour="tour-btn">▶ Take the tour</button>
+    </header>
+
+    <main>
+      <section class="hero card" data-tour="welcome">
+        <h1>Welcome to HRobot</h1>
+        <p>Set up your company's HR workspace in minutes. This guided tour walks you through every
+          step: claim your URL, create the workspace, watch it provision, sign in, see your team,
+          and finish onboarding. Click <strong>Take the tour</strong> any time.</p>
+      </section>
+
+      <section class="card" data-tour="slug">
+        <h2>1. Claim your company URL</h2>
+        <p class="lead">Your workspace will live at <code><span id="slugPreview">acme</span>.hrobot.ai</code>. Pick an available slug.</p>
+        <div class="row">
+          <div class="field"><label for="slug">Company slug</label>
+            <input id="slug" value="acme" autocomplete="off" /></div>
+          <button id="slugBtn">Check availability</button>
+        </div>
+        <div id="slugOut" class="out muted">3–30 chars, lowercase letters, numbers and dashes.</div>
+      </section>
+
+      <section class="card" data-tour="signup">
+        <h2>2. Create your workspace</h2>
+        <p class="lead">We provision an isolated database and identity realm just for your company.</p>
+        <div class="row">
+          <div class="field"><label for="company">Company name</label>
+            <input id="company" value="Acme Sp. z o.o." /></div>
+          <div class="field"><label for="email">Admin email</label>
+            <input id="email" value="owner@acme.test" /></div>
+          <button id="signupBtn">Create workspace</button>
+        </div>
+        <div id="signupOut" class="out muted">Starts an asynchronous provisioning job.</div>
+      </section>
+
+      <section class="card" data-tour="provisioning">
+        <h2>3. Provisioning</h2>
+        <p class="lead">HRobot builds your tenant through a state machine. This view polls live status.</p>
+        <div id="steps" class="steps">
+          <span class="step" data-step="CREATE_DB"><span class="dot"></span>Create DB</span>
+          <span class="step" data-step="RUN_MIGRATIONS"><span class="dot"></span>Run migrations</span>
+          <span class="step" data-step="SEED"><span class="dot"></span>Seed</span>
+          <span class="step" data-step="KEYCLOAK_SETUP"><span class="dot"></span>Keycloak setup</span>
+          <span class="step" data-step="DONE"><span class="dot"></span>Done</span>
+        </div>
+        <div id="provOut" class="out muted">Create a workspace above to begin, or
+          <a href="#" id="trackLink">track an existing job id</a>.</div>
+      </section>
+
+      <section class="card" data-tour="login">
+        <h2>4. Sign in</h2>
+        <p class="lead">Platform operators sign in here; tenant employees sign in through their company's
+          Keycloak realm. Demo uses the seeded global admin.</p>
+        <div class="row">
+          <div class="field"><label for="loginEmail">Email</label>
+            <input id="loginEmail" value="admin@hrobot.local" /></div>
+          <div class="field"><label for="loginPass">Password</label>
+            <input id="loginPass" type="password" value="admin12345" /></div>
+          <button id="loginBtn">Sign in</button>
+        </div>
+        <div id="loginOut" class="out muted">Returns a signed JWT.</div>
+      </section>
+
+      <section class="card" data-tour="team">
+        <h2>5. Your team</h2>
+        <p class="lead">The employee directory is tenant-scoped and RBAC-guarded; PESEL (national ID) is
+          never sent to the browser.</p>
+        <div class="row">
+          <button id="teamBtn" class="ghost">Load employees</button>
+        </div>
+        <div id="teamOut" class="out"></div>
+      </section>
+
+      <section class="card" data-tour="checklist">
+        <h2>6. Finish onboarding</h2>
+        <p class="lead">Track setup tasks. Saving requires the tenant-admin (ADMIN_KLIENTA) role.</p>
+        <div class="check"><input type="checkbox" id="ck-addEmployees" /><label for="ck-addEmployees" style="margin:0">Add employees</label></div>
+        <div class="check"><input type="checkbox" id="ck-configureSchedule" /><label for="ck-configureSchedule" style="margin:0">Configure work schedule</label></div>
+        <div class="check"><input type="checkbox" id="ck-inviteUsers" /><label for="ck-inviteUsers" style="margin:0">Invite users</label></div>
+        <div class="row"><button id="checklistBtn" class="ghost">Save checklist</button></div>
+        <div id="checklistOut" class="out muted"></div>
+      </section>
+    </main>
+
+    <footer>HRobot onboarding demo · drives the live control-plane &amp; tenant-runtime APIs</footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/shepherd.js@11.2.0/dist/js/shepherd.min.js"></script>
+    <script src="./app.js"></script>
+    <script src="./tour.js"></script>
+  </body>
+</html>
