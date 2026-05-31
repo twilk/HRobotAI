@@ -1,6 +1,4 @@
 import { Inject, Injectable, Logger } from '@nestjs/common'
-import { ClientProxy } from '@nestjs/microservices'
-import { firstValueFrom } from 'rxjs'
 import { ProvisioningStep } from '@hrobot/shared'
 import { ControlPlanePrismaService } from '../common/prisma/control-plane-prisma.service.js'
 
@@ -21,7 +19,6 @@ export class ProvisioningService {
 
   constructor(
     private readonly prisma: ControlPlanePrismaService,
-    @Inject('TENANT_PROVISION_CLIENT') private readonly client: ClientProxy,
     @Inject('CREATE_DB_STEP') private readonly createDb: ProvisioningStepHandler,
     @Inject('RUN_MIGRATIONS_STEP') private readonly runMigrations: ProvisioningStepHandler,
     @Inject('SEED_STEP') private readonly seed: ProvisioningStepHandler,
@@ -71,18 +68,18 @@ export class ProvisioningService {
         return
       }
 
+      // C1: persist a DURABLE next-attempt time instead of an in-process setTimeout (which is
+      // lost on pod restart, stranding the job mid-pipeline). RetryRelay re-enqueues due jobs.
+      const delayMs = RETRY_DELAYS_MS[job.attemptCount] ?? 600_000
       await this.prisma.provisioningJob.update({
         where: { id: job.id },
-        data: { attemptCount: nextAttempt, lastError: message },
+        data: {
+          attemptCount: nextAttempt,
+          lastError: message,
+          nextAttemptAt: new Date(Date.now() + delayMs),
+        },
       })
-
-      const delayMs = RETRY_DELAYS_MS[job.attemptCount] ?? 600_000
-      this.logger.warn({ jobId: job.id, delayMs }, 'Scheduling retry')
-      setTimeout(() => {
-        void firstValueFrom(
-          this.client.emit('tenant.provision', { jobId: job.id, tenantId: job.tenantId }),
-        )
-      }, delayMs)
+      this.logger.warn({ jobId: job.id, delayMs }, 'Scheduled durable retry')
     }
   }
 }

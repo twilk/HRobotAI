@@ -1,6 +1,5 @@
 import { Logger } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
-import { of } from 'rxjs'
 import { ProvisioningService } from './provisioning.service.js'
 import { ControlPlanePrismaService } from '../common/prisma/control-plane-prisma.service.js'
 import { ProvisioningStep } from '@hrobot/shared'
@@ -30,8 +29,6 @@ const mockPrisma = {
   },
 }
 
-const mockClient = { emit: jest.fn().mockReturnValue(of(null)) }
-
 describe('ProvisioningService', () => {
   let service: ProvisioningService
 
@@ -40,7 +37,6 @@ describe('ProvisioningService', () => {
       providers: [
         ProvisioningService,
         { provide: ControlPlanePrismaService, useValue: mockPrisma },
-        { provide: 'TENANT_PROVISION_CLIENT', useValue: mockClient },
         { provide: 'CREATE_DB_STEP', useValue: mockSteps.createDb },
         { provide: 'RUN_MIGRATIONS_STEP', useValue: mockSteps.runMigrations },
         { provide: 'SEED_STEP', useValue: mockSteps.seed },
@@ -49,11 +45,8 @@ describe('ProvisioningService', () => {
       ],
     }).compile()
     service = module.get(ProvisioningService)
-    jest.useFakeTimers()
     jest.clearAllMocks()
   })
-
-  afterEach(() => { jest.useRealTimers() })
 
   it('dispatches to CREATE_DB step when job.step is CREATE_DB', async () => {
     const job = makeJob(ProvisioningStep.CREATE_DB)
@@ -66,7 +59,7 @@ describe('ProvisioningService', () => {
     expect(mockSteps.runMigrations.execute).not.toHaveBeenCalled()
   })
 
-  it('increments attemptCount and re-enqueues on step failure (attemptCount < 3)', async () => {
+  it('stamps a durable nextAttemptAt on step failure (attemptCount < 3)', async () => {
     const job = makeJob(ProvisioningStep.CREATE_DB, 0)
     mockPrisma.provisioningJob.findUnique.mockResolvedValue(job)
     mockPrisma.provisioningJob.update.mockResolvedValue({ ...job, attemptCount: 1 })
@@ -74,15 +67,14 @@ describe('ProvisioningService', () => {
 
     await service.process({ jobId: 'job-1', tenantId: 'tenant-1' })
 
+    // Durable retry: persist attemptCount + a future nextAttemptAt; RetryRelay re-enqueues it.
     expect(mockPrisma.provisioningJob.update).toHaveBeenCalledWith({
       where: { id: 'job-1' },
-      data: { attemptCount: 1, lastError: 'DB error' },
-    })
-    // Re-enqueue scheduled — advance past first delay
-    jest.runAllTimers()
-    expect(mockClient.emit).toHaveBeenCalledWith('tenant.provision', {
-      jobId: 'job-1',
-      tenantId: 'tenant-1',
+      data: {
+        attemptCount: 1,
+        lastError: 'DB error',
+        nextAttemptAt: expect.any(Date) as Date,
+      },
     })
   })
 
@@ -102,7 +94,6 @@ describe('ProvisioningService', () => {
         attemptCount: 3,
       },
     })
-    jest.runAllTimers()
-    expect(mockClient.emit).not.toHaveBeenCalled()
+    // FAILED is terminal — no nextAttemptAt set, so RetryRelay will not pick it up.
   })
 })

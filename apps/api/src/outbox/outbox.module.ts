@@ -3,6 +3,7 @@ import { ScheduleModule } from '@nestjs/schedule'
 import { ClientsModule, Transport } from '@nestjs/microservices'
 import { parseEnv } from '@hrobot/config'
 import { OutboxRelayService } from './outbox-relay.service.js'
+import { RetryRelayService } from './retry-relay.service.js'
 
 @Module({
   imports: [
@@ -21,6 +22,6 @@ import { OutboxRelayService } from './outbox-relay.service.js'
       },
     ]),
   ],
-  providers: [OutboxRelayService],
+  providers: [OutboxRelayService, RetryRelayService],
 })
 export class OutboxModule {}
