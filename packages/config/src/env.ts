@@ -24,6 +24,15 @@ export const envSchema = z.object({
   REDIS_URL: urlWithScheme('REDIS_URL', /^rediss?:\/\//, 'must be a redis:// or rediss:// URL'),
   RABBITMQ_URL: urlWithScheme('RABBITMQ_URL', /^amqps?:\/\//, 'must be an amqp:// or amqps:// URL'),
   NEXTAUTH_SECRET: z.string().min(1),
+  // Plan 2 additions (control-plane provisioning + global-admin auth)
+  POSTGRES_SUPERUSER_URL: urlWithScheme(
+    'POSTGRES_SUPERUSER_URL',
+    /^postgres(ql)?:\/\//,
+    'must be a postgresql:// connection string',
+  ),
+  GLOBAL_ADMIN_JWT_SECRET: z
+    .string()
+    .min(32, 'GLOBAL_ADMIN_JWT_SECRET must be at least 32 characters'),
 })
 
 export type Env = z.infer<typeof envSchema>

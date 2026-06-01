@@ -12,6 +12,7 @@
     "migrate:control:dev": "prisma migrate dev --schema=prisma/control-plane/schema.prisma",
     "migrate:tenant:dev": "prisma migrate dev --schema=prisma/tenant/schema.prisma",
     "migrate:control:deploy": "prisma migrate deploy --schema=prisma/control-plane/schema.prisma",
+    "seed:admin:dev": "prisma db execute --schema=prisma/control-plane/schema.prisma --file=prisma/control-plane/seed-dev-admin.sql",
     "build": "tsc -p tsconfig.json",
     "lint": "eslint src",
     "test": "jest"

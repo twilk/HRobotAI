@@ -56,7 +56,11 @@ model ProvisioningJob {
   lastError    String?          @map("last_error")
   createdAt    DateTime         @default(now()) @map("created_at")
   updatedAt    DateTime         @updatedAt @map("updated_at")
+  // C1: durable retry schedule. ProvisioningService stamps this on a failed step; RetryRelay
+  // re-enqueues jobs whose time is due. Replaces the lost-on-restart in-process setTimeout.
+  nextAttemptAt DateTime?       @map("next_attempt_at")
 
+  @@index([nextAttemptAt])
   @@map("provisioning_jobs")
 }
 
