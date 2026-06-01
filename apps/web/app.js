@@ -108,8 +108,10 @@ async function signup() {
   }
   state.jobId = r.data.jobId
   set('#signupOut', `✓ Workspace queued. Job <code>${escapeHtml(r.data.jobId)}</code> — watch provisioning below.`, 'ok')
-  startPolling()
-  return { ok: true, jobId: r.data.jobId }
+  // Hold the polling promise so callers (the show) can await THIS session's terminal outcome
+  // instead of starting a second competing poller for the same job.
+  state.pollPromise = startPolling()
+  return { ok: true, jobId: r.data.jobId, provisioning: state.pollPromise }
 }
 $('#signupBtn').addEventListener('click', () => signup())
 
@@ -136,8 +138,10 @@ function startPolling() {
   let polls = 0
   let errors = 0
   return new Promise((resolve) => {
+    let timer = null // this session's own interval handle — finish() must never clear a newer one
     const finish = (outcome) => {
-      clearInterval(state.pollTimer)
+      if (timer) clearInterval(timer)
+      if (state.pollTimer === timer) state.pollTimer = null
       resolve(outcome)
     }
     const tick = async () => {
@@ -182,7 +186,8 @@ function startPolling() {
       }
     }
     tick()
-    state.pollTimer = setInterval(tick, 1500)
+    timer = setInterval(tick, 1500)
+    state.pollTimer = timer
   })
 }
 $('#trackLink').addEventListener('click', (e) => {
@@ -326,7 +331,7 @@ window.HRobot = {
     if (email) $('#email').value = email
   },
   signup,
-  awaitProvisioning: () => (state.pollTimer ? null : null), // provisioning promise comes from signup()
+  awaitProvisioning: () => state.pollPromise || Promise.resolve({ ok: false }),
   startPolling,
   login,
   loadTeam,

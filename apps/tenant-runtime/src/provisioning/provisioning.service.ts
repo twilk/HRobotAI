@@ -53,11 +53,13 @@ export class ProvisioningService {
     try {
       await handler.execute(job)
       // Drive the pipeline forward one step at a time (handlers advance job.step but emit no
-      // follow-up message). Re-emit unless the job reached a terminal state.
+      // follow-up message). Re-emit whenever the step advanced — including ->DONE, since DoneStep
+      // flips the tenant to ACTIVE and needs its own message. Termination: DoneStep leaves step=DONE
+      // (unchanged) so no further emit; FAILED is terminal.
       const after = await this.prisma.provisioningJob.findUnique({ where: { id: job.id } })
       const next = after?.step
-      if (next && next !== job.step && next !== ProvisioningStep.DONE && next !== ProvisioningStep.FAILED) {
-        void firstValueFrom(this.client.emit('tenant.provision', { jobId: job.id, tenantId: job.tenantId }))
+      if (next && next !== job.step && next !== ProvisioningStep.FAILED) {
+        await firstValueFrom(this.client.emit('tenant.provision', { jobId: job.id, tenantId: job.tenantId }))
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)

@@ -23,42 +23,52 @@
   }
   const scale = (ms) => ms * SPEED[ctrl.speed]
 
-  /** Cancellable, pause-aware sleep. Resolves early if the show is stopped. */
+  // Registry of in-flight waits. Each entry can be settled directly by Stop ('cancelled') or
+  // Skip ('skipped'), so cancellation never strands the awaiting promise (the earlier bug: only
+  // tick() observed cancellation, so clearing its timer left run() hung forever). Entries remove
+  // themselves on settle, so the registry can't leak across a long session.
+  const activeWaits = new Set()
+
+  /** Cancellable, pause-aware, skippable sleep. Always settles exactly once. */
   function wait(ms) {
     return new Promise((resolve) => {
       let remaining = scale(ms)
       let startedAt = Date.now()
       let timer = null
-      const tick = () => {
-        if (ctrl.cancelled) return resolve('cancelled')
-        if (ctrl.paused) {
-          remaining -= Date.now() - startedAt
-          ctrl.pauseWaiters.push(onResume)
-          return
-        }
-        resolve('done')
+      const entry = {
+        settle(reason) {
+          if (timer) clearTimeout(timer)
+          activeWaits.delete(entry)
+          resolve(reason)
+        },
+        pause() {
+          if (timer) {
+            clearTimeout(timer)
+            timer = null
+            remaining -= Date.now() - startedAt
+          }
+        },
+        resume() {
+          startedAt = Date.now()
+          timer = setTimeout(() => entry.settle('done'), Math.max(0, remaining))
+        },
       }
-      const onResume = () => {
-        startedAt = Date.now()
-        timer = setTimeout(tick, Math.max(0, remaining))
-      }
-      timer = setTimeout(tick, remaining)
-      // expose so a hard stop can clear it
-      wait._timers.add(() => timer && clearTimeout(timer))
+      activeWaits.add(entry)
+      if (ctrl.cancelled) return entry.settle('cancelled')
+      if (ctrl.paused) return // a paused show leaves the entry armed; resume() starts its timer
+      timer = setTimeout(() => entry.settle('done'), remaining)
     })
   }
-  wait._timers = new Set()
 
-  function resumeAll() {
-    const waiters = ctrl.pauseWaiters.splice(0)
-    waiters.forEach((fn) => fn())
+  function pauseAll() {
+    activeWaits.forEach((e) => e.pause())
   }
-
-  /** Await a guard fn() that returns a truthy/terminal value, polling, pause/cancel-aware.
-   *  Used to await real backend completion (provisioning) without blind timers. */
-  async function awaitValue(getPromise) {
-    const result = await getPromise
-    return result
+  function resumeAll() {
+    activeWaits.forEach((e) => e.resume())
+  }
+  /** Settle every active wait now — used by Skip ('skipped') and Stop ('cancelled'). */
+  function flushWaits(reason) {
+    ;[...activeWaits].forEach((e) => e.settle(reason))
   }
 
   // ---- caption / stage UI --------------------------------------------------
@@ -162,8 +172,8 @@
     // 3 — provisioning (AWAIT real completion, not a timer)
     focusSection('[data-tour="provisioning"]')
     narrate(3, TOTAL, '3 · Watching it provision (live)', 'The state machine runs for real: <strong>Create DB → Run migrations → Seed → Keycloak setup → Done</strong>. I am polling the live job status and will continue once the tenant is actually ready.')
-    // signup() already kicked off polling; await its terminal outcome by polling again on the same job.
-    const outcome = await pollUntilTerminal()
+    // Await the SAME polling session signup() started — don't start a second competing poller.
+    const outcome = (await signupRes.provisioning) || { ok: false }
     if (ctrl.cancelled) return
     el.body.innerHTML = outcome.done
       ? '✓ Provisioning complete — a real, isolated tenant now exists.'
@@ -218,25 +228,19 @@
     ctrl.playing = false
   }
 
-  /** Re-poll the current job to a terminal state (the show's await on real provisioning). */
-  async function pollUntilTerminal() {
-    // app.js's startPolling resolves on terminal state; re-invoke it for the active job.
-    if (!H.state.jobId) return { ok: false }
-    return H.startPolling()
-  }
-
   // ---- controls ------------------------------------------------------------
   function setPaused(p) {
     ctrl.paused = p
     el.playpause.textContent = p ? '▶ Resume' : '⏸ Pause'
-    if (!p) resumeAll()
+    if (p) pauseAll()
+    else resumeAll()
   }
   function stop() {
     ctrl.cancelled = true
     ctrl.playing = false
-    setPaused(false)
-    wait._timers.forEach((clear) => clear())
-    wait._timers.clear()
+    ctrl.paused = false
+    el.playpause.textContent = '⏸ Pause'
+    flushWaits('cancelled') // settle every in-flight wait so run() unwinds (it checks ctrl.cancelled)
     el.stage.classList.add('hidden')
     document.querySelectorAll('.show-focus').forEach((n) => n.classList.remove('show-focus'))
   }
@@ -250,20 +254,27 @@
     setPaused(false)
     await run()
   }
+  let restarting = false
   function restart() {
+    if (restarting) return
+    restarting = true
     stop()
-    setTimeout(start, 250)
+    setTimeout(() => {
+      restarting = false
+      void start()
+    }, 250)
   }
 
-  el.playpause.addEventListener('click', () => setPaused(!ctrl.paused))
+  el.playpause.addEventListener('click', () => {
+    if (!ctrl.playing) return
+    setPaused(!ctrl.paused)
+  })
   document.getElementById('sc-stop').addEventListener('click', stop)
   document.getElementById('sc-restart').addEventListener('click', restart)
   document.getElementById('sc-skip').addEventListener('click', () => {
-    // skip the current pause by resolving timers immediately
-    wait._timers.forEach((clear) => clear())
-    wait._timers.clear()
+    // Skip the current narration pause: settle active waits now so run() advances immediately.
     if (ctrl.paused) setPaused(false)
-    resumeAll()
+    flushWaits('skipped')
   })
   document.getElementById('sc-speed').addEventListener('change', (e) => {
     ctrl.speed = e.target.value

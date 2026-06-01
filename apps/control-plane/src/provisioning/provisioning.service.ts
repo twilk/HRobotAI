@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import type { ClientProxy } from '@nestjs/microservices'
+import { firstValueFrom } from 'rxjs'
 import { ProvisioningStep } from '@hrobot/shared'
 import { ControlPlanePrismaService } from '../common/prisma/control-plane-prisma.service.js'
 
@@ -55,18 +56,15 @@ export class ProvisioningService {
       await handler.execute(job)
       // Drive the pipeline forward: each step handler advances job.step in the DB but emits no
       // follow-up message, so without this the job stalls after one step. Re-emit so the consumer
-      // processes the next step. Stop at terminal states (DONE/FAILED) and only emit if the step
-      // actually changed (a handler that no-ops or stays put must not cause an infinite loop).
+      // runs the next step — INCLUDING the transition to DONE (DoneStep is what flips the tenant to
+      // ACTIVE, so it must get its own message). Termination is guaranteed by `next !== job.step`:
+      // KEYCLOAK_SETUP->DONE re-emits and DoneStep runs; DoneStep leaves step=DONE (unchanged), so
+      // no further emit. FAILED is terminal too. emit() returns a cold Observable, so it MUST be
+      // subscribed (firstValueFrom) or nothing is published.
       const after = await this.prisma.provisioningJob.findUnique({ where: { id: job.id } })
       const next = after?.step
-      if (
-        this.client &&
-        next &&
-        next !== job.step &&
-        next !== ProvisioningStep.DONE &&
-        next !== ProvisioningStep.FAILED
-      ) {
-        this.client.emit('tenant.provision', { jobId: job.id, tenantId: job.tenantId })
+      if (this.client && next && next !== job.step && next !== ProvisioningStep.FAILED) {
+        await firstValueFrom(this.client.emit('tenant.provision', { jobId: job.id, tenantId: job.tenantId }))
         this.logger.log({ jobId: job.id, step: next }, 'Advancing provisioning to next step')
       }
     } catch (err: unknown) {
