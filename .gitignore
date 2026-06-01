@@ -1,6 +1,9 @@
+# Turborepo cache
+.turbo/
+
+# Dependencies & build output
 node_modules/
 dist/
-.turbo/
 coverage/
 
 # Prisma generated clients (regenerated via `pnpm db:generate`)
@@ -9,6 +12,7 @@ packages/db/generated/
 # Env files (never commit secrets)
 .env
 .env.local
+.env.*.local
 !.env.example
 
 # TypeScript incremental build info (generated per-package on build)

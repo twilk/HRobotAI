@@ -6,6 +6,24 @@
 
 ---
 
+> ## ⚠ Design System Update — 2026-06-01 (supersedes §7 visual tokens)
+>
+> The visual design system is now defined by **[`docs/design/DESIGN.md`](../../design/DESIGN.md)**
+> ("Refit for EU-trust"), with canonical tokens + components in
+> [`docs/design/mockups/system.css`](../../design/mockups/system.css) and rendered mockups in
+> [`docs/design/mockups/`](../../design/mockups/). This **supersedes** the demo migration
+> (glassmorphism / Navy-Cyan / Inter) described in §7 and the scope lists below.
+>
+> **What changed:** glassmorphism → hairline structure + restrained elevation (no `backdrop-blur`);
+> Inter → **Cabinet Grotesk** (display) + **General Sans** (UI/body) + **IBM Plex Mono** (machine /
+> security layer); neon cyan `#00C1D4` → **signal teal `#0C8FA3`** used sparingly + **verified green
+> `#2E9E6B`**; cold white → **warm parchment `#F6F4EE`**. Navy `#0B1F3B` stays as the brand anchor.
+>
+> **What still holds:** every screen layout, flow, route, RBAC rule, and component in §7 remains
+> valid. Where the text below says "glassmorphism", "Inter", or "Cyan `#00C1D4`", read the
+> corresponding token from DESIGN.md. The frontend/design migration lands in Foundation Plans 4-5
+> (not yet written); those plans build to DESIGN.md, not the demo.
+
 ## 1. Scope
 
 The Foundation sub-project delivers the structural bedrock that every subsequent HR module is built on. It produces no end-user HR functionality beyond a single proof-of-stack "employees list" page, but it makes the entire SaaS production-worthy from day one.
@@ -20,10 +38,10 @@ The Foundation sub-project delivers the structural bedrock that every subsequent
 - Self-serve signup + fully automated async provisioning pipeline (CREATE_DB → RUN_MIGRATIONS → SEED → KEYCLOAK_SETUP → DONE) with rollback
 - Subdomain-based tenant routing in Next.js middleware
 - Auth.js v5 OIDC integration with dynamic Keycloak realm selection
-- Design system migration from demo (glassmorphism, Navy/Cyan tokens, all UI components)
-- DESIGN.md: design system documentation (color tokens, glassmorphism spec, typography, component inventory, Keycloak theme spec)
-- Keycloak login theme: Navy/Cyan glassmorphism applied via FreeMarker templates, deployed in KEYCLOAK_SETUP provisioning step
-- Signup page: full-width centered glassmorphism form with live slug preview + debounced availability check
+- Design system: re-skin demo UI components to the DESIGN.md "Refit for EU-trust" tokens (warm canvas + hairline structure, Cabinet Grotesk / General Sans / IBM Plex Mono, signal-teal accent) — see `docs/design/DESIGN.md`
+- DESIGN.md: design system documentation (color tokens, typography, spacing, the security/trust motif, component inventory, Keycloak theme spec) — authored at `docs/design/DESIGN.md`; promote to repo root at implementation
+- Keycloak login theme: HRobot Navy + signal-teal theme (mirrors signup) applied via FreeMarker templates, deployed in KEYCLOAK_SETUP provisioning step
+- Signup page: full-width centered crafted-card form (no glass) with live slug preview + debounced availability check
 - Provisioning status page: step tracker + per-step Polish benefit copy + failure state (email saved + ops notified)
 - Sidebar: grouped nav (MODUŁY HR / ADMINISTRACJA), mobile drawer, RBAC-visibility-aware
 - Dashboard: welcome screen with greeting, 3 quick-action cards, setup checklist (not a blank stub)
@@ -48,7 +66,7 @@ The Foundation sub-project delivers the structural bedrock that every subsequent
 
 - `docker compose up` starts the full local stack (Postgres, Redis, RabbitMQ, Keycloak, API, web)
 - Signup flow completes: form (slug live preview works) → provisioning progress (5 steps + benefit copy) → ACTIVE tenant
-- Keycloak first-login screen uses HRobot Navy/Cyan theme, not default Keycloak UI
+- Keycloak first-login screen uses HRobot Navy + signal-teal theme (per DESIGN.md), not default Keycloak UI
 - ADMIN_KLIENTA lands on welcome dashboard (greeting + quick actions + setup checklist), not a blank page
 - Employees list shows onboarding empty state (explanation + two CTAs), not "No items found."
 - Mobile sidebar drawer opens on hamburger tap at 375px
@@ -391,22 +409,23 @@ Frontend renders a 5-step progress bar. On `step = FAILED`, shows error message 
 
 ### Design system migration
 
-Source: `C:\WORKSPACE\startup\demo\` (existing Next.js mockup).
+Source: `C:\WORKSPACE\startup\demo\` (existing Next.js mockup) — used for **structure/markup only**.
+The visual layer is re-skinned to the DESIGN.md "Refit for EU-trust" tokens, not migrated verbatim.
 
-Migrated verbatim into `apps/web/`:
-- `components/ui/` — Button, Card, Badge, Input, Modal, SkipLink
+Into `apps/web/`:
+- `components/ui/` — Button, Card, Badge, Input, Modal, SkipLink (re-skinned to DESIGN.md tokens)
 - `components/layout/` — Sidebar, TopBar (wired to real auth: user name, role, logout)
-- `app/globals.css` — glassmorphism styles, CSS variables (Navy `#0B1F3B`, Cyan `#00C1D4`)
-- `tailwind.config.ts` — custom color tokens, `backdrop-filter` / `backdrop-blur` utilities
-- Inter font via `next/font/google` in root `layout.tsx`
+- `app/globals.css` — DESIGN.md tokens (warm canvas `#F6F4EE`, Navy `#0B1F3B`, signal teal `#0C8FA3`, verified green `#2E9E6B`); hairline structure, **no** `backdrop-blur`
+- `tailwind.config.ts` — color / spacing / radius tokens from DESIGN.md
+- Fonts via `next/font`: Cabinet Grotesk + General Sans (Fontshare) + IBM Plex Mono — **not** Inter
 
 Demo mock data (`lib/mockData.ts`) and Zustand stores are discarded.
 
-**DESIGN.md** is a Foundation deliverable. Created at repo root, it documents: color tokens, glassmorphism spec (blur radius, bg-opacity, border-opacity values), typography scale (Inter weights/sizes), spacing scale, component inventory with props, and Keycloak theme spec. Every subsequent sub-project references DESIGN.md rather than reverse-engineering the demo.
+**DESIGN.md** is a Foundation deliverable, already authored at `docs/design/DESIGN.md` (promote to repo root at implementation). It documents: color tokens, typography (Cabinet Grotesk / General Sans / IBM Plex Mono), spacing scale, the security/trust motif, component inventory, and the Keycloak theme spec. Every subsequent sub-project references DESIGN.md rather than reverse-engineering the demo.
 
 ### Signup page design
 
-Full-width centered layout on Navy `#0B1F3B` background. Single glassmorphism card (16px horizontal padding on mobile, max-w-md on desktop). Card edge-to-edge at 375px.
+Full-width centered layout on Navy `#0B1F3B` background with the engraved security motif. Single crafted card (warm surface, hairline border, no glass; 16px horizontal padding on mobile, max-w-md on desktop). Card edge-to-edge at 375px.
 
 **Field order:**
 1. Logo + "HRobot.AI" wordmark (centered top)
@@ -415,7 +434,7 @@ Full-width centered layout on Navy `#0B1F3B` background. Single glassmorphism ca
 4. Subdomain slug (`<input>`) with live preview: auto-lowercases, replaces spaces with hyphens, shows `Twój adres: {slug}.hrobot.ai` below field. Debounced availability check (300ms) → green checkmark when available, red X + "Ta nazwa jest już zajęta" when taken. Calls `GET /api/slugs/check/{slug}`.
 5. Admin email (`<input type="email">`)
 6. Password (`<input type="password">`) with strength indicator: `zxcvbn` library, 3-segment bar (red score 0-1 / orange score 2 / green score 3-4)
-7. CTA: Cyan `#00C1D4` button "Utwórz konto"
+7. CTA: signal-teal `#0C8FA3` button "Utwórz konto"
 8. Footer: "Masz już konto? [Zaloguj się]" link
 
 **Validation errors:** inline, below each field, red text `#EF4444`. On submit error (server-side): error banner at top of card.
@@ -428,7 +447,7 @@ Two-column layout (desktop): left = step progress, right = active benefit copy. 
 
 **Left column — step tracker:**
 - 5 step indicators (circle + step name): CREATE_DB, RUN_MIGRATIONS, SEED, KEYCLOAK_SETUP, DONE
-- Active step: Cyan circle, pulsing animation, step name bold
+- Active step: teal pulsing node, step name bold; step ID in IBM Plex Mono
 - Completed step: checkmark circle, dimmed
 - Pending step: empty circle, dimmed
 - Step progress bar: thin horizontal line connecting circles
@@ -467,7 +486,7 @@ ADMINISTRACJA
   👤 Użytkownicy (ADMIN_KLIENTA only)
 ```
 
-Group labels: uppercase, 11px, muted color (`#6B7280`). Active item: Cyan left border + light Cyan background. Role-based visibility: Pracownik sees only modules relevant to their role, ADMIN group hidden for Pracownik.
+Group labels: uppercase, 11px IBM Plex Mono, muted. Active item: signal-teal left border + light teal background. Role-based visibility: Pracownik sees only modules relevant to their role, ADMIN group hidden for Pracownik.
 
 **Mobile (≤768px):** Sidebar hides. Hamburger icon in TopBar opens a drawer overlay (full-height, slides from left, Navy background, same nav structure). Drawer closes on nav item click or outside tap.
 
@@ -477,7 +496,7 @@ Welcome screen — not a blank stub. Content:
 
 - Heading: "Witaj w HRobot, {tenantName}!" (personalized from JWT)
 - Subheading: "Zacznij od kilku kroków, aby skonfigurować swój zespół."
-- 3 quick-action Cards (glassmorphism):
+- 3 quick-action Cards (crafted surfaces, line icons in hairline tiles — not icon-in-colored-circle):
   - "Dodaj pracownika" → links to `/pracownicy` (or future add-employee route)
   - "Skonfiguruj grafik" → links to `/grafik` (stub, visible future intent)
   - "Zaproś użytkowników" → links to `/ustawienia/uzytkownicy`
@@ -489,20 +508,20 @@ Welcome screen — not a blank stub. Content:
 ### Employees list empty state
 
 ```
-[icon: Users or document-person, 48px, Cyan tint]
+[icon: Users or document-person in a hairline tile, ~48px, teal stroke]
 Heading: "Brak pracowników"
 Body: "Dodaj pracowników, aby zacząć planować grafiki i obsługiwać wnioski urlopowe."
-Primary CTA: [Cyan button] "Dodaj pracownika"
+Primary CTA: [signal-teal button] "Dodaj pracownika"
 Secondary CTA: [ghost button, disabled] "Importuj z CSV" → `title="Dostępne wkrótce"` tooltip on hover; `aria-disabled="true"`, cursor-not-allowed. Data module team activates this button when import is implemented.
 ```
 
 ### Keycloak login theme
 
-A custom Keycloak theme (`apps/web/keycloak-theme/`) is applied during the `KEYCLOAK_SETUP` provisioning step. The theme uses FreeMarker templates (Keycloak.v2) to apply:
-- Navy `#0B1F3B` background
-- Glassmorphism card for login/password-change form
-- Inter font (loaded from CDN)
-- Cyan CTA button
+A custom Keycloak theme (`apps/web/keycloak-theme/`) is applied during the `KEYCLOAK_SETUP` provisioning step. The theme uses FreeMarker templates (Keycloak.v2) to mirror the signup screen per DESIGN.md:
+- Navy `#0B1F3B` background with the engraved security motif
+- Crafted card (no glass) for login/password-change form
+- Cabinet Grotesk wordmark + General Sans body (self-hosted via `next/font` or CDN)
+- Signal-teal `#0C8FA3` CTA button + mono `realm: hrobot-{slug}` note
 
 The `KEYCLOAK_SETUP` pipeline step uploads the theme to the Keycloak realm via the Admin REST API (theme file upload or pre-deployed to Keycloak's `themes/` directory). Password-change on first login appears in HRobot's design language, not Keycloak's default.
 
@@ -533,7 +552,7 @@ All Server Components and Route Handlers read `headers().get('x-tenant-id')` —
 - Form inputs: `<label for>` on all fields, no placeholder-as-label
 - Progress bar: `role="progressbar"`, `aria-valuenow={step}`, `aria-valuemax={5}`, `aria-valuetext={stepName}`
 - Touch targets: ≥ 44px for all interactive elements
-- Color contrast: WCAG 2.1 AA (Cyan `#00C1D4` on Navy `#0B1F3B` passes at 4.7:1)
+- Color contrast: WCAG 2.1 AA — body/UI text meets AA on canvas/card; teal is used for fills + focus and as `--accent-ink` `#0A7B8C` for text-on-light; teal-on-navy uses `#3CC3D6` (see DESIGN.md §5)
 - SkipLink component (already in demo): present on all authenticated pages
 
 ### Route structure
@@ -715,15 +734,15 @@ Additional: provisioning pipeline happy path (CREATE_DB → DONE), each failure 
 
 ## What already exists (design system)
 
-All components below exist in `C:\WORKSPACE\startup\demo\` and migrate verbatim:
+All components below exist in `C:\WORKSPACE\startup\demo\` and are **re-skinned to DESIGN.md tokens** (markup reused, visual layer rebuilt — not migrated verbatim):
 
 | Component | Path | Status |
 |-----------|------|--------|
-| Button | `components/ui/Button.tsx` | Migrate as-is |
-| Card | `components/ui/Card.tsx` | Migrate as-is |
-| Badge | `components/ui/Badge.tsx` | Migrate as-is |
-| Input | `components/ui/Input.tsx` | Migrate as-is |
-| Modal | `components/ui/Modal.tsx` | Migrate as-is |
+| Button | `components/ui/Button.tsx` | Re-skin to DESIGN.md (teal primary, no gradient) |
+| Card | `components/ui/Card.tsx` | Re-skin to DESIGN.md (warm surface, hairline, no glass) |
+| Badge | `components/ui/Badge.tsx` | Re-skin to DESIGN.md (mono, semantic variants) |
+| Input | `components/ui/Input.tsx` | Re-skin to DESIGN.md (label-above, teal focus) |
+| Modal | `components/ui/Modal.tsx` | Re-skin to DESIGN.md (warm, navy scrim, no glass) |
 | SkipLink | `components/ui/SkipLink.tsx` | Migrate as-is |
 | Sidebar | `components/layout/Sidebar.tsx` | Migrate + extend: add grouped nav, mobile drawer |
 | TopBar | `components/layout/TopBar.tsx` | Migrate + wire to real auth |

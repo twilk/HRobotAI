@@ -1,0 +1,28 @@
+{
+  "name": "hrobot-web-kit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Runnable reference app for the HRobot design system (also a portable component kit).",
+  "scripts": {
+    "dev": "next dev -p 5601",
+    "build": "next build",
+    "start": "next start -p 5601",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^2.5.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tailwindcss": "^3.4.14",
+    "postcss": "^8.4.47",
+    "autoprefixer": "^10.4.20"
+  }
+}
