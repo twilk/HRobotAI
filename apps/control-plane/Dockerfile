@@ -29,16 +29,20 @@ COPY apps/tenant-runtime/package.json apps/tenant-runtime/
 COPY packages/config/package.json     packages/config/
 COPY packages/db/package.json         packages/db/
 COPY packages/shared/package.json     packages/shared/
-# Full install (incl. dev deps — needed to build). No cache mount: keeps the
-# resulting node_modules self-contained so the runner copy has no dangling links.
+# The root postinstall runs `turbo run db:generate`, which needs the Prisma schemas,
+# so copy them before install. Full install (incl. dev deps — needed to build); no
+# cache mount keeps node_modules self-contained for the runner copy.
+COPY packages/db/prisma packages/db/prisma
 RUN pnpm install --frozen-lockfile
 
 # Source, then build: turbo runs db:generate -> ^build -> `nest build`.
 COPY . .
 RUN pnpm run build
-# Fail the build here (not at login time in prod) if bcrypt's native addon
-# did not compile. Requires `bcrypt` in root pnpm.onlyBuiltDependencies.
-RUN node -e "const b=require('bcrypt'); if(!b.compareSync('x', b.hashSync('x',4))) process.exit(1); console.log('bcrypt native ok')"
+# Fail the build here (not at login time in prod) if bcrypt's native addon did not
+# compile. Run from the app dir so pnpm resolves the app's own bcrypt (not hoisted to
+# root). Requires `bcrypt` in root pnpm.onlyBuiltDependencies.
+RUN cd apps/control-plane \
+ && node -e "const b=require('bcrypt'); if(!b.compareSync('x', b.hashSync('x',4))) process.exit(1); console.log('bcrypt native ok')"
 
 ########## runner ##########
 FROM base AS runner

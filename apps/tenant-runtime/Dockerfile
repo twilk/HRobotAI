@@ -29,12 +29,16 @@ COPY apps/tenant-runtime/package.json apps/tenant-runtime/
 COPY packages/config/package.json     packages/config/
 COPY packages/db/package.json         packages/db/
 COPY packages/shared/package.json     packages/shared/
+# The root postinstall runs `turbo run db:generate`, which needs the Prisma schemas.
+COPY packages/db/prisma packages/db/prisma
 RUN pnpm install --frozen-lockfile
 
 # Source, then build: turbo runs db:generate -> ^build -> `nest build`.
 COPY . .
 RUN pnpm run build
-RUN node -e "const b=require('bcrypt'); if(!b.compareSync('x', b.hashSync('x',4))) process.exit(1); console.log('bcrypt native ok')"
+# bcrypt native sanity check — run from the app dir so pnpm resolves the app's own bcrypt.
+RUN cd apps/tenant-runtime \
+ && node -e "const b=require('bcrypt'); if(!b.compareSync('x', b.hashSync('x',4))) process.exit(1); console.log('bcrypt native ok')"
 
 ########## runner ##########
 FROM base AS runner

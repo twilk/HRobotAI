@@ -39,6 +39,14 @@ import { AuditInterceptor } from './audit/audit.interceptor.js'
     AuditService,
     AuditInterceptor,
     TenantPrismaModule,
+    // @TenantRoute() applies TenantContextInterceptor via @UseInterceptors(ClassRef), which
+    // Nest re-instantiates in each host module's context (EmployeesModule, OnboardingModule).
+    // That re-instantiation needs every interceptor dep resolvable there, so this token (and
+    // the prom counter it wraps) must be exported from this @Global() module — otherwise the
+    // app crashes at boot with "can't resolve REDIS_FALLBACK_COUNTER". Unit specs mock the
+    // token, so only a real boot surfaces this.
+    'REDIS_FALLBACK_COUNTER',
+    'PROM_METRIC_TENANT_REDIS_FALLBACK_TOTAL',
   ],
 })
 export class TenantRuntimeModule {}
