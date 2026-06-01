@@ -5,74 +5,161 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>HRobot — onboarding</title>
     <link rel="stylesheet" href="./vendor/shepherd.css" />
+    <link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@700,800&f[]=general-sans@400,500,600&display=swap"
+      rel="stylesheet"
+    />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <style>
+      /* HRobot design system — "Refit for EU-trust" (see HRobot/docs/design/DESIGN.md).
+         Navy anchor, warm parchment, signal teal, distinctive type + mono security layer.
+         No glassmorphism, no Inter/system-ui as display, no neon. Class hooks used by
+         app.js (.out/.ok/.err/.warn/.muted, .pill up|down, .step active|done|failed, table,
+         .note, .ghost, code) are preserved — only the visual layer changed. */
       :root {
-        --bg: #0b1020; --panel: #ffffff; --ink: #0b1020; --muted: #5b6478;
-        --line: #e6e9f0; --brand: #4f46e5; --brand-ink: #ffffff; --ok: #16a34a;
-        --warn: #d97706; --err: #dc2626; --chip: #eef0fb; --radius: 14px;
+        --navy: #0b1f3b; --navy-700: #15355c; --accent-navy: #3cc3d6;
+        --ink: #101a2b; --muted: #5b6b82; --muted-2: #8a97a8;
+        --canvas: #f6f4ee; --panel: #ffffff; --panel-2: #fbfaf6;
+        --line: #e7e4da; --line-strong: #d9d5c8;
+        --accent: #0c8fa3; --accent-ink: #0a7b8c;
+        --ok: #2e9e6b; --ok-ink: #247f56; --warn: #b8791f; --err: #c2443b;
+        --chip: #f1efe8; --radius: 14px; --r-sm: 8px;
+        --display: 'Cabinet Grotesk', 'General Sans', system-ui, sans-serif;
+        --sans: 'General Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+        --shadow: 0 1px 2px rgba(11, 31, 59, 0.05);
       }
       * { box-sizing: border-box; }
       body {
-        margin: 0; font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-        color: var(--ink); background: linear-gradient(180deg, #f6f7fb, #eef1f8 60%, #e9edf7);
-        min-height: 100vh;
+        margin: 0; font: 15px/1.55 var(--sans); color: var(--ink);
+        background: var(--canvas); min-height: 100vh; -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
       }
       header {
         position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px;
-        padding: 14px 22px; background: rgba(255,255,255,.85); backdrop-filter: blur(8px);
-        border-bottom: 1px solid var(--line);
+        padding: 14px 22px; background: var(--canvas); border-bottom: 1px solid var(--line);
       }
-      .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -.2px; }
-      .logo { width: 30px; height: 30px; border-radius: 8px; background: var(--brand); color: #fff;
-        display: grid; place-items: center; font-size: 16px; }
+      .brand {
+        display: flex; align-items: center; gap: 10px; font-family: var(--display);
+        font-weight: 800; font-size: 19px; letter-spacing: -0.02em; color: var(--navy);
+      }
+      .brand .dot { color: var(--accent-ink); }
+      .logo {
+        width: 30px; height: 30px; border-radius: 8px;
+        background: linear-gradient(180deg, var(--navy-700), var(--navy));
+        border: 1px solid rgba(60, 195, 214, 0.35); display: grid; place-items: center;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+      }
+      .logo i {
+        width: 14px; height: 14px; border: 1.8px solid var(--accent-navy);
+        border-radius: 4px; display: grid; place-items: center;
+      }
+      .logo i::after { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--accent-navy); }
       .spacer { flex: 1; }
-      .pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--chip); color: var(--muted); }
-      .pill.up { background: #e7f7ee; color: var(--ok); } .pill.down { background: #fdeaea; color: var(--err); }
-      button {
-        font: inherit; cursor: pointer; border: 1px solid transparent; border-radius: 10px;
-        padding: 9px 14px; background: var(--brand); color: var(--brand-ink); font-weight: 600;
+      .pill {
+        font-family: var(--mono); font-size: 11px; letter-spacing: 0.02em; padding: 5px 11px;
+        border-radius: 999px; background: var(--chip); color: var(--muted); border: 1px solid var(--line-strong);
       }
-      button.ghost { background: #fff; color: var(--ink); border-color: var(--line); }
-      button:disabled { opacity: .55; cursor: not-allowed; }
+      .pill.up { background: rgba(46, 158, 107, 0.08); color: var(--ok-ink); border-color: rgba(46, 158, 107, 0.25); }
+      .pill.down { background: rgba(194, 68, 59, 0.07); color: var(--err); border-color: rgba(194, 68, 59, 0.25); }
+      button {
+        font: inherit; font-weight: 600; cursor: pointer; border: 1px solid transparent;
+        border-radius: var(--r-sm); padding: 10px 16px; background: var(--accent); color: #fff;
+        transition: background 0.12s ease, transform 0.12s ease;
+      }
+      button:hover { background: var(--accent-ink); }
+      button:active { transform: translateY(1px); }
+      button.ghost { background: #fff; color: var(--ink); border-color: var(--line-strong); }
+      button.ghost:hover { background: var(--panel-2); }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
       main { max-width: 880px; margin: 0 auto; padding: 28px 20px 80px; }
-      .hero h1 { font-size: 30px; letter-spacing: -.5px; margin: 6px 0; }
-      .hero p { color: var(--muted); max-width: 60ch; }
+      .hero h1 {
+        font-family: var(--display); font-weight: 800; font-size: 32px; letter-spacing: -0.025em;
+        color: var(--navy); margin: 6px 0;
+      }
+      .hero p { color: var(--muted); max-width: 62ch; }
       .card {
         background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
-        padding: 20px 22px; margin: 18px 0; box-shadow: 0 1px 2px rgba(11,16,32,.04);
+        padding: 20px 22px; margin: 18px 0; box-shadow: var(--shadow);
       }
-      .card h2 { margin: 0 0 4px; font-size: 18px; }
+      .card h2 {
+        font-family: var(--display); font-weight: 700; letter-spacing: -0.01em;
+        margin: 0 0 4px; font-size: 18px; color: var(--navy);
+      }
       .card .lead { color: var(--muted); margin: 0 0 14px; }
       .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
-      label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
+      label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; font-weight: 500; }
       input {
-        font: inherit; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; min-width: 220px;
+        font: inherit; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+        min-width: 220px; background: #fff; color: var(--ink); transition: border-color 0.12s, box-shadow 0.12s;
       }
+      input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(12, 143, 163, 0.14); }
       .field { flex: 1; min-width: 220px; }
-      .out { margin-top: 12px; font-size: 14px; }
+      .out { margin-top: 12px; font-size: 14px; color: var(--ink); }
       .muted { color: var(--muted); }
-      .ok { color: var(--ok); } .err { color: var(--err); } .warn { color: var(--warn); }
+      .ok { color: var(--ok-ink); }
+      .err { color: var(--err); }
+      .warn { color: var(--warn); }
       .steps { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 4px; }
-      .step { display: flex; align-items: center; gap: 7px; font-size: 13px; padding: 6px 10px; border-radius: 999px;
-        background: var(--chip); color: var(--muted); }
-      .step .dot { width: 9px; height: 9px; border-radius: 50%; background: #c3c9da; }
-      .step.active { background: #ecebfd; color: var(--brand); } .step.active .dot { background: var(--brand); }
-      .step.done { background: #e7f7ee; color: var(--ok); } .step.done .dot { background: var(--ok); }
-      .step.failed { background: #fdeaea; color: var(--err); } .step.failed .dot { background: var(--err); }
-      table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
-      th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
-      th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+      .step {
+        display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 12px;
+        letter-spacing: 0.02em; padding: 6px 11px; border-radius: 999px; background: var(--chip);
+        color: var(--muted); border: 1px solid var(--line-strong);
+      }
+      .step .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line-strong); }
+      .step.active { background: rgba(12, 143, 163, 0.08); color: var(--accent-ink); border-color: rgba(12, 143, 163, 0.3); }
+      .step.active .dot { background: var(--accent); }
+      .step.done { background: rgba(46, 158, 107, 0.08); color: var(--ok-ink); border-color: rgba(46, 158, 107, 0.3); }
+      .step.done .dot { background: var(--ok); }
+      .step.failed { background: rgba(194, 68, 59, 0.07); color: var(--err); border-color: rgba(194, 68, 59, 0.3); }
+      .step.failed .dot { background: var(--err); }
+      table {
+        width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 12px; font-size: 14px;
+        border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+      }
+      th {
+        text-align: left; padding: 11px 14px; font-family: var(--mono); font-size: 10.5px;
+        text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted-2);
+        background: var(--panel-2); border-bottom: 1px solid var(--line);
+      }
+      td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+      tbody tr:last-child td { border-bottom: none; }
       .check { display: flex; align-items: center; gap: 10px; padding: 10px 0; }
-      .check input { min-width: 0; width: 18px; height: 18px; }
-      code { background: #f1f3f9; padding: 1px 6px; border-radius: 6px; font-size: 13px; }
-      .note { font-size: 13px; background: #fbf7ec; border: 1px solid #f0e6c8; color: #6b5a1f;
-        padding: 10px 12px; border-radius: 10px; margin-top: 10px; }
-      footer { text-align: center; color: var(--muted); font-size: 13px; padding: 24px; }
+      .check input { min-width: 0; width: 18px; height: 18px; accent-color: var(--accent); }
+      code {
+        font-family: var(--mono); background: var(--panel-2); border: 1px solid var(--line);
+        padding: 1px 6px; border-radius: 6px; font-size: 12.5px; color: var(--accent-ink);
+      }
+      .note {
+        font-size: 13px; background: rgba(184, 121, 31, 0.06); border: 1px solid rgba(184, 121, 31, 0.25);
+        color: #6b5a1f; padding: 10px 12px; border-radius: 10px; margin-top: 10px;
+      }
+      footer { text-align: center; color: var(--muted-2); font-family: var(--mono); font-size: 12px; padding: 24px; }
+
+      /* Shepherd guided tour — themed to the HRobot design system. */
+      .shepherd-element.hrobot-step { border-radius: 14px; border: 1px solid var(--line);
+        box-shadow: 0 2px 4px rgba(11, 31, 59, 0.06), 0 24px 48px -24px rgba(11, 31, 59, 0.3); font-family: var(--sans); }
+      .shepherd-element.hrobot-step .shepherd-content { border-radius: 14px; background: var(--panel); overflow: hidden; }
+      .shepherd-element.hrobot-step .shepherd-header { background: var(--panel-2); padding: 14px 18px; }
+      .shepherd-element.hrobot-step .shepherd-title { font-family: var(--display); font-weight: 700; color: var(--navy); font-size: 15px; letter-spacing: -0.01em; }
+      .shepherd-element.hrobot-step .shepherd-text { color: var(--ink); font-size: 13.5px; line-height: 1.55; padding: 14px 18px; }
+      .shepherd-element.hrobot-step .shepherd-text code { font-family: var(--mono); background: var(--panel-2);
+        border: 1px solid var(--line); color: var(--accent-ink); padding: 1px 5px; border-radius: 5px; font-size: 12px; }
+      .shepherd-element.hrobot-step .shepherd-footer { padding: 0 18px 16px; gap: 8px; }
+      .shepherd-element.hrobot-step .shepherd-button { background: var(--accent); color: #fff; border-radius: 8px;
+        font-weight: 600; padding: 8px 14px; font-family: var(--sans); }
+      .shepherd-element.hrobot-step .shepherd-button:not(:disabled):hover { background: var(--accent-ink); }
+      .shepherd-element.hrobot-step .shepherd-button.shepherd-button-secondary { background: #fff; color: var(--ink); border: 1px solid var(--line-strong); }
+      .shepherd-element.hrobot-step .shepherd-button.shepherd-button-secondary:not(:disabled):hover { background: var(--panel-2); }
+      .shepherd-element.hrobot-step .shepherd-cancel-icon { color: var(--muted-2); }
+      .shepherd-element.hrobot-step .shepherd-arrow::before { background: var(--panel); border: 1px solid var(--line); }
     </style>
   </head>
   <body>
     <header>
-      <div class="brand"><span class="logo">H</span> HRobot</div>
+      <div class="brand"><span class="logo"><i></i></span> HRobot<span class="dot">.ai</span></div>
       <span id="health" class="pill" data-tour="health">checking API…</span>
       <div class="spacer"></div>
       <button id="tourBtn" class="ghost" data-tour="tour-btn">▶ Take the tour</button>
