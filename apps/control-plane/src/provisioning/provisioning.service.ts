@@ -1,4 +1,5 @@
-import { Inject, Injectable, Logger } from '@nestjs/common'
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
+import type { ClientProxy } from '@nestjs/microservices'
 import { ProvisioningStep } from '@hrobot/shared'
 import { ControlPlanePrismaService } from '../common/prisma/control-plane-prisma.service.js'
 
@@ -24,6 +25,9 @@ export class ProvisioningService {
     @Inject('SEED_STEP') private readonly seed: ProvisioningStepHandler,
     @Inject('KEYCLOAK_SETUP_STEP') private readonly keycloakSetup: ProvisioningStepHandler,
     @Inject('DONE_STEP') private readonly done: ProvisioningStepHandler,
+    // Optional so unit specs (which don't register the RMQ client) still construct. In the
+    // app it's the TENANT_PROVISION_CLIENT used to drive the pipeline one step at a time.
+    @Optional() @Inject('TENANT_PROVISION_CLIENT') private readonly client?: ClientProxy,
   ) {}
 
   async process(msg: { jobId: string; tenantId: string }): Promise<void> {
@@ -49,6 +53,22 @@ export class ProvisioningService {
 
     try {
       await handler.execute(job)
+      // Drive the pipeline forward: each step handler advances job.step in the DB but emits no
+      // follow-up message, so without this the job stalls after one step. Re-emit so the consumer
+      // processes the next step. Stop at terminal states (DONE/FAILED) and only emit if the step
+      // actually changed (a handler that no-ops or stays put must not cause an infinite loop).
+      const after = await this.prisma.provisioningJob.findUnique({ where: { id: job.id } })
+      const next = after?.step
+      if (
+        this.client &&
+        next &&
+        next !== job.step &&
+        next !== ProvisioningStep.DONE &&
+        next !== ProvisioningStep.FAILED
+      ) {
+        this.client.emit('tenant.provision', { jobId: job.id, tenantId: job.tenantId })
+        this.logger.log({ jobId: job.id, step: next }, 'Advancing provisioning to next step')
+      }
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : String(err)
       // Strip credentials before persisting: lastError can carry the tenant DATABASE_URL

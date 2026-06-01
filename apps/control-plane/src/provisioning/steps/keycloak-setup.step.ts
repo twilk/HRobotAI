@@ -159,12 +159,25 @@ export class KeycloakSetupStep implements ProvisioningStepHandler {
       body: JSON.stringify([{ id: adminRole.id, name: adminRole.name }]),
     })
 
-    // 6. Send credential-reset email so the admin sets their own password
-    await kc(`${adminBase}/${realmName}/users/${userId}/execute-actions-email`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(['UPDATE_PASSWORD']),
-    })
+    // 6. Send credential-reset email so the admin sets their own password. BEST-EFFORT: this
+    //    needs SMTP configured on the realm; a dev Keycloak without SMTP returns 500. The tenant
+    //    is already fully provisioned (realm + client + roles + admin user + role mapping), so a
+    //    failure here must NOT fail provisioning — log and continue. The admin can be sent the
+    //    reset later (or use the temporary password set above).
+    try {
+      const emailResp = await this.fetchFn(
+        `${adminBase}/${realmName}/users/${userId}/execute-actions-email`,
+        { method: 'PUT', headers, body: JSON.stringify(['UPDATE_PASSWORD']) },
+      )
+      if (!emailResp.ok) {
+        this.logger.warn(
+          { tenantId: job.tenantId, realmName, status: emailResp.status },
+          'Keycloak execute-actions-email failed (likely no SMTP in this env) — skipping; tenant is still provisioned',
+        )
+      }
+    } catch (err) {
+      this.logger.warn({ tenantId: job.tenantId, realmName, err }, 'Keycloak execute-actions-email threw — skipping')
+    }
 
     this.logger.log({ tenantId: job.tenantId, realmName }, 'Keycloak realm provisioned')
 

@@ -33,7 +33,6 @@ import { DoneStep } from './steps/done.step.js'
   ],
   providers: [
     ProvisioningService,
-    ProvisioningConsumer,
     {
       provide: 'SUPERUSER_PG_CLIENT',
       useFactory: async (): Promise<PgClient> => {
@@ -67,6 +66,10 @@ import { DoneStep } from './steps/done.step.js'
     { provide: 'DONE_STEP', useClass: DoneStep },
     { provide: 'FETCH', useValue: fetch },
   ],
-  controllers: [ProvisioningController],
+  // ProvisioningConsumer MUST be a controller, not a provider: NestJS only binds
+  // @EventPattern/@MessagePattern handlers declared on controllers. As a provider its handler
+  // is never registered, so the RMQ event is nacked ("unsupported event") and provisioning
+  // never advances past CREATE_DB.
+  controllers: [ProvisioningController, ProvisioningConsumer],
 })
 export class ProvisioningModule {}

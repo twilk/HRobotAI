@@ -68,6 +68,38 @@
       .note { font-size: 13px; background: #fbf7ec; border: 1px solid #f0e6c8; color: #6b5a1f;
         padding: 10px 12px; border-radius: 10px; margin-top: 10px; }
       footer { text-align: center; color: var(--muted); font-size: 13px; padding: 24px; }
+
+      /* ---- autoplay "show" stage ---- */
+      .show-focus {
+        outline: 3px solid var(--brand); outline-offset: 3px;
+        box-shadow: 0 0 0 6px rgba(79,70,229,.12); transition: outline-color .2s, box-shadow .2s;
+      }
+      #show-stage { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; display: flex;
+        justify-content: center; padding: 14px; pointer-events: none; }
+      #show-stage.hidden { display: none; }
+      #show-caption {
+        pointer-events: auto; width: min(760px, 94vw); background: #0b1020; color: #eef1f8;
+        border-radius: 16px; padding: 16px 18px 12px; box-shadow: 0 18px 50px rgba(11,16,32,.4);
+        border: 1px solid #232a45;
+      }
+      #show-caption .sc-row { display: flex; gap: 12px; align-items: flex-start; }
+      #show-caption .sc-badge { flex: none; width: 30px; height: 30px; border-radius: 9px;
+        background: var(--brand); color: #fff; display: grid; place-items: center; font-weight: 700; }
+      #show-caption .sc-title { font-weight: 700; font-size: 15px; margin-bottom: 2px; }
+      #show-caption .sc-body { font-size: 14px; color: #c7cde0; line-height: 1.45; }
+      #show-caption .sc-body code { background: #1b2240; color: #cdd5ff;
+        padding: 1px 6px; border-radius: 6px; }
+      #show-caption .sc-progress { height: 4px; background: #232a45; border-radius: 999px; margin: 12px 0 10px; overflow: hidden; }
+      #show-caption .sc-progress-bar { height: 100%; width: 0; background: var(--brand); border-radius: 999px; transition: width .4s ease; }
+      #show-caption .sc-controls { display: flex; align-items: center; gap: 8px; }
+      #show-caption .sc-btn { background: var(--brand); color: #fff; border: none; border-radius: 9px;
+        padding: 7px 12px; font: inherit; font-weight: 600; font-size: 13px; cursor: pointer; }
+      #show-caption .sc-btn.ghost { background: #232a45; color: #cdd5ff; }
+      #show-caption .sc-btn:disabled { opacity: .5; cursor: default; }
+      #show-caption .sc-spacer { flex: 1; }
+      #show-caption .sc-speed { font-size: 12px; color: #aab2d0; display: flex; align-items: center; gap: 6px; }
+      #show-caption .sc-speed select { background: #1b2240; color: #eef1f8; border: 1px solid #232a45;
+        border-radius: 7px; padding: 4px 6px; font: inherit; font-size: 12px; }
     </style>
   </head>
   <body>
@@ -75,6 +107,7 @@
       <div class="brand"><span class="logo">H</span> HRobot</div>
       <span id="health" class="pill" data-tour="health">checking API…</span>
       <div class="spacer"></div>
+      <button id="showBtn" data-tour="show-btn">🎬 Play the show</button>
       <button id="tourBtn" class="ghost" data-tour="tour-btn">▶ Take the tour</button>
     </header>
 
@@ -164,5 +197,10 @@
     <script src="./vendor/shepherd.min.js"></script>
     <script src="./app.js"></script>
     <script src="./tour.js"></script>
+    <script src="./show.js"></script>
+    <script>
+      // Wire the header "Play the show" button to the autoplay orchestrator.
+      document.getElementById('showBtn').addEventListener('click', () => window.HRobotShow && window.HRobotShow.start())
+    </script>
   </body>
 </html>

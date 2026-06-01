@@ -4,6 +4,18 @@ import { ProvisioningStep } from '@hrobot/shared'
 import { ControlPlanePrismaService } from '../../common/prisma/control-plane-prisma.service.js'
 import type { ProvisioningStepHandler } from '../provisioning.service.js'
 
+/** Resolve the Prisma CLI's JS entrypoint so we can run it with the current Node binary directly.
+ *  Spawning `pnpm prisma …` as a child hangs on Windows (the pnpm shell shim never returns under
+ *  execFile); invoking node on the resolved CLI is deterministic and cross-platform. `prisma` is a
+ *  dependency of @hrobot/db (not this app), so resolve it via @hrobot/db's own resolution paths.
+ *  The app compiles to CommonJS, so `require.resolve` is available. */
+function resolvePrismaCli(): string {
+  // @hrobot/db is where `prisma` is installed; resolve its entry, then resolve prisma from there.
+  const dbEntry = require.resolve('@hrobot/db')
+  const pkgJson = require.resolve('prisma/package.json', { paths: [dbEntry] })
+  return pkgJson.replace(/package\.json$/, 'build/index.js')
+}
+
 // C5: async runner so a long `prisma migrate deploy` never blocks the shared HTTP + AMQP event
 // loop (was synchronous spawnSync). Injected for testability; the module provides promisify(execFile).
 export type ExecFileAsyncFn = (
@@ -32,8 +44,8 @@ export class RunMigrationsStep implements ProvisioningStepHandler {
 
     try {
       await this.exec(
-        'pnpm',
-        ['prisma', 'migrate', 'deploy', '--schema=packages/db/prisma/tenant/schema.prisma'],
+        process.execPath, // the current node binary — avoids the pnpm shell shim (hangs on Windows)
+        [resolvePrismaCli(), 'migrate', 'deploy', '--schema=packages/db/prisma/tenant/schema.prisma'],
         { env: { ...process.env, DATABASE_URL: dbUrl }, timeout: 120_000 },
       )
     } catch (err: unknown) {

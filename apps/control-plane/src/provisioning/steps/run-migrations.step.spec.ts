@@ -40,13 +40,16 @@ describe('RunMigrationsStep', () => {
 
     await step.execute(job)
 
-    expect(mockExec).toHaveBeenCalledWith(
-      'pnpm',
-      ['prisma', 'migrate', 'deploy', '--schema=packages/db/prisma/tenant/schema.prisma'],
-      expect.objectContaining({
-        env: expect.objectContaining({ DATABASE_URL: plainUrl }) as Record<string, string>,
-      }),
+    // Invoked via the current node binary on the resolved Prisma CLI (not `pnpm`, whose shell
+    // shim hangs when spawned on Windows). Assert the args carry migrate deploy + tenant schema.
+    expect(mockExec).toHaveBeenCalledTimes(1)
+    const [bin, args, opts] = mockExec.mock.calls[0]
+    expect(bin).toBe(process.execPath)
+    expect(args).toEqual(
+      expect.arrayContaining(['migrate', 'deploy', '--schema=packages/db/prisma/tenant/schema.prisma']),
     )
+    expect(String(args[0])).toMatch(/prisma[\\/].*index\.js$/)
+    expect(opts.env.DATABASE_URL).toBe(plainUrl)
     expect(mockPrisma.provisioningJob.update).toHaveBeenCalledWith({
       where: { id: 'job-1' },
       data: { step: ProvisioningStep.SEED },

@@ -32,7 +32,6 @@ import { DoneStep } from './steps/done.step.js'
   ],
   providers: [
     ProvisioningService,
-    ProvisioningConsumer,
     {
       provide: 'SUPERUSER_PG_CLIENT',
       useFactory: async (): Promise<PgClient> => {
@@ -66,6 +65,8 @@ import { DoneStep } from './steps/done.step.js'
     { provide: 'DONE_STEP', useClass: DoneStep },
     { provide: 'FETCH', useValue: fetch },
   ],
-  controllers: [ProvisioningController],
+  // ProvisioningConsumer MUST be a controller — NestJS only binds @EventPattern handlers on
+  // controllers, not providers (otherwise the RMQ event is nacked and provisioning stalls).
+  controllers: [ProvisioningController, ProvisioningConsumer],
 })
 export class ProvisioningModule {}
