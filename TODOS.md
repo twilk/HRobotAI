@@ -4,6 +4,24 @@ Deferred items surfaced by `/autoplan`. Items here are NOT in the current plan's
 they are parked decisions or follow-up work. Merge-blocking fixes live in the plan file's
 review report, not here.
 
+## Autoplay "show" + provisioning pipeline (2026-06-01)
+
+- [x] **Autoplay "show" mode** (`apps/web/show.js`, `5c1f4bc`/`4cae992`): one click → hands-free,
+      timed walkthrough that drives the REAL APIs (fresh slug → signup → live provisioning awaited
+      to DONE → login → team → checklist), with a Pause/Resume/Skip/Restart/Stop + speed control bar.
+      Verified in-browser: show runs to the finale with all 5 provisioning steps ✓ and tenant ACTIVE.
+- [x] **Provisioning pipeline now completes end-to-end** — fixed 5 stacked bugs that made signup→DONE
+      never work on a real run (none caught by 114 unit tests; only running it surfaced them):
+      @MessagePattern→@EventPattern; consumer providers→controllers; re-emit next step (incl. →DONE
+      so DoneStep flips tenant ACTIVE); emit() wrapped in firstValueFrom; `pnpm prisma`→`node <prisma>`
+      (Windows spawn hang); execute-actions-email best-effort (no dev SMTP). Live: 5 jobs reached DONE.
+- [ ] **SeedStep idempotency** (codex Medium): `process()` has no per-job claim/lock, and SeedStep
+      blindly creates "Cała firma" — at-least-once RMQ redelivery could double-process. Add a
+      compare-and-set on job.step (claim the step) or make each step idempotent.
+- [ ] **Keycloak temp-password fallback** (codex Medium): when `execute-actions-email` fails (no SMTP),
+      the generated temp password is neither persisted nor surfaced, so the initial admin has no
+      onboarding path. Persist/return it, or configure dev SMTP (Mailhog), or set a known dev password.
+
 ## Consolidation — `main` trunk (2026-06-01)
 
 - [x] **All five feature branches consolidated into `main`** (default branch): two services
