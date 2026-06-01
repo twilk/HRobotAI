@@ -153,3 +153,43 @@ AI agents, mobile app, external integrations, billing.
 - Foundation design spec (route structure, middleware, Auth.js, RBAC, proof-of-stack):
   `docs/superpowers/specs/2026-05-27-hrobot-foundation-design.md` §7.
 - Prior plans: Foundation 01 (data layer), 02 (control-plane), 03 (tenant-runtime).
+
+## Eng review decisions (locked — /plan-eng-review)
+
+These supersede the matching task text above; fold them in at implementation time.
+
+- **D1 — Spike auth first (gate).** Carve T2 (Auth.js v5 + Keycloak realm-per-subdomain) out as a
+  standalone de-risk spike that must log in end-to-end (a mocked realm AND a real Keycloak realm)
+  BEFORE T4-T8 build on it. Also gate on the existing TODO "Keycloak dev admin-client automation" so
+  signup → DONE actually runs (today the pipeline parks before KEYCLOAK_SETUP without it).
+- **Issue 1 (P1) — Edge-safe tenant resolution.** Middleware must NOT use `ioredis` (it runs on the
+  Edge runtime). T1 resolves via a `fetch` to a new control-plane `GET /api/tenants/resolve/:slug`
+  (Redis-cached + suspend/deprovision-invalidated server-side, reusing the P3-5 fix). Add a short
+  Next `fetch` revalidate (~30-60s) on that call so it is not a hop per request.
+- **Issue 2 (P2) — Host-only auth cookies.** Configure Auth.js v5 cookies with NO `domain` attribute,
+  so a session is scoped to exactly its tenant subdomain (defense-in-depth isolation). Test asserts
+  the cookie does not cross subdomains.
+- **Issue 3 (P2) — Tailwind v4.** Scaffold apps/web on Next 16's default Tailwind v4; port the
+  web-kit `theme.extend` into a CSS `@theme` block (values identical; mapping in the web-kit README)
+  and re-verify the screens render.
+- **Issue 4 (P2) — Fail-closed middleware.** If the resolve fetch fails (control-plane unreachable),
+  middleware rewrites to a 503 "temporarily unavailable" page — never serve a tenant shell without
+  confirming ACTIVE. + test.
+
+**Test gaps to add to T8** (coverage diagram: ~31% named → target 100%): suspended → 503;
+host-only-cookie isolation; signup 409 inline error; double-click resubmit; provisioning FAILED
+state; unauth → redirect; employees empty-state; PESEL never returned/logged; provisioning
+DONE → subdomain redirect; poll-stop after N checks; resolver-failure → 503. No regressions (new app).
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | — |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR (PLAN) | Scope OK (reuses web-kit, not greenfield). 3 architecture + 1 test/failure-mode decisions locked (Edge-safe resolve, host-only cookies, Tailwind v4, fail-closed middleware) + D1 spike-first gate. Coverage 31% → 100% gaps folded into T8. 0 critical silent gaps remaining. |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+**UNRESOLVED:** 0
+**VERDICT:** Eng Review CLEARED — Plan 4 ready to implement. Sequence: spike T2 auth first (D1), then T0-T8. Design Review optional (the UI is the already-built web-kit). CEO Review optional (no new product scope — this is the planned Foundation web app).
