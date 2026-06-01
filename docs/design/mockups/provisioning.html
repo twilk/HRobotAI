@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HRobot · Tworzymy przestrzeń</title>
+<link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@800,700&f[]=general-sans@400,500,600&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link href="system.css" rel="stylesheet" />
+<style>
+  .prov-card{width:100%;max-width:640px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow-lift);overflow:hidden}
+  .prov-top{padding:24px 26px 20px;border-bottom:1px solid var(--line)}
+  .prov-top .row{display:flex;align-items:center;gap:10px}
+  .prov-top h1{font-family:'Cabinet Grotesk',sans-serif;font-weight:800;font-size:20px;letter-spacing:-.02em;color:var(--navy);margin-top:14px}
+  .prov-top .sub{color:var(--muted);font-size:13px;margin-top:4px}
+  .prov-top .sub .mono{color:var(--accent-ink)}
+  .prov-body{display:grid;grid-template-columns:1fr .92fr}
+  .steps{padding:24px 24px 24px 26px}
+  .step{position:relative;padding:0 0 22px 44px;min-height:50px}
+  .step:last-child{padding-bottom:0;min-height:auto}
+  .node{position:absolute;left:0;top:0;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#fff}
+  .node svg{width:15px;height:15px;stroke:#fff;stroke-width:2.4;fill:none}
+  .step::before{content:"";position:absolute;left:14px;top:30px;bottom:0;width:2px;background:var(--line)}
+  .step:last-child::before{display:none}
+  .step.done::before{background:var(--accent)}
+  .node.done{background:var(--accent)}
+  .node.active{background:#fff;border:2px solid var(--accent);animation:pulse 1.8s var(--ease) infinite}
+  .node.active::after{content:"";width:9px;height:9px;border-radius:50%;background:var(--accent)}
+  .node.pending{background:#fff;border:2px solid var(--line-strong)}
+  .node.pending::after{content:"";width:7px;height:7px;border-radius:50%;background:var(--line-strong)}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(12,143,163,.35)}70%{box-shadow:0 0 0 9px rgba(12,143,163,0)}100%{box-shadow:0 0 0 0 rgba(12,143,163,0)}}
+  .s-lbl{font-weight:600;font-size:14.5px;letter-spacing:-.01em}
+  .step.pending .s-lbl{color:var(--muted-2)}
+  .s-id{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted-2);margin-top:2px}
+  .s-stat{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;margin-top:3px}
+  .step.done .s-stat{color:var(--verified)}
+  .step.active .s-stat{color:var(--accent-ink)}
+  .step.pending .s-stat{color:var(--muted-2)}
+
+  .prov-side{background:var(--card-2);border-left:1px solid var(--line);padding:24px 24px}
+  .prov-side .k{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.06em;color:var(--accent-ink)}
+  .prov-side h3{font-family:'Cabinet Grotesk',sans-serif;font-weight:700;font-size:18px;letter-spacing:-.02em;color:var(--navy);margin:12px 0 8px;line-height:1.2}
+  .prov-side p{color:var(--muted);font-size:13.5px;line-height:1.55}
+  .prov-side .chip-secured{margin-top:18px}
+  .prov-foot{display:flex;align-items:center;gap:8px;padding:14px 26px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+  .prov-foot .mono{margin-left:auto;color:var(--muted-2);font-size:11px}
+</style>
+</head>
+<body>
+  <div class="auth motif-navy">
+    <div class="prov-card">
+      <div class="prov-top">
+        <div class="row"><div class="mark"><i></i></div><div class="wordmark" style="color:var(--navy)">HRobot<span style="color:var(--accent-ink)">.ai</span></div></div>
+        <h1>Tworzymy Twoją przestrzeń roboczą</h1>
+        <div class="sub">Zaraz będzie gotowa pod adresem <span class="mono">acme.hrobot.ai</span></div>
+      </div>
+
+      <div class="prov-body">
+        <div class="steps">
+          <div class="step done">
+            <div class="node done"><svg viewBox="0 0 24 24"><path d="m5 12 4 4 10-10"/></svg></div>
+            <div class="s-lbl">Izolowana baza danych</div>
+            <div class="s-id">CREATE_DB</div>
+            <div class="s-stat">Ukończono</div>
+          </div>
+          <div class="step done">
+            <div class="node done"><svg viewBox="0 0 24 24"><path d="m5 12 4 4 10-10"/></svg></div>
+            <div class="s-lbl">Struktura przestrzeni</div>
+            <div class="s-id">RUN_MIGRATIONS</div>
+            <div class="s-stat">Ukończono</div>
+          </div>
+          <div class="step active">
+            <div class="node active"></div>
+            <div class="s-lbl">Ustawienia początkowe</div>
+            <div class="s-id">SEED</div>
+            <div class="s-stat">W toku</div>
+          </div>
+          <div class="step pending">
+            <div class="node pending"></div>
+            <div class="s-lbl">Bezpieczne logowanie</div>
+            <div class="s-id">KEYCLOAK_SETUP</div>
+            <div class="s-stat">Oczekuje</div>
+          </div>
+          <div class="step pending">
+            <div class="node pending"></div>
+            <div class="s-lbl">Gotowe</div>
+            <div class="s-id">DONE</div>
+            <div class="s-stat">Oczekuje</div>
+          </div>
+        </div>
+
+        <div class="prov-side">
+          <div class="k">Krok 3 z 5</div>
+          <h3>Przygotowujemy ustawienia</h3>
+          <p>Dodajemy domyślne ustawienia i pierwszą jednostkę organizacyjną Twojej firmy. Twoje dane nigdy nie dotykają systemów innych firm.</p>
+          <div class="chip-secured"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Szyfrowane · RODO</div>
+        </div>
+      </div>
+
+      <div class="prov-foot">
+        <span>To zwykle zajmuje mniej niż minutę.</span>
+        <span class="mono">job: 7d33-ac21</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

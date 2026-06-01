@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HRobot · Mobile</title>
+<link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@800,700&f[]=general-sans@400,500,600&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link href="system.css" rel="stylesheet" />
+<style>
+  body{overflow:hidden}
+  .m-topbar{height:56px;display:flex;align-items:center;gap:12px;padding:0 14px;background:var(--canvas);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+  .burger{width:38px;height:38px;border:1px solid var(--line-strong);border-radius:8px;background:var(--card);display:grid;place-items:center}
+  .burger svg{width:18px;height:18px;stroke:var(--ink);stroke-width:1.8;fill:none}
+  .m-brand{display:flex;align-items:center;gap:8px}
+  .m-brand .wordmark{color:var(--navy);font-size:17px}
+  .m-brand .wordmark span{color:var(--accent-ink)}
+  .m-spacer{margin-left:auto}
+  .m-content{padding:18px 14px;height:calc(100vh - 56px);overflow:hidden}
+  .m-hello{font-family:'Cabinet Grotesk',sans-serif;font-weight:800;font-size:23px;letter-spacing:-.02em;color:var(--navy)}
+  .m-sub{color:var(--muted);font-size:13.5px;margin:6px 0 16px}
+  .m-card{padding:15px 15px;margin-bottom:12px}
+  .m-card h3{font-size:15px;font-weight:600}
+  .m-card p{font-size:12.5px;color:var(--muted);margin-top:3px}
+  /* drawer */
+  .scrim{position:fixed;inset:0;background:rgba(8,16,28,.55);z-index:20}
+  .drawer{position:fixed;top:0;left:0;bottom:0;width:286px;flex:0 0 286px;z-index:21;box-shadow:0 0 70px rgba(0,0,0,.45)}
+  .drawer nav{padding:16px 12px;flex:1;overflow-y:auto}
+  .drawer-close{position:absolute;top:18px;right:16px;width:30px;height:30px;border-radius:7px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.12)}
+  .drawer-close svg{width:15px;height:15px;stroke:#A9B6CA;stroke-width:2;fill:none}
+</style>
+</head>
+<body>
+  <!-- content behind -->
+  <header class="m-topbar">
+    <button class="burger"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <div class="m-brand"><div class="mark" style="width:26px;height:26px"><i style="width:12px;height:12px"></i></div><div class="wordmark">HRobot<span>.ai</span></div></div>
+    <div class="m-spacer"></div>
+    <div class="ava">JK</div>
+  </header>
+  <div class="m-content">
+    <div class="m-hello">Witaj, ACME</div>
+    <div class="m-sub">Skonfiguruj swój zespół w kilku krokach.</div>
+    <div class="card m-card"><h3>Dodaj pracownika</h3><p>Zacznij budować kartoteki kadrowe.</p></div>
+    <div class="card m-card"><h3>Pierwsze kroki</h3><p>0 / 3 ukończono</p></div>
+  </div>
+
+  <!-- drawer open -->
+  <div class="scrim"></div>
+  <aside class="rail drawer">
+    <div class="brand">
+      <div class="brand-row"><div class="mark"><i></i></div><div class="wordmark">HRobot<span>.ai</span></div></div>
+      <div class="tenant"><div class="tenant-name">ACME Sp. z o.o.</div><div class="tenant-slug mono">acme.hrobot.ai</div></div>
+      <button class="drawer-close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <nav>
+      <div class="grp">Moduły HR</div>
+      <a class="item active" href="#"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Dashboard</a>
+      <a class="item" href="#"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c.7-3.3 3-5 5.5-5s4.8 1.7 5.5 5"/><path d="M16 6.5a3 3 0 0 1 0 5.6"/><path d="M18.5 20c-.3-2-1-3.3-2-4.2"/></svg>Pracownicy</a>
+      <a class="item" href="#"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/></svg>Grafik</a>
+      <a class="item" href="#"><svg viewBox="0 0 24 24"><path d="M5 3.5h11l3 3V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"/><path d="M8 11h8M8 15h5"/></svg>Wnioski<span class="tag">3</span></a>
+      <a class="item" href="#"><svg viewBox="0 0 24 24"><circle cx="8" cy="13" r="3.4"/><path d="M11 11.5 19 4M16 4h3v3M14.5 6.5 16.5 8.5"/></svg>Dostępy</a>
+      <div class="grp" style="margin-top:14px">Administracja</div>
+      <a class="item" href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18 6l-2 2M8 16l-2 2M18 18l-2-2M8 8 6 6"/></svg>Ustawienia</a>
+      <a class="item" href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c.8-3.6 3.4-5.5 7-5.5s6.2 1.9 7 5.5"/></svg>Użytkownicy</a>
+    </nav>
+    <div class="rail-foot">
+      <svg viewBox="0 0 24 24"><path d="M12 2.5 4.5 6v6c0 4.6 3.1 7.9 7.5 9.5 4.4-1.6 7.5-4.9 7.5-9.5V6L12 2.5Z"/><path d="m9 12 2 2 4-4"/></svg>
+      <span class="lbl">Dane chronione w UE</span><span class="reg">EU</span>
+    </div>
+  </aside>
+</body>
+</html>

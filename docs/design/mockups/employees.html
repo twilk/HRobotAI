@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HRobot · Pracownicy</title>
+<link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@800,700&f[]=general-sans@400,500,600&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link href="system.css" rel="stylesheet" />
+<style>
+  .phead-row{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:22px}
+  .ph-actions{display:flex;align-items:center;gap:10px}
+  .search{position:relative}
+  .search svg{position:absolute;left:11px;top:11px;width:17px;height:17px;stroke:var(--muted-2);stroke-width:1.7;fill:none}
+  .search input{height:40px;width:230px;padding:0 12px 0 35px;border:1px solid var(--line-strong);border-radius:var(--r-sm);background:var(--card);font-family:inherit;font-size:14px;color:var(--ink)}
+  .search input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(12,143,163,.14)}
+  .btn-sm{height:40px;padding:0 14px;font-size:14px}
+  .email{font-size:11.5px;color:var(--muted-2);margin-top:1px}
+  .content{padding-left:28px;padding-right:28px}
+  .page-sub{white-space:nowrap}
+  .table th,.table td{padding:12px 13px}
+  .table td:first-child,.table th:first-child{padding-left:16px}
+</style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="rail">
+      <div class="brand">
+        <div class="brand-row"><div class="mark"><i></i></div><div class="wordmark">HRobot<span>.ai</span></div></div>
+        <div class="tenant"><div class="tenant-name">ACME Sp. z o.o.</div><div class="tenant-slug mono">acme.hrobot.ai</div></div>
+      </div>
+      <nav>
+        <div class="grp">Moduły HR</div>
+        <a class="item" href="dashboard.html"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Dashboard</a>
+        <a class="item active" href="#"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c.7-3.3 3-5 5.5-5s4.8 1.7 5.5 5"/><path d="M16 6.5a3 3 0 0 1 0 5.6"/><path d="M18.5 20c-.3-2-1-3.3-2-4.2"/></svg>Pracownicy</a>
+        <a class="item" href="#"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/></svg>Grafik</a>
+        <a class="item" href="#"><svg viewBox="0 0 24 24"><path d="M5 3.5h11l3 3V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"/><path d="M8 11h8M8 15h5"/></svg>Wnioski<span class="tag">3</span></a>
+        <a class="item" href="#"><svg viewBox="0 0 24 24"><circle cx="8" cy="13" r="3.4"/><path d="M11 11.5 19 4M16 4h3v3M14.5 6.5 16.5 8.5"/></svg>Dostępy</a>
+        <div class="grp" style="margin-top:14px">Administracja</div>
+        <a class="item" href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18 6l-2 2M8 16l-2 2M18 18l-2-2M8 8 6 6"/></svg>Ustawienia</a>
+        <a class="item" href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c.8-3.6 3.4-5.5 7-5.5s6.2 1.9 7 5.5"/></svg>Użytkownicy</a>
+      </nav>
+      <div class="rail-foot">
+        <svg viewBox="0 0 24 24"><path d="M12 2.5 4.5 6v6c0 4.6 3.1 7.9 7.5 9.5 4.4-1.6 7.5-4.9 7.5-9.5V6L12 2.5Z"/><path d="m9 12 2 2 4-4"/></svg>
+        <span class="lbl">Dane chronione w UE</span><span class="reg">EU-CENTRAL</span>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <div class="crumb"><b>Pracownicy</b><span class="mono">acme.hrobot.ai</span></div>
+        <div class="tb-right">
+          <div class="chip-secured"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Sesja szyfrowana</div>
+          <button class="icon-btn"><span class="dot"></span><svg viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z"/><path d="M10 19a2 2 0 0 0 4 0"/></svg></button>
+          <div class="who"><div class="ava">JK</div><div><div class="nm">Jan Kowalski</div><div class="role">Admin klienta</div></div></div>
+        </div>
+      </header>
+
+      <div class="content">
+        <div class="wrap">
+          <div class="phead-row">
+            <div><div class="page-h">Pracownicy</div><div class="page-sub">8 osób · 2 jednostki organizacyjne</div></div>
+            <div class="ph-actions">
+              <div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg><input placeholder="Szukaj pracownika" /></div>
+              <button class="btn btn-primary btn-sm"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Dodaj pracownika</button>
+            </div>
+          </div>
+
+          <table class="table">
+            <thead><tr>
+              <th>Pracownik</th><th>Stanowisko</th><th>Jednostka</th><th>Typ</th><th>PESEL</th><th>Status</th>
+            </tr></thead>
+            <tbody>
+              <tr>
+                <td><div class="cellname"><div class="ava">AN</div><div><b>Anna Nowak</b><div class="email">anna.nowak@acme.pl</div></div></div></td>
+                <td>Kierownik zmiany</td><td>Produkcja</td><td><span class="badge">UoP</span></td>
+                <td class="num">•••••••4821</td><td><span class="badge badge-ok">Aktywny</span></td>
+              </tr>
+              <tr>
+                <td><div class="cellname"><div class="ava">PW</div><div><b>Piotr Wiśniewski</b><div class="email">piotr.wisniewski@acme.pl</div></div></div></td>
+                <td>Operator maszyn</td><td>Produkcja</td><td><span class="badge">UoP</span></td>
+                <td class="num">•••••••1093</td><td><span class="badge badge-ok">Aktywny</span></td>
+              </tr>
+              <tr>
+                <td><div class="cellname"><div class="ava">KW</div><div><b>Katarzyna Wójcik</b><div class="email">k.wojcik@acme.pl</div></div></div></td>
+                <td>Specjalista HR</td><td>Kadry</td><td><span class="badge">UoP</span></td>
+                <td class="num">•••••••7754</td><td><span class="badge badge-ok">Aktywny</span></td>
+              </tr>
+              <tr>
+                <td><div class="cellname"><div class="ava">TK</div><div><b>Tomasz Kamiński</b><div class="email">t.kaminski@acme.pl</div></div></div></td>
+                <td>Magazynier</td><td>Logistyka</td><td><span class="badge">Zlecenie</span></td>
+                <td class="num">•••••••2310</td><td><span class="badge badge-ok">Aktywny</span></td>
+              </tr>
+              <tr>
+                <td><div class="cellname"><div class="ava">ML</div><div><b>Magdalena Lewandowska</b><div class="email">m.lewandowska@acme.pl</div></div></div></td>
+                <td>Księgowa</td><td>Finanse</td><td><span class="badge">UoP</span></td>
+                <td class="num">•••••••6642</td><td><span class="badge badge-warn">Urlop</span></td>
+              </tr>
+              <tr>
+                <td><div class="cellname"><div class="ava">MZ</div><div><b>Marek Zieliński</b><div class="email">m.zielinski@acme.pl</div></div></div></td>
+                <td>Kierowca</td><td>Logistyka</td><td><span class="badge">B2B</span></td>
+                <td class="num">•••••••9087</td><td><span class="badge badge-ok">Aktywny</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

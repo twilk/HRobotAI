@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HRobot · System projektowy</title>
+<link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@800,700&f[]=general-sans@400,500,600&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link href="system.css" rel="stylesheet" />
+<style>
+  .page{max-width:840px;margin:0 auto;padding:56px 24px 72px}
+  .head{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  h1{font-family:'Cabinet Grotesk',sans-serif;font-weight:800;font-size:30px;letter-spacing:-.025em;color:var(--navy)}
+  .lead{color:var(--muted);font-size:15px;margin:10px 0 8px;max-width:62ch}
+  .tags{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 30px}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+  .scr{display:flex;align-items:center;gap:14px;padding:16px 16px;cursor:pointer;transition:transform .14s var(--ease),box-shadow .14s,border-color .14s}
+  .scr:hover{transform:translateY(-2px);box-shadow:var(--shadow);border-color:var(--line-strong)}
+  .scr .n{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--accent-ink);width:26px}
+  .scr b{font-weight:600;font-size:15px;letter-spacing:-.01em;display:block}
+  .scr span{font-size:12.5px;color:var(--muted)}
+  .scr .arr{margin-left:auto;stroke:var(--muted-2);stroke-width:2;fill:none;width:18px;height:18px}
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="head"><div class="mark lg"><i></i></div><div class="wordmark lg" style="color:var(--navy)">HRobot<span style="color:var(--accent-ink)">.ai</span></div></div>
+    <h1>System projektowy</h1>
+    <p class="lead">Refit pod tożsamość „RODO-native, EU-trust”. Granat jako kotwica, ciepła paleta, sygnałowy teal, charakterystyczna typografia i warstwa mono dla precyzji i bezpieczeństwa. Bez glassmorphizmu, bez Inter, bez neonu.</p>
+    <div class="tags">
+      <span class="badge badge-role">Cabinet Grotesk</span>
+      <span class="badge badge-role">General Sans</span>
+      <span class="badge badge-role">IBM Plex Mono</span>
+      <span class="badge">#0B1F3B</span>
+      <span class="badge">#F6F4EE</span>
+      <span class="badge">#0C8FA3</span>
+      <span class="badge badge-ok">RODO · EU</span>
+    </div>
+
+    <div class="grid">
+      <a class="card scr" href="dashboard.html"><span class="n">01</span><div><b>Dashboard</b><span>Powitanie, szybkie akcje, ochrona danych</span></div><svg class="arr" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <a class="card scr" href="signup.html"><span class="n">02</span><div><b>Rejestracja</b><span>Slug na żywo, siła hasła, linia zaufania</span></div><svg class="arr" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <a class="card scr" href="provisioning.html"><span class="n">03</span><div><b>Provisioning</b><span>Pipeline mono, 5 kroków, kopia korzyści</span></div><svg class="arr" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <a class="card scr" href="employees.html"><span class="n">04</span><div><b>Pracownicy</b><span>Tabela danych, PESEL mono, statusy</span></div><svg class="arr" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <a class="card scr" href="employees-empty.html"><span class="n">05</span><div><b>Pusty stan</b><span>Onboarding, 2 CTA, import wkrótce</span></div><svg class="arr" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <a class="card scr" href="mobile.html"><span class="n">06</span><div><b>Mobile</b><span>Szuflada nawigacji 375px</span></div><svg class="arr" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <a class="card scr" href="keycloak-login.html"><span class="n">07</span><div><b>Logowanie (Keycloak)</b><span>Motyw HRobot, nie domyślny Keycloak</span></div><svg class="arr" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+    </div>
+  </div>
+</body>
+</html>

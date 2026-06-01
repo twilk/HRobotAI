@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HRobot · Pracownicy</title>
+<link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@800,700&f[]=general-sans@400,500,600&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link href="system.css" rel="stylesheet" />
+<style>
+  .empty .ico.motif::after{opacity:.0}
+  .empty .badge-soon{margin-left:7px}
+  .tip{position:relative}
+</style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="rail">
+      <div class="brand">
+        <div class="brand-row"><div class="mark"><i></i></div><div class="wordmark">HRobot<span>.ai</span></div></div>
+        <div class="tenant"><div class="tenant-name">ACME Sp. z o.o.</div><div class="tenant-slug mono">acme.hrobot.ai</div></div>
+      </div>
+      <nav>
+        <div class="grp">Moduły HR</div>
+        <a class="item" href="dashboard.html"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Dashboard</a>
+        <a class="item active" href="#"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c.7-3.3 3-5 5.5-5s4.8 1.7 5.5 5"/><path d="M16 6.5a3 3 0 0 1 0 5.6"/><path d="M18.5 20c-.3-2-1-3.3-2-4.2"/></svg>Pracownicy</a>
+        <a class="item" href="#"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/></svg>Grafik</a>
+        <a class="item" href="#"><svg viewBox="0 0 24 24"><path d="M5 3.5h11l3 3V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"/><path d="M8 11h8M8 15h5"/></svg>Wnioski<span class="tag">3</span></a>
+        <a class="item" href="#"><svg viewBox="0 0 24 24"><circle cx="8" cy="13" r="3.4"/><path d="M11 11.5 19 4M16 4h3v3M14.5 6.5 16.5 8.5"/></svg>Dostępy</a>
+        <div class="grp" style="margin-top:14px">Administracja</div>
+        <a class="item" href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18 6l-2 2M8 16l-2 2M18 18l-2-2M8 8 6 6"/></svg>Ustawienia</a>
+        <a class="item" href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c.8-3.6 3.4-5.5 7-5.5s6.2 1.9 7 5.5"/></svg>Użytkownicy</a>
+      </nav>
+      <div class="rail-foot">
+        <svg viewBox="0 0 24 24"><path d="M12 2.5 4.5 6v6c0 4.6 3.1 7.9 7.5 9.5 4.4-1.6 7.5-4.9 7.5-9.5V6L12 2.5Z"/><path d="m9 12 2 2 4-4"/></svg>
+        <span class="lbl">Dane chronione w UE</span><span class="reg">EU-CENTRAL</span>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <div class="crumb"><b>Pracownicy</b><span class="mono">acme.hrobot.ai</span></div>
+        <div class="tb-right">
+          <div class="chip-secured"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Sesja szyfrowana</div>
+          <button class="icon-btn"><span class="dot"></span><svg viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z"/><path d="M10 19a2 2 0 0 0 4 0"/></svg></button>
+          <div class="who"><div class="ava">JK</div><div><div class="nm">Jan Kowalski</div><div class="role">Admin klienta</div></div></div>
+        </div>
+      </header>
+
+      <div class="content">
+        <div class="empty">
+          <div class="ico"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.3"/><path d="M3.4 20c.7-3.4 3-5.2 5.6-5.2 1 0 2 .3 2.8.8"/><path d="M16.5 6.4a3 3 0 0 1 0 5.8"/><path d="M17 14.2v6M14 17.2h6"/></svg></div>
+          <h2>Brak pracowników</h2>
+          <p>Dodaj pracowników, aby zacząć planować grafiki i obsługiwać wnioski urlopowe. PESEL jest szyfrowany automatycznie.</p>
+          <div class="cta">
+            <button class="btn btn-primary"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Dodaj pracownika</button>
+            <button class="btn btn-ghost is-disabled" title="Dostępne wkrótce" aria-disabled="true">Importuj z CSV<span class="badge badge-muted badge-soon">wkrótce</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

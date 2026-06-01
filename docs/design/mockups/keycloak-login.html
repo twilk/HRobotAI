@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HRobot · Logowanie</title>
+<link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@800,700&f[]=general-sans@400,500,600&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link href="system.css" rel="stylesheet" />
+<style>
+  .lbl-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
+  .lbl-row label{margin-bottom:0}
+  .lbl-row a{font-size:12px;color:var(--accent-ink);font-weight:500}
+  .kc-note{display:flex;align-items:center;justify-content:center;gap:7px;margin-top:18px;padding-top:16px;border-top:1px solid var(--line);
+    font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--muted-2)}
+  .kc-note svg{width:13px;height:13px;stroke:var(--verified);stroke-width:1.8;fill:none}
+</style>
+</head>
+<body>
+  <div class="auth motif-navy">
+    <div style="width:100%;max-width:420px;position:relative">
+      <div class="auth-card">
+        <div class="auth-head">
+          <div class="auth-brand">
+            <div class="mark"><i></i></div>
+            <div class="wordmark">HRobot<span>.ai</span></div>
+          </div>
+          <h1>Zaloguj się</h1>
+          <p class="lead">Witaj ponownie w przestrzeni <b style="color:var(--accent-ink)">ACME</b></p>
+        </div>
+
+        <div class="field">
+          <label for="u">Email lub login</label>
+          <input id="u" class="input" type="text" value="jan.kowalski@acme.pl" />
+        </div>
+
+        <div class="field" style="margin-bottom:20px">
+          <div class="lbl-row"><label for="p">Hasło</label><a href="#">Zapomniałeś hasła?</a></div>
+          <input id="p" class="input" type="password" value="••••••••••••" />
+        </div>
+
+        <button class="btn btn-primary btn-block">Zaloguj się</button>
+
+        <div class="kc-note">
+          <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+          Zabezpieczone · realm: hrobot-acme
+        </div>
+      </div>
+
+      <div class="trustline"><b>RODO</b> · Krótkie sesje · Rotacja tokenów</div>
+    </div>
+  </div>
+</body>
+</html>
