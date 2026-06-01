@@ -4,6 +4,25 @@ Deferred items surfaced by `/autoplan`. Items here are NOT in the current plan's
 they are parked decisions or follow-up work. Merge-blocking fixes live in the plan file's
 review report, not here.
 
+## Consolidation — `main` trunk (2026-06-01)
+
+- [x] **All five feature branches consolidated into `main`** (default branch): two services
+      (`apps/control-plane`, `apps/tenant-runtime`) + `apps/web` on the hardened data layer.
+      `pnpm build` + 114 unit tests green. PRs #1-#5 closed as superseded (branches kept).
+- [x] **Container build fixed for the two-app layout** (`e7bee40`, `37da00e`): per-app
+      Dockerfiles (paths/name corrected, `packages/db/prisma` copied before install for the
+      `postinstall` db:generate, bcrypt check run from the app dir); compose now has profile-gated
+      `control-plane` (:3000) + `tenant-runtime` (:3001). Both images build; tenant-runtime image
+      verified booting (health live/ready ok).
+- [x] **Boot-blocker fixed (found by booting the image, not by tests):** `@TenantRoute()`
+      re-instantiates `TenantContextInterceptor` per host module, but `REDIS_FALLBACK_COUNTER`
+      wasn't exported from the `@Global()` `TenantRuntimeModule` → app crashed at startup. Exported
+      the token + prom counter. All 42 unit specs mocked the token, so only a real boot caught it.
+- [ ] **End-to-end container boot of BOTH services via `docker compose --profile full up`** on a
+      fresh stack (control-plane was verified in an earlier session; tenant-runtime verified now via
+      `docker run`; the combined compose path + a real signup→DONE through the containers is the
+      remaining check). Also: slim the 858MB images (`pnpm deploy --prod` / distroless).
+
 ## Foundation Plan 2 — Control Plane (review 2026-05-31)
 
 ### Deferred — foundation scope exclusion (premise P5, held by user)
