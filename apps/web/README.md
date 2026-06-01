@@ -16,8 +16,8 @@ node apps/web/serve.mjs            # -> http://localhost:5173
 docker compose up -d               # postgres, redis, rabbitmq, keycloak
 pnpm --filter @hrobot/db migrate:control:deploy
 pnpm --filter @hrobot/db seed:admin:dev
-pnpm --filter @hrobot/api dev                              # control-plane :3000
-PORT=3001 pnpm --filter @hrobot/api dev   # tenant-runtime (run from that worktree)
+pnpm --filter @hrobot/control-plane dev                   # control-plane :3000
+PORT=3001 pnpm --filter @hrobot/tenant-runtime dev        # tenant-runtime :3001
 ```
 
 Open `http://localhost:5173`. The tour auto-starts on first visit; re-run it any time with

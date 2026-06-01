@@ -1,14 +1,15 @@
-# HRobot control-plane dev stack.
+# HRobot dev stack — two services (control-plane :3000, tenant-runtime :3001).
 #
 #   docker compose up -d                  # backing services only (postgres, redis, rabbitmq, keycloak)
-#   docker compose --profile full up -d --build   # + the API container (or: docker compose up --build api)
+#   docker compose --profile full up -d --build   # + both app containers
 #   docker compose ps                     # check health
 #   docker compose down                   # stop (add -v to wipe data)
 #
-# For day-to-day dev, run the API on the host (`pnpm --filter @hrobot/api dev`)
-# against `docker compose up -d`. The containerized `api` service (profile "full")
-# is for CI / prod-parity and is NOT started by a bare `up -d`, so it never
-# collides with a host API on :3000.
+# For day-to-day dev, run the apps on the host
+# (`pnpm --filter @hrobot/control-plane dev`, `PORT=3001 pnpm --filter @hrobot/tenant-runtime dev`)
+# against `docker compose up -d`. The containerized `control-plane` / `tenant-runtime`
+# services (profile "full") are for CI / prod-parity and are NOT started by a bare
+# `up -d`, so they never collide with host apps on :3000 / :3001.
 
 services:
   postgres:
@@ -60,16 +61,14 @@ services:
     ports:
       - "8080:8080"
 
-  # The API as a container (CI/prod parity). For day-to-day dev, running it on
-  # the host (`pnpm --filter @hrobot/api dev`) is faster. Gated behind the
-  # "full" profile so a bare `docker compose up -d` starts only backing services
-  # (no :3000 collision with a host API). Start it with `docker compose up api`
-  # or `docker compose --profile full up -d`.
-  api:
+  # Control-plane API as a container (CI/prod parity). For day-to-day dev, run it
+  # on the host. Gated behind the "full" profile so a bare `docker compose up -d`
+  # starts only backing services (no :3000 collision with a host app).
+  control-plane:
     profiles: ["full"]
     build:
       context: .
-      dockerfile: apps/api/Dockerfile
+      dockerfile: apps/control-plane/Dockerfile
     # Secrets come from .env (cp .env.example .env first); required:false so the
     # other services still start if .env is absent. Connection URLs are
     # overridden here to use compose service DNS names instead of localhost.
@@ -92,6 +91,33 @@ services:
         condition: service_healthy
     ports:
       - "3000:3000"
+
+  # Tenant-runtime API as a container (CI/prod parity). Same monorepo build, runs
+  # the apps/tenant-runtime dist. Listens on 3001 to avoid the control-plane port.
+  tenant-runtime:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: apps/tenant-runtime/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      CONTROL_PLANE_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/hrobot_control
+      POSTGRES_SUPERUSER_URL: postgresql://postgres:postgres@postgres:5432/postgres
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      KEYCLOAK_URL: http://keycloak:8080
+      PORT: "3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "3001:3001"
 
 volumes:
   hrobot_pgdata:

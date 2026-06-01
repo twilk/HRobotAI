@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
-# Multi-stage image for @hrobot/control-plane in the pnpm + turbo monorepo.
+# Multi-stage image for @hrobot/tenant-runtime in the pnpm + turbo monorepo.
 # Build context MUST be the repo root:
-#   docker compose --profile full build control-plane   (compose sets context: .)
-#   docker build -f apps/control-plane/Dockerfile -t hrobot-control-plane .
+#   docker compose --profile full build tenant-runtime   (compose sets context: .)
+#   docker build -f apps/tenant-runtime/Dockerfile -t hrobot-tenant-runtime .
 #
 # Node 22 is required: the app is CommonJS but imports @hrobot/db which is
 # ESM ("type":"module"), so the runtime relies on Node 22's require(esm) support.
@@ -29,26 +29,19 @@ COPY apps/tenant-runtime/package.json apps/tenant-runtime/
 COPY packages/config/package.json     packages/config/
 COPY packages/db/package.json         packages/db/
 COPY packages/shared/package.json     packages/shared/
-# Full install (incl. dev deps — needed to build). No cache mount: keeps the
-# resulting node_modules self-contained so the runner copy has no dangling links.
 RUN pnpm install --frozen-lockfile
 
 # Source, then build: turbo runs db:generate -> ^build -> `nest build`.
 COPY . .
 RUN pnpm run build
-# Fail the build here (not at login time in prod) if bcrypt's native addon
-# did not compile. Requires `bcrypt` in root pnpm.onlyBuiltDependencies.
 RUN node -e "const b=require('bcrypt'); if(!b.compareSync('x', b.hashSync('x',4))) process.exit(1); console.log('bcrypt native ok')"
 
 ########## runner ##########
 FROM base AS runner
-# Which app this image runs: apps/control-plane or apps/tenant-runtime.
-ARG APP_DIR=apps/control-plane
+ARG APP_DIR=apps/tenant-runtime
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
-# Copy the resolved workspace: built dist, pnpm node_modules (relative symlinks
-# survive), and the generated Prisma client + linux query engine.
 COPY --from=builder /app ./
 WORKDIR /app/${APP_DIR}
 EXPOSE 3000
