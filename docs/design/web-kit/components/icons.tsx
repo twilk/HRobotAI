@@ -3,7 +3,7 @@ import type { SVGProps } from 'react'
 // Decorative line icons. Size + color via className (w-*, h-*, text-*).
 // Authored once, hoisted; stroke = currentColor so they inherit text color.
 
-type IconProps = SVGProps<SVGSVGElement> & { strokeWidth?: number }
+type IconProps = SVGProps<SVGSVGElement>
 
 function Icon({ children, strokeWidth = 1.6, ...props }: IconProps) {
   return (
