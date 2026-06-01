@@ -7,7 +7,7 @@
 >
 > **Direction chosen:** *Refit for EU-trust* — keep the Navy brand anchor, retire glassmorphism
 > and Inter, build a distinctive, secure, EU-grade system. Core impression: **RODO-native,
-> EU-trust**. Canonical token + component source: [`mockups/system.css`](mockups/system.css).
+> EU-trust**. Canonical token + component source: [`docs/design/mockups/system.css`](docs/design/mockups/system.css).
 
 ---
 
@@ -75,7 +75,7 @@ Group/nav labels: 10.5px mono, uppercase, `letter-spacing:.14em`.
 ## 5. Color
 
 Approach: **restrained/balanced**. Navy anchors, neutrals are warm, teal is a sparing signal,
-green means verified/secure. (Hex values are canonical in `mockups/system.css` `:root`.)
+green means verified/secure. (Hex values are canonical in `docs/design/mockups/system.css` `:root`.)
 
 | Token | Hex | Usage |
 |---|---|---|
@@ -132,7 +132,7 @@ the tokens here.
 
 ## 10. Component Inventory
 
-Canonical classes live in [`mockups/system.css`](mockups/system.css).
+Canonical classes live in [`docs/design/mockups/system.css`](docs/design/mockups/system.css).
 
 | Component | Class(es) | Refit notes |
 |---|---|---|

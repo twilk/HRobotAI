@@ -1,6 +1,6 @@
 # HRobot — Screens & Components Plan
 
-Companion to [`DESIGN.md`](DESIGN.md). Applies the *Refit for EU-trust* system to every
+Companion to [`DESIGN.md`](../../DESIGN.md). Applies the *Refit for EU-trust* system to every
 Foundation screen and the component kit. Cross-references the Foundation design spec
 (`docs/superpowers/specs/2026-05-27-hrobot-foundation-design.md`) and the rendered mockups
 in [`mockups/`](mockups/). Polish UI copy throughout.

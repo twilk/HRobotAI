@@ -1,7 +1,7 @@
 import type { Config } from 'tailwindcss'
 
 /**
- * HRobot design tokens (see docs/design/DESIGN.md).
+ * HRobot design tokens (see DESIGN.md (repo root)).
  * Tailwind v3 config. For Tailwind v4, port these into an @theme block — values are identical.
  */
 const config: Config = {
