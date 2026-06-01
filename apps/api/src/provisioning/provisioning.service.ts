@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common'
 import { ProvisioningStep } from '@hrobot/shared'
 import { ControlPlanePrismaService } from '../common/prisma/control-plane-prisma.service.js'
+import { TransientProvisioningError } from './provisioning-errors.js'
 
 export interface ProvisioningStepHandler {
   execute(job: {
@@ -56,6 +57,20 @@ export class ProvisioningService {
       const message = raw
         .replace(/postgresql:\/\/[^@\s]*@/gi, 'postgresql://***@')
         .replace(/Bearer\s+[\w.-]+/gi, 'Bearer ***')
+
+      // Infrastructure-not-ready errors (e.g., Keycloak still initializing) must not consume
+      // a retry attempt — the 3-attempt budget is for real failures, not startup race conditions.
+      // Retry after 30 s. If a dependency is permanently broken an operator must mark the job
+      // FAILED manually.
+      if (err instanceof TransientProvisioningError) {
+        await this.prisma.provisioningJob.update({
+          where: { id: job.id },
+          data: { lastError: message, nextAttemptAt: new Date(Date.now() + 30_000) },
+        })
+        this.logger.warn({ jobId: job.id }, 'Transient provisioning error — retrying without consuming attempt')
+        return
+      }
+
       const nextAttempt = job.attemptCount + 1
 
       if (nextAttempt >= 3) {

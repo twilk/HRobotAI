@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing'
 import { ProvisioningService } from './provisioning.service.js'
 import { ControlPlanePrismaService } from '../common/prisma/control-plane-prisma.service.js'
 import { ProvisioningStep } from '@hrobot/shared'
+import { TransientProvisioningError } from './provisioning-errors.js'
 
 const makeJob = (step: string, attemptCount = 0) => ({
   id: 'job-1',
@@ -76,6 +77,21 @@ describe('ProvisioningService', () => {
         nextAttemptAt: expect.any(Date) as Date,
       },
     })
+  })
+
+  it('retries without incrementing attemptCount on TransientProvisioningError', async () => {
+    const job = makeJob(ProvisioningStep.KEYCLOAK_SETUP, 0)
+    mockPrisma.provisioningJob.findUnique.mockResolvedValue(job)
+    mockPrisma.provisioningJob.update.mockResolvedValue({})
+    mockSteps.keycloakSetup.execute.mockRejectedValue(new TransientProvisioningError('KC not ready'))
+
+    await service.process({ jobId: 'job-1', tenantId: 'tenant-1' })
+
+    expect(mockPrisma.provisioningJob.update).toHaveBeenCalledTimes(1)
+    const updateData = (mockPrisma.provisioningJob.update.mock.calls[0] as [{ where: unknown; data: Record<string, unknown> }])[0].data
+    expect(updateData).not.toHaveProperty('attemptCount')
+    expect(updateData).toHaveProperty('nextAttemptAt', expect.any(Date))
+    expect(updateData).toHaveProperty('lastError', 'KC not ready')
   })
 
   it('sets step=FAILED when attemptCount reaches 3', async () => {

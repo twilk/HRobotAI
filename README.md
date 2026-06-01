@@ -61,12 +61,14 @@ state machine (`CREATE_DB → RUN_MIGRATIONS → SEED → KEYCLOAK_SETUP → DON
 
 ## Notes
 
-- **Keycloak last-mile:** the `KEYCLOAK_SETUP` provisioning step authenticates as a
-  confidential admin client (`KEYCLOAK_CLIENT_ID` / `KEYCLOAK_ADMIN_CLIENT_SECRET`).
-  The dev Keycloak boots with `admin/admin` but that client must be created once
-  (master realm → Clients). Until then, the first four pipeline steps work and the
-  job parks before `KEYCLOAK_SETUP`. Automating this (realm import) is tracked in
-  `TODOS.md`.
+- **Keycloak setup is automatic.** The `KEYCLOAK_SETUP` provisioning step logs in to
+  the master realm as the bootstrap admin (resource-owner password grant against the
+  built-in public `admin-cli` client — the same path `kcadm.sh` uses), so there is **no
+  confidential client to create by hand**. Set `KEYCLOAK_ADMIN_PASSWORD` to the Keycloak
+  admin password; the compose stack boots Keycloak as `admin/admin` and `.env.example`
+  defaults to match, so `signup → DONE` works on a fresh clone with zero manual steps.
+  For production, harden this by swapping the master-admin login for a dedicated,
+  least-privilege service-account client (tracked in `TODOS.md`).
 - **Run the API in a container** (CI / prod parity) instead of on the host:
   `docker compose up --build api` (or `docker compose --profile full up -d --build`). It's gated
   behind the `full` profile, so it won't collide with a host `pnpm dev` on :3000. The image was

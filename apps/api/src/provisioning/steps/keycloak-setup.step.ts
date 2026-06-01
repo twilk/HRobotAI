@@ -4,8 +4,17 @@ import { parseEnv } from '@hrobot/config'
 import { ProvisioningStep, Role } from '@hrobot/shared'
 import { ControlPlanePrismaService } from '../../common/prisma/control-plane-prisma.service.js'
 import type { ProvisioningStepHandler } from '../provisioning.service.js'
+import { TransientProvisioningError } from '../provisioning-errors.js'
 
 type FetchFn = typeof fetch
+
+/** Thrown when Keycloak's token endpoint returns 401 or 503 during instance startup. */
+export class KeycloakNotReadyError extends TransientProvisioningError {
+  constructor(status: number) {
+    super(`Keycloak admin token endpoint returned HTTP ${status} — instance may still be initializing`)
+    this.name = 'KeycloakNotReadyError'
+  }
+}
 
 @Injectable()
 export class KeycloakSetupStep implements ProvisioningStepHandler {
@@ -19,9 +28,13 @@ export class KeycloakSetupStep implements ProvisioningStepHandler {
   ) {
     const env = parseEnv()
     this.keycloakUrl = env.KEYCLOAK_URL
-    this.adminPassword = env.KEYCLOAK_ADMIN_CLIENT_SECRET
+    this.adminPassword = env.KEYCLOAK_ADMIN_PASSWORD
   }
 
+  // Authenticate to the master realm as the bootstrap admin. We use the resource-owner
+  // password grant against the built-in public `admin-cli` client (always present, direct
+  // access grants enabled by default) — the same path kcadm.sh uses — so no confidential
+  // client has to be provisioned out of band.
   private async getAdminToken(): Promise<string> {
     const resp = await this.fetchFn(
       `${this.keycloakUrl}/realms/master/protocol/openid-connect/token`,
@@ -36,6 +49,14 @@ export class KeycloakSetupStep implements ProvisioningStepHandler {
         }).toString(),
       },
     )
+    // 401 and 503 both occur during the KC initialization window (admin-cli not yet ready).
+    // Throw a transient error so the provisioning service retries without burning an attempt.
+    if (resp.status === 401 || resp.status === 503) {
+      throw new KeycloakNotReadyError(resp.status)
+    }
+    if (!resp.ok) {
+      throw new Error(`Keycloak token endpoint returned HTTP ${resp.status}`)
+    }
     const data = await resp.json() as { access_token: string }
     return data.access_token
   }

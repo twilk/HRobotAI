@@ -20,7 +20,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: hrobot_control
     ports:
-      - "5432:5432"
+      - "5435:5432"
     volumes:
       - hrobot_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -82,6 +82,9 @@ services:
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       KEYCLOAK_URL: http://keycloak:8080
+      # Matches the keycloak service's admin/admin so KEYCLOAK_SETUP reaches DONE
+      # with no .env tweaks. (Override with a real secret outside dev.)
+      KEYCLOAK_ADMIN_PASSWORD: "admin"
       PORT: "3000"
     depends_on:
       postgres:

@@ -7,8 +7,13 @@ export const envSchema = z.object({
     .string()
     .regex(/^[0-9a-fA-F]{64}$/, 'TENANT_DB_ENCRYPTION_KEY must be 64 hex chars (32 bytes)'),
   KEYCLOAK_URL: z.string().url(),
-  KEYCLOAK_CLIENT_ID: z.string().min(1),
-  KEYCLOAK_ADMIN_CLIENT_SECRET: z.string().min(1),
+  // The provisioning KEYCLOAK_SETUP step logs in to the Keycloak *master* realm as the
+  // bootstrap admin — a direct-access-grant (ROPC) against the built-in public `admin-cli`
+  // client — to create each tenant's realm. This is that admin's password; in dev it matches
+  // the Keycloak container's own KEYCLOAK_ADMIN_PASSWORD (admin/admin), so signup → DONE works
+  // with zero manual Keycloak setup. (No confidential client is involved, so there is no
+  // separate client id/secret to configure.)
+  KEYCLOAK_ADMIN_PASSWORD: z.string().min(1),
   REDIS_URL: z.string().url(),
   RABBITMQ_URL: z.string().url(),
   NEXTAUTH_SECRET: z.string().min(1),

@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { KeycloakSetupStep } from './keycloak-setup.step.js'
+import { KeycloakSetupStep, KeycloakNotReadyError } from './keycloak-setup.step.js'
 import { ControlPlanePrismaService } from '../../common/prisma/control-plane-prisma.service.js'
 import { ProvisioningStep, Role } from '@hrobot/shared'
 
@@ -56,10 +56,9 @@ describe('KeycloakSetupStep', () => {
   beforeEach(async () => {
     // Env vars required by parseEnv() in KeycloakSetupStep's constructor
     process.env['KEYCLOAK_URL'] = 'http://localhost:8080'
-    process.env['KEYCLOAK_ADMIN_CLIENT_SECRET'] = 'admin-secret'
+    process.env['KEYCLOAK_ADMIN_PASSWORD'] = 'admin-secret'
     process.env['CONTROL_PLANE_DATABASE_URL'] = 'postgresql://u:p@localhost:5432/db'
     process.env['TENANT_DB_ENCRYPTION_KEY'] = 'a'.repeat(64)
-    process.env['KEYCLOAK_CLIENT_ID'] = 'hrobot-web'
     process.env['REDIS_URL'] = 'redis://localhost:6379'
     process.env['RABBITMQ_URL'] = 'amqp://localhost:5672'
     process.env['NEXTAUTH_SECRET'] = 'secret'
@@ -161,6 +160,38 @@ describe('KeycloakSetupStep', () => {
     )
     const assignCalls = callsTo((url, init) => init.method === 'POST' && /\/users\/user-uuid-1\/role-mappings\/realm$/.test(url))
     expect(assignCalls).toHaveLength(1)
+  })
+
+  it('throws KeycloakNotReadyError when the token endpoint returns 401 (KC still initializing)', async () => {
+    mockFetch.mockImplementation((url: string, init: FetchInit = {}) => {
+      if (url.includes('/protocol/openid-connect/token'))
+        return res({ status: 401, body: { error: 'invalid_client', error_description: 'Client authentication failed' } })
+      return happyPathFetch(url, init)
+    })
+
+    await expect(step.execute(job)).rejects.toBeInstanceOf(KeycloakNotReadyError)
+    expect(mockPrisma.provisioningJob.update).not.toHaveBeenCalled()
+  })
+
+  it('throws KeycloakNotReadyError when the token endpoint returns 503', async () => {
+    mockFetch.mockImplementation((url: string, init: FetchInit = {}) => {
+      if (url.includes('/protocol/openid-connect/token'))
+        return res({ status: 503 })
+      return happyPathFetch(url, init)
+    })
+
+    await expect(step.execute(job)).rejects.toBeInstanceOf(KeycloakNotReadyError)
+  })
+
+  it('throws a plain Error (not KeycloakNotReadyError) on unexpected token endpoint status', async () => {
+    mockFetch.mockImplementation((url: string, init: FetchInit = {}) => {
+      if (url.includes('/protocol/openid-connect/token'))
+        return res({ status: 400 })
+      return happyPathFetch(url, init)
+    })
+
+    await expect(step.execute(job)).rejects.toThrow(/400/)
+    await expect(step.execute(job)).rejects.not.toBeInstanceOf(KeycloakNotReadyError)
   })
 
   it('stores realmName in tenants.metadata and advances to DONE', async () => {
