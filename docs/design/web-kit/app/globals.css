@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    @apply bg-canvas text-ink font-sans;
+    font-size: 14.5px;
+    line-height: 1.5;
+  }
+  /* Visible, on-brand focus ring everywhere */
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgb(12 143 163 / 0.32);
+    border-radius: 4px;
+  }
+}
+
+@layer utilities {
+  /* Engraved guilloché motif — reserved for brand moments (auth, provisioning). */
+  .motif-navy {
+    position: relative;
+    overflow: hidden;
+  }
+  .motif-navy::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.55;
+    background:
+      repeating-linear-gradient(115deg, rgb(60 195 214 / 0.06) 0 1px, transparent 1px 11px),
+      radial-gradient(120% 80% at 80% -10%, rgb(60 195 214 / 0.1), transparent 60%);
+  }
+  .motif-brand {
+    position: relative;
+    overflow: hidden;
+  }
+  .motif-brand::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.5;
+    background: repeating-linear-gradient(115deg, rgb(255 255 255 / 0.045) 0 1px, transparent 1px 9px);
+    -webkit-mask-image: linear-gradient(90deg, #000 0%, transparent 78%);
+    mask-image: linear-gradient(90deg, #000 0%, transparent 78%);
+  }
+}
