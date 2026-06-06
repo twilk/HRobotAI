@@ -150,7 +150,8 @@ Canonical classes live in [`mockups/system.css`](mockups/system.css).
 | Mark + wordmark | `.mark`/`.wordmark` | Precise "node" glyph (rounded square + teal dot) + Cabinet wordmark |
 
 New Foundation components inherit these: `SignupForm`, `SlugInput`, `ProvisioningStatus`,
-`WelcomeDashboard`, `EmptyState`. Migrated demo components (Button, Card, Badge, Input, Modal,
+`WelcomeDashboard`, `EmptyState`, `EmployeeDetail` (IdentityPane + AnchoredSections + AuditTimeline,
+see `mockups/detail.css`). Migrated demo components (Button, Card, Badge, Input, Modal,
 Sidebar, TopBar) are **re-skinned to these tokens**, not migrated verbatim.
 
 ## 11. Keycloak theme
@@ -163,7 +164,9 @@ mono `realm: hrobot-{slug}` note). First login is unmistakably HRobot, not defau
 
 `docs/design/mockups/` — open `index.html` (served via the `design-mockups` launch config):
 `dashboard` · `signup` · `provisioning` · `employees` · `employees-empty` · `mobile` ·
-`keycloak-login`. These are production-portable HTML/CSS against `system.css`.
+`keycloak-login` · `employee-detail`. These are production-portable HTML/CSS against `system.css`
+(the `employee-detail` screen adds `mockups/detail.css` for its identity-pane, anchored-section and
+audit-timeline components).
 
 ## Decisions Log
 
