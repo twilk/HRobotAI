@@ -1,18 +1,7 @@
+import Link from 'next/link'
 import { Table, Th, Td } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-
-export interface Employee {
-  id: string
-  firstName: string
-  lastName: string
-  email: string
-  position: string
-  unit: string
-  contract: 'UoP' | 'Zlecenie' | 'B2B'
-  /** Last 4 of PESEL only — plaintext PESEL never reaches the client. */
-  peselLast4: string
-  status: 'active' | 'leave'
-}
+import { type Employee, employeeInitials } from '@/lib/employees'
 
 export function EmployeesTable({ employees }: { employees: Employee[] }) {
   return (
@@ -29,19 +18,22 @@ export function EmployeesTable({ employees }: { employees: Employee[] }) {
       </thead>
       <tbody>
         {employees.map((e) => (
-          <tr key={e.id}>
+          <tr key={e.id} className="hover:bg-card-2">
             <Td>
-              <div className="flex items-center gap-[11px]">
+              <Link
+                href={`/pracownicy/${e.id}`}
+                className="group -mx-1 flex items-center gap-[11px] rounded-sm px-1 py-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+              >
                 <span className="grid place-items-center w-[30px] h-[30px] rounded-lg bg-gradient-to-b from-navy-700 to-navy text-white text-[11px] font-semibold">
-                  {initials(e)}
+                  {employeeInitials(e)}
                 </span>
                 <div>
-                  <div className="font-medium">
+                  <div className="font-medium group-hover:text-accent-ink">
                     {e.firstName} {e.lastName}
                   </div>
                   <div className="text-[11.5px] text-muted-2">{e.email}</div>
                 </div>
-              </div>
+              </Link>
             </Td>
             <Td>{e.position}</Td>
             <Td>{e.unit}</Td>
@@ -57,8 +49,4 @@ export function EmployeesTable({ employees }: { employees: Employee[] }) {
       </tbody>
     </Table>
   )
-}
-
-function initials(e: Employee): string {
-  return (e.firstName.charAt(0) + e.lastName.charAt(0)).toUpperCase()
 }
