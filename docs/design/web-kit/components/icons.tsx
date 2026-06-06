@@ -174,3 +174,9 @@ export const IconPhone = (p: IconProps) => (
     <path d="M6.5 3h3l1.5 4-2 1.3a11 11 0 0 0 4.7 4.7L16 14l4 1.5v3a2 2 0 0 1-2.1 2A16 16 0 0 1 4 5.1 2 2 0 0 1 6.5 3Z" />
   </Icon>
 )
+export const IconBuilding = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="4" y="3" width="10" height="18" rx="1.5" />
+    <path d="M14 8h5a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1h-5M7.5 7h3M7.5 11h3M7.5 15h3" />
+  </Icon>
+)
