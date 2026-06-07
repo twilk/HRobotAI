@@ -16,7 +16,7 @@ const ITEMS: ProtectionItem[] = [
 /** RODO / EU-trust made literal — the felt identity of the product. */
 export function DataProtectionPanel({ region = 'EU-Central' }: { region?: string }) {
   return (
-    <Card className="p-5">
+    <Card className="p-5" data-guide="dashboard:data-protection">
       <h2 className="flex items-center gap-2.5 text-base font-semibold tracking-tightish mb-1.5">
         <IconShield className="w-[17px] h-[17px] text-verified" strokeWidth={1.7} />
         Ochrona danych

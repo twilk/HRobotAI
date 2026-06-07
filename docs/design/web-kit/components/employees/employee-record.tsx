@@ -28,7 +28,7 @@ export function EmployeeRecord({ employee, actor }: { employee: EmployeeDetail; 
 
   function confirmReveal() {
     setPesel('revealed')
-    setAudit((a) => [{ ts: nowStamp(), action: 'Ujawniono PESEL', actor, ip: '10.4.2.11' }, ...a])
+    setAudit((a) => [{ ts: nowStamp(), action: 'Ujawniono PESEL', actor }, ...a])
   }
 
   return (
@@ -50,7 +50,7 @@ export function EmployeeRecord({ employee, actor }: { employee: EmployeeDetail; 
       </nav>
 
       {/* Dane podstawowe */}
-      <Card id="sek-dane" className="mb-[18px] p-[22px] scroll-mt-[18px]">
+      <Card id="sek-dane" className="mb-[18px] p-[22px] scroll-mt-[18px]" data-guide="pracownicy-id:personal-data">
         <SecHead title="Dane podstawowe" slug="dane" action={<EditButton />} />
         <div className="grid grid-cols-1 gap-[18px_28px] sm:grid-cols-2">
           <Field label="Imię i nazwisko" value={`${employee.firstName} ${employee.lastName}`} />
@@ -71,6 +71,7 @@ export function EmployeeRecord({ employee, actor }: { employee: EmployeeDetail; 
               <Button
                 variant="ghost"
                 onClick={() => setPesel('confirm')}
+                data-guide="pracownicy-id:pesel-reveal"
                 className="h-[30px] gap-1.5 px-[11px] font-mono text-[11px] font-medium text-accent-ink"
               >
                 <IconEye className="h-[13px] w-[13px]" strokeWidth={1.7} />
@@ -165,6 +166,7 @@ export function EmployeeRecord({ employee, actor }: { employee: EmployeeDetail; 
         />
         <ol
           aria-label="Dziennik audytu pracownika"
+          data-guide="pracownicy-id:audit-log"
           className="relative m-0 list-none pl-[22px] before:absolute before:left-[5px] before:top-1.5 before:bottom-1.5 before:w-px before:bg-line-strong"
         >
           {audit.map((e, i) => {

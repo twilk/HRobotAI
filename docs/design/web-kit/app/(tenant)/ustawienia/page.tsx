@@ -2,11 +2,7 @@ import Link from 'next/link'
 import { AppShell } from '@/components/layout/app-shell'
 import { Card } from '@/components/ui/card'
 import { IconBuilding, IconUser, IconArrowRight } from '@/components/icons'
-import type { Role } from '@/lib/nav'
-
-const tenant = { name: 'ACME Sp. z o.o.', slug: 'acme.hrobot.ai' }
-const user = { name: 'Jan Kowalski', role: 'Admin klienta', initials: 'JK' }
-const roles: Role[] = ['ADMIN_KLIENTA']
+import { requirePageSession } from '@/lib/session'
 
 const SECTIONS = [
   {
@@ -14,16 +10,19 @@ const SECTIONS = [
     icon: IconBuilding,
     title: 'Placówki',
     desc: 'Lokalizacje, adresy oraz dni i godziny pracy. Te ustawienia sterują grafikiem.',
+    dataGuide: 'ustawienia:nav-placowki',
   },
   {
     href: '/ustawienia/uzytkownicy',
     icon: IconUser,
     title: 'Użytkownicy',
     desc: 'Zapraszaj HR i menedżerów. Zarządzaj rolami RBAC (Pracownik, Manager, HR, Admin).',
+    dataGuide: 'ustawienia:nav-uzytkownicy',
   },
 ]
 
-export default function UstawieniaPage() {
+export default async function UstawieniaPage() {
+  const { user, tenant, roles } = await requirePageSession()
   return (
     <AppShell activeHref="/ustawienia" title="Ustawienia" tenant={tenant} user={user} roles={roles}>
       <div className="mx-auto max-w-[1120px]">
@@ -37,7 +36,7 @@ export default function UstawieniaPage() {
           {SECTIONS.map((s) => {
             const Icon = s.icon
             return (
-              <Link key={s.href} href={s.href} className="group">
+              <Link key={s.href} href={s.href} data-guide={s.dataGuide} className="group">
                 <Card className="h-full p-[18px] flex flex-col gap-3 transition-[transform,box-shadow,border-color] duration-150 group-hover:-translate-y-0.5 group-hover:shadow group-hover:border-line-strong">
                   <span className="grid place-items-center w-10 h-10 rounded-[10px] border border-line bg-card-2">
                     <Icon className="w-5 h-5 text-accent-ink" />

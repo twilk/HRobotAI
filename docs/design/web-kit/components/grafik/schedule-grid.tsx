@@ -110,6 +110,7 @@ export function ScheduleGrid({
               setFacilityId(e.target.value)
               setAdding(null)
             }}
+            data-guide="grafik:facility-filter"
             className="h-10 rounded-sm border border-line-strong bg-card px-3 text-sm text-ink focus:border-accent focus:outline-none"
           >
             {facilities.map((f) => (
@@ -122,7 +123,7 @@ export function ScheduleGrid({
       </div>
 
       {/* week nav */}
-      <div className="mb-3.5 flex items-center gap-2">
+      <div className="mb-3.5 flex items-center gap-2" data-guide="grafik:week-nav">
         <button
           onClick={() => setWeekOffset((w) => w - 1)}
           aria-label="Poprzedni tydzień"
@@ -194,7 +195,7 @@ export function ScheduleGrid({
             rowEmployees.map((emp) => {
               const wkHours = employeeWeekHours(visible, emp.id)
               return (
-                <div key={emp.id} className="grid grid-cols-[190px_repeat(7,1fr)] border-b border-line last:border-0">
+                <div key={emp.id} className="grid grid-cols-[190px_repeat(7,1fr)] border-b border-line last:border-0" data-guide="grafik:shift-row">
                   <div className="flex items-center gap-2.5 px-4 py-3">
                     <span className="grid h-8 w-8 flex-none place-items-center rounded-lg bg-gradient-to-b from-navy-700 to-navy text-[10.5px] font-semibold text-white">
                       {(emp.firstName[0] + emp.lastName[0]).toUpperCase()}
@@ -212,7 +213,7 @@ export function ScheduleGrid({
                     const cellShifts = visible.filter((s) => s.employeeId === emp.id && s.date === iso)
                     const isAdding = adding?.employeeId === emp.id && adding?.dayIndex === i
                     return (
-                      <div key={i} className={cn('min-h-[58px] border-l border-line p-1.5', !dh && 'bg-canvas/50')}>
+                      <div key={i} className={cn('min-h-[58px] border-l border-line p-1.5', !dh && 'bg-canvas/50')} data-guide="grafik:shift-cell">
                         {!dh ? (
                           <div className="grid h-full place-items-center font-mono text-[10px] text-muted-2">—</div>
                         ) : isAdding ? (
@@ -230,14 +231,17 @@ export function ScheduleGrid({
                                 <button
                                   onClick={() => removeShift(s.id)}
                                   aria-label={`Usuń zmianę ${s.start}–${s.end}`}
-                                  className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 place-items-center rounded-full border border-line-strong bg-card text-muted group-hover/chip:grid hover:text-error"
+                                  data-guide="grafik:remove-shift"
+                                  className="absolute -right-1.5 -top-1.5 grid h-4 w-4 place-items-center rounded-full border border-line-strong bg-card text-muted opacity-0 transition-opacity group-hover/chip:opacity-100 group-focus-within/chip:opacity-100 focus:opacity-100 hover:text-error focus-visible:ring-2 focus-visible:ring-accent/40 focus:outline-none"
                                 >
                                   <IconClose className="h-2.5 w-2.5" strokeWidth={2.2} />
+                                  <span className="sr-only">Usuń zmianę</span>
                                 </button>
                               </div>
                             ))}
                             <button
                               onClick={() => setAdding({ employeeId: emp.id, dayIndex: i })}
+                              data-guide="grafik:add-shift"
                               className="rounded-md border border-dashed border-line-strong py-1 text-[11px] text-muted-2 hover:border-accent/40 hover:text-accent-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
                             >
                               + dodaj

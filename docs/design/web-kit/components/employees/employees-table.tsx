@@ -5,7 +5,7 @@ import { type Employee, employeeInitials } from '@/lib/employees'
 
 export function EmployeesTable({ employees }: { employees: Employee[] }) {
   return (
-    <Table>
+    <Table data-guide="pracownicy:table">
       <thead>
         <tr>
           <Th>Pracownik</Th>
@@ -43,7 +43,7 @@ export function EmployeesTable({ employees }: { employees: Employee[] }) {
             <Td>
               <span className="font-mono text-[12.5px] tabular-nums text-muted">•••••••{e.peselLast4}</span>
             </Td>
-            <Td>{e.status === 'active' ? <Badge tone="ok">Aktywny</Badge> : <Badge tone="warn">Urlop</Badge>}</Td>
+            <Td>{e.status === 'active' ? <Badge tone="ok" data-guide="pracownicy:status-badge">Aktywny</Badge> : <Badge tone="warn" data-guide="pracownicy:status-badge">Urlop</Badge>}</Td>
           </tr>
         ))}
       </tbody>

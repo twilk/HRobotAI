@@ -26,7 +26,7 @@ export function FacilityConfig({ facilities }: { facilities: Facility[] }) {
   }
 
   return (
-    <div className="mx-auto flex max-w-[1120px] flex-col gap-5">
+    <div className="mx-auto flex max-w-[1120px] flex-col gap-5" data-guide="placowki:list">
       {list.map((f) => (
         <Card key={f.id} className="p-[22px]">
           <div className="flex items-start gap-3.5">
@@ -44,7 +44,7 @@ export function FacilityConfig({ facilities }: { facilities: Facility[] }) {
           </div>
 
           <div className="mt-4 grid gap-5 lg:grid-cols-[280px_1fr]">
-            <div>
+            <div data-guide="placowki:address">
               <div className="mb-2 font-mono text-[10.5px] uppercase tracking-[.1em] text-muted-2">Adres</div>
               <div className="rounded-md border border-line bg-card-2 p-3.5 text-[13.5px] leading-relaxed text-ink">
                 <div>{f.address.street}</div>
@@ -55,7 +55,7 @@ export function FacilityConfig({ facilities }: { facilities: Facility[] }) {
               </div>
             </div>
 
-            <div>
+            <div data-guide="placowki:hours">
               <div className="mb-2 font-mono text-[10.5px] uppercase tracking-[.1em] text-muted-2">Dni i godziny pracy</div>
               <div className="rounded-md border border-line">
                 {DAY_LABELS_LONG.map((label, i) => {

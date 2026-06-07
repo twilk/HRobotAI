@@ -18,7 +18,7 @@ const ACTIONS: Action[] = [
 
 export function QuickActions() {
   return (
-    <div className="grid sm:grid-cols-3 gap-4">
+    <div className="grid sm:grid-cols-3 gap-4" data-guide="dashboard:quick-actions">
       {ACTIONS.map((a) => {
         const Icon = a.icon
         return (

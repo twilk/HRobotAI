@@ -6,7 +6,7 @@ import { type AppUser, roleLabel } from '@/lib/users'
 
 export function UsersTable({ users }: { users: AppUser[] }) {
   return (
-    <Table>
+    <Table data-guide="uzytkownicy:table">
       <thead>
         <tr>
           <Th>Użytkownik</Th>
@@ -33,7 +33,7 @@ export function UsersTable({ users }: { users: AppUser[] }) {
             <Td>
               <div className="flex gap-1.5 flex-wrap">
                 {u.roles.map((r) => (
-                  <Badge key={r} className="badge-role">
+                  <Badge key={r} className="badge-role" data-guide="uzytkownicy:role-badge">
                     {roleLabel(r)}
                   </Badge>
                 ))}

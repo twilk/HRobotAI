@@ -12,7 +12,7 @@ export function SetupChecklist({ steps }: { steps: ChecklistStep[] }) {
   const done = steps.filter((s) => s.done).length
   const pct = Math.round((done / steps.length) * 100)
   return (
-    <Card className="p-5">
+    <Card className="p-5" data-guide="dashboard:setup-checklist">
       <div className="flex items-center justify-between mb-1.5">
         <h2 className="text-base font-semibold tracking-tightish">Pierwsze kroki</h2>
         <span className="font-mono text-[11px] text-muted-2">

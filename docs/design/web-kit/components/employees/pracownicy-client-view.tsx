@@ -18,8 +18,8 @@ function matchesQuery(e: Employee, q: string): boolean {
   )
 }
 
-export function PracownicyClientView({ initialEmployees }: { initialEmployees: EmployeeDetail[] }) {
-  const [employees, setEmployees] = useState<EmployeeDetail[]>(initialEmployees)
+export function PracownicyClientView({ initialEmployees }: { initialEmployees: Employee[] }) {
+  const [employees, setEmployees] = useState<Employee[]>(initialEmployees)
   const [query, setQuery] = useState('')
   const [showAdd, setShowAdd] = useState(false)
 
@@ -67,7 +67,7 @@ export function PracownicyClientView({ initialEmployees }: { initialEmployees: E
           </p>
         </div>
         <div className="flex items-center gap-2.5">
-          <div className="relative hidden sm:block">
+          <div className="relative hidden sm:block" data-guide="pracownicy:search">
             <IconSearch className="absolute left-[11px] top-[11px] w-[17px] h-[17px] text-muted-2" strokeWidth={1.7} />
             <label htmlFor="emp-search" className="sr-only">Szukaj pracownika</label>
             <input
@@ -79,7 +79,7 @@ export function PracownicyClientView({ initialEmployees }: { initialEmployees: E
               className="h-10 w-[230px] pl-[35px] pr-3 rounded-sm border border-line-strong bg-card text-sm text-ink focus:outline-none focus:border-accent"
             />
           </div>
-          <Button className="h-10 px-3.5 text-sm" onClick={() => setShowAdd(true)}>
+          <Button className="h-10 px-3.5 text-sm" onClick={() => setShowAdd(true)} data-guide="pracownicy:add-employee">
             <IconPlus className="w-[17px] h-[17px]" strokeWidth={2} />
             Dodaj pracownika
           </Button>

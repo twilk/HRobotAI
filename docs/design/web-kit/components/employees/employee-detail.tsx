@@ -16,6 +16,7 @@ export function EmployeeDetailView({ employee, actor }: { employee: EmployeeDeta
       <div className="mb-5 flex items-center gap-2.5">
         <Link
           href="/pracownicy"
+          data-guide="pracownicy-id:back-link"
           className="inline-flex items-center gap-[7px] rounded-sm text-[13px] text-muted hover:text-accent-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
         >
           <IconChevronLeft className="h-[15px] w-[15px]" strokeWidth={1.7} />
