@@ -1,7 +1,7 @@
-import type Shepherd from 'shepherd.js'
+import type { Tour, StepOptions } from 'shepherd.js'
 import { makeButtons } from '../shepherd'
 
-export function wnioskiSteps(tour: Shepherd.Tour): Shepherd.Step.StepOptions[] {
+export function wnioskiSteps(tour: Tour): StepOptions[] {
   const btn = (i: number, total: number) =>
     makeButtons(tour, { isFirst: i === 0, isLast: i === total - 1 })
 
