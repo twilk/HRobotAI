@@ -13,10 +13,15 @@
   },
   "dependencies": {
     "clsx": "^2.1.1",
+    "focus-trap-react": "^12.0.2",
     "next": "^15.0.0",
+    "next-auth": "^5.0.0-beta.25",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "tailwind-merge": "^2.5.4"
+    "react-hot-toast": "^2.6.0",
+    "shepherd.js": "^15.2.2",
+    "tailwind-merge": "^2.5.4",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
