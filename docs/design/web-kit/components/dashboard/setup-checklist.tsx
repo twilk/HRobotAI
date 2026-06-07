@@ -1,6 +1,9 @@
+'use client'
+
 import { Card } from '@/components/ui/card'
 import { IconCheck } from '@/components/icons'
 import { cn } from '@/lib/cn'
+import { useGuide } from '@/components/guide/guide-provider'
 
 export interface ChecklistStep {
   label: string
@@ -9,6 +12,7 @@ export interface ChecklistStep {
 }
 
 export function SetupChecklist({ steps }: { steps: ChecklistStep[] }) {
+  const { startJourney } = useGuide()
   const done = steps.filter((s) => s.done).length
   const pct = Math.round((done / steps.length) * 100)
   return (
@@ -41,6 +45,32 @@ export function SetupChecklist({ steps }: { steps: ChecklistStep[] }) {
           </li>
         ))}
       </ol>
+      <div className="mt-4 pt-4 border-t border-line">
+        <p className="text-xs text-muted mb-2 font-medium">Przewodniki po procesach:</p>
+        <div className="flex flex-col gap-1.5">
+          <button
+            type="button"
+            onClick={() => startJourney('onboarding-pracownika')}
+            className="text-left text-xs text-accent-ink hover:underline"
+          >
+            Onboarding nowego pracownika
+          </button>
+          <button
+            type="button"
+            onClick={() => startJourney('konfiguracja-placowki')}
+            className="text-left text-xs text-accent-ink hover:underline"
+          >
+            Konfiguracja nowej placówki
+          </button>
+          <button
+            type="button"
+            onClick={() => startJourney('zaproszenie-managera')}
+            className="text-left text-xs text-accent-ink hover:underline"
+          >
+            Zaproszenie menadżera
+          </button>
+        </div>
+      </div>
     </Card>
   )
 }
