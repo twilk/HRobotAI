@@ -1,34 +1,44 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import type { FormEvent } from 'react'
-import { Field, Input } from '@/components/ui/input'
+import { useState } from 'react'
+import { signIn } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
+import { SecuredChip } from '@/components/ui/secured-chip'
 
-export function LoginForm() {
-  const router = useRouter()
+/**
+ * Login entry point — redirects to Keycloak OIDC.
+ * No email/password handled here. Keycloak handles credentials.
+ */
+export function LoginForm({ callbackUrl = '/dashboard' }: { callbackUrl?: string }) {
+  const [loading, setLoading] = useState(false)
 
-  function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    router.push('/dashboard')
+  async function handleSignIn() {
+    setLoading(true)
+    await signIn('keycloak', { callbackUrl })
+    // signIn redirects; state stays loading during redirect
   }
 
   return (
-    <form onSubmit={onSubmit}>
-      <Field label="Email lub login" htmlFor="login">
-        <Input id="login" name="login" defaultValue="jan.kowalski@acme.pl" autoComplete="username" />
-      </Field>
-      <div className="relative">
-        <a href="#" className="absolute right-0 top-0 text-xs text-accent-ink font-medium">
-          Zapomniałeś hasła?
-        </a>
-        <Field label="Hasło" htmlFor="pw">
-          <Input id="pw" name="pw" type="password" defaultValue="bardzo-tajne-haslo" autoComplete="current-password" />
-        </Field>
+    <div className="flex flex-col items-center gap-6 w-full max-w-[400px]">
+      <div className="text-center">
+        <h1 className="font-display text-[24px] font-extrabold tracking-tightish text-navy">
+          Zaloguj się
+        </h1>
+        <p className="mt-1.5 text-[14px] text-muted">
+          Zostaniesz przekierowany do bezpiecznego logowania.
+        </p>
       </div>
-      <Button type="submit" className="w-full mt-1">
-        Zaloguj się
+
+      <Button
+        onClick={handleSignIn}
+        disabled={loading}
+        className="w-full h-[46px] text-[15px]"
+        aria-label="Zaloguj przez Keycloak SSO"
+      >
+        {loading ? 'Przekierowuję…' : 'Zaloguj się przez SSO'}
       </Button>
-    </form>
+
+      <SecuredChip>RODO · Krótkie sesje · Rotacja tokenów</SecuredChip>
+    </div>
   )
 }

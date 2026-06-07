@@ -1,10 +1,18 @@
 'use client'
 
 import { useState, type FormEvent } from 'react'
+import { z } from 'zod'
+import toast from 'react-hot-toast'
 import { Modal } from '@/components/ui/modal'
 import { Field, Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import type { UserRole } from '@/lib/users'
+
+const inviteSchema = z.object({
+  email: z.string().min(1, 'Email jest wymagany').email('Podaj poprawny adres email'),
+  role: z.enum(['PRACOWNIK', 'MANAGER', 'HR']),
+})
+type InviteErrors = Partial<Record<keyof z.infer<typeof inviteSchema>, string>>
 
 const INVITABLE_ROLES: { value: UserRole; label: string }[] = [
   { value: 'PRACOWNIK', label: 'Pracownik' },
@@ -23,13 +31,25 @@ export function InviteUserModal({
 }) {
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<UserRole>('PRACOWNIK')
+  const [errors, setErrors] = useState<InviteErrors>({})
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    if (!email.trim()) return
-    onInvite(email.trim(), role)
+    const result = inviteSchema.safeParse({ email: email.trim(), role })
+    if (!result.success) {
+      const fieldErrors: InviteErrors = {}
+      for (const issue of result.error.issues) {
+        const key = issue.path[0] as keyof InviteErrors
+        if (!fieldErrors[key]) fieldErrors[key] = issue.message
+      }
+      setErrors(fieldErrors)
+      return
+    }
+    onInvite(result.data.email, result.data.role)
+    toast.success(`Zaproszenie wysłane do ${result.data.email}`)
     setEmail('')
     setRole('PRACOWNIK')
+    setErrors({})
     onClose()
   }
 
@@ -42,11 +62,17 @@ export function InviteUserModal({
             aria-label="Email"
             type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value)
+              if (errors.email) setErrors((prev) => ({ ...prev, email: undefined }))
+            }}
             placeholder="osoba@firma.pl"
             required
             autoFocus
           />
+          {errors.email && (
+            <p role="alert" className="mt-1 text-[12px] text-red-500">{errors.email}</p>
+          )}
         </Field>
         <Field label="Rola" htmlFor="invite-role">
           <select

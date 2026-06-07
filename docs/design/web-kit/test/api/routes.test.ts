@@ -27,9 +27,10 @@ describe('API: signup', () => {
     expect((await r.json()).jobId).toMatch(/^job-/)
   })
 
-  it('does not throw on a malformed body', async () => {
+  it('returns 400 for a malformed/empty body (null guard)', async () => {
     const r = await signupPOST(new Request('http://test', { method: 'POST', body: 'not-json' }))
-    expect(r.status).toBe(202) // empty slug -> not taken -> provisioning starts
+    expect(r.status).toBe(400)
+    expect((await r.json()).error).toBe('slug required')
   })
 })
 

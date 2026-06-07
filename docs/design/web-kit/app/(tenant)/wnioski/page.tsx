@@ -3,15 +3,13 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { IconRequests, IconPlus } from '@/components/icons'
-import type { Role } from '@/lib/nav'
+import { requirePageSession } from '@/lib/session'
 
-const tenant = { name: 'ACME Sp. z o.o.', slug: 'acme.hrobot.ai' }
-const user = { name: 'Jan Kowalski', role: 'Admin klienta', initials: 'JK' }
-const roles: Role[] = ['ADMIN_KLIENTA']
 // Matches the nav tag count (NAV Wnioski tag: '3').
 const WNIOSKI_COUNT = 3
 
-export default function WnioskiPage() {
+export default async function WnioskiPage() {
+  const { user, tenant, roles } = await requirePageSession()
   return (
     <AppShell activeHref="/wnioski" title="Wnioski" tenant={tenant} user={user} roles={roles}>
       <div className="mx-auto max-w-[1120px]">

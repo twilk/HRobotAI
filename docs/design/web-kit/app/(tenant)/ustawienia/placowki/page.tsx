@@ -1,12 +1,10 @@
 import { AppShell } from '@/components/layout/app-shell'
 import { FacilityConfig } from '@/components/facilities/facility-config'
 import { getFacilities } from '@/lib/facilities'
-import type { Role } from '@/lib/nav'
+import { requirePageSession } from '@/lib/session'
 
 export default async function PlacowkiPage() {
-  const tenant = { name: 'ACME Sp. z o.o.', slug: 'acme.hrobot.ai' }
-  const user = { name: 'Jan Kowalski', role: 'Admin klienta', initials: 'JK' }
-  const roles: Role[] = ['ADMIN_KLIENTA']
+  const { user, tenant, roles } = await requirePageSession()
 
   return (
     <AppShell activeHref="/ustawienia/placowki" title="Placówki" tenant={tenant} user={user} roles={roles}>

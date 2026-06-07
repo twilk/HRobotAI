@@ -11,6 +11,13 @@ vi.mock('next/link', () => ({
   ),
 }))
 
+vi.mock('react-hot-toast', () => ({
+  default: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}))
+
 import { PracownicyClientView } from '@/components/employees/pracownicy-client-view'
 import { getEmployees } from '@/lib/employees'
 
@@ -59,5 +66,28 @@ describe('PracownicyClientView', () => {
     await user.type(screen.getByLabelText('Jednostka'), 'QA')
     await user.click(screen.getByRole('button', { name: /Zapisz/ }))
     expect(screen.getByText('Zofia Testowa')).toBeInTheDocument()
+  }, 15_000)
+
+  it('shows validation error when firstName is empty', async () => {
+    const user = userEvent.setup()
+    render(<PracownicyClientView initialEmployees={employees} />)
+    await user.click(screen.getByRole('button', { name: /Dodaj pracownika/ }))
+    // Submit without filling any field
+    await user.click(screen.getByRole('button', { name: /Zapisz/ }))
+    expect(screen.getByText('Imię jest wymagane')).toBeInTheDocument()
+  }, 15_000)
+
+  it('shows toast.success after valid employee added', async () => {
+    const toast = await import('react-hot-toast')
+    const user = userEvent.setup()
+    render(<PracownicyClientView initialEmployees={employees} />)
+    await user.click(screen.getByRole('button', { name: /Dodaj pracownika/ }))
+    await user.type(screen.getByLabelText('Imię'), 'Marek')
+    await user.type(screen.getByLabelText('Nazwisko'), 'Toastowy')
+    await user.type(screen.getByLabelText('Email'), 'm.toastowy@acme.pl')
+    await user.type(screen.getByLabelText('Stanowisko'), 'Dev')
+    await user.type(screen.getByLabelText('Jednostka'), 'IT')
+    await user.click(screen.getByRole('button', { name: /Zapisz/ }))
+    expect(toast.default.success).toHaveBeenCalledWith('Pracownik dodany')
   }, 15_000)
 })

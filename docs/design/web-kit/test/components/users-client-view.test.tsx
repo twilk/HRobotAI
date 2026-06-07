@@ -19,7 +19,7 @@ describe('UsersClientView', () => {
     await user.click(screen.getByRole('button', { name: /Zaproś użytkownika/ }))
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     // Modal title rendered inside the dialog
-    expect(screen.getByRole('dialog')).toHaveAttribute('aria-label', 'Zaproś użytkownika')
+    expect(screen.getByRole('dialog')).toHaveAttribute('aria-labelledby', 'modal-title')
   })
 
   it('closes modal when Anuluj is clicked', async () => {
@@ -40,5 +40,31 @@ describe('UsersClientView', () => {
     const { getByRole: dialogGetByRole } = { getByRole: (role: string, opts?: object) => screen.getAllByRole(role as 'button', opts as Parameters<typeof screen.getAllByRole>[1]).find(el => dialog.contains(el))! }
     await user.click(dialogGetByRole('button', { name: /Wyślij zaproszenie/ }))
     expect(screen.getByText('nowy@acme.pl')).toBeInTheDocument()
+  })
+
+  it('shows validation error for empty email', async () => {
+    const user = userEvent.setup()
+    render(<UsersClientView initialUsers={users} />)
+    await user.click(screen.getByRole('button', { name: /Zaproś użytkownika/ }))
+    const dialog = screen.getByRole('dialog')
+    // Submit without typing anything
+    const submitBtn = screen.getAllByRole('button', { name: /Wyślij zaproszenie/ }).find((el) => dialog.contains(el))!
+    await user.click(submitBtn)
+    expect(screen.getByRole('alert')).toHaveTextContent('Email jest wymagany')
+    // Modal should still be open
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('shows validation error for invalid email format', async () => {
+    const user = userEvent.setup()
+    render(<UsersClientView initialUsers={users} />)
+    await user.click(screen.getByRole('button', { name: /Zaproś użytkownika/ }))
+    const dialog = screen.getByRole('dialog')
+    await user.type(screen.getByLabelText('Email'), 'nie-to-nie-email')
+    const submitBtn = screen.getAllByRole('button', { name: /Wyślij zaproszenie/ }).find((el) => dialog.contains(el))!
+    await user.click(submitBtn)
+    expect(screen.getByRole('alert')).toHaveTextContent('Podaj poprawny adres email')
+    // Modal should still be open
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 })

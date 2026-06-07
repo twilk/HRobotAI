@@ -3,13 +3,10 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { IconKey } from '@/components/icons'
-import type { Role } from '@/lib/nav'
+import { requirePageSession } from '@/lib/session'
 
-const tenant = { name: 'ACME Sp. z o.o.', slug: 'acme.hrobot.ai' }
-const user = { name: 'Jan Kowalski', role: 'Admin klienta', initials: 'JK' }
-const roles: Role[] = ['ADMIN_KLIENTA']
-
-export default function DostepyPage() {
+export default async function DostepyPage() {
+  const { user, tenant, roles } = await requirePageSession()
   return (
     <AppShell activeHref="/dostepy" title="Dostępy" tenant={tenant} user={user} roles={roles}>
       <div className="mx-auto max-w-[1120px]">

@@ -64,7 +64,7 @@ const EMPLOYEES: EmployeeDetail[] = [
     hireDate: '2021-03-01', contractType: 'Czas nieokreślony', fte: 'Pełny etat · 1,0',
     manager: 'Jan Kowalski', salaryMasked: '•• ••• PLN', region: REGION, realm: REALM,
     audit: audit([
-      { ts: '2026-05-28 14:02', action: 'Ujawniono PESEL', actor: 'Jan Kowalski', ip: '10.4.2.11' },
+      { ts: '2026-05-28 14:02', action: 'Ujawniono PESEL', actor: 'Jan Kowalski' },
       { ts: '2026-05-20 09:41', action: 'Zmieniono stanowisko', actor: 'Maria Wójcik' },
     ]),
   },

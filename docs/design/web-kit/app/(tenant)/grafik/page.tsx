@@ -3,15 +3,13 @@ import { ScheduleGrid } from '@/components/grafik/schedule-grid'
 import { getFacilities } from '@/lib/facilities'
 import { getEmployees } from '@/lib/employees'
 import { SEED_SHIFTS, ymd } from '@/lib/schedule'
-import type { Role } from '@/lib/nav'
+import { requirePageSession } from '@/lib/session'
 
 // Live grafik: render with the real current week per request.
 export const dynamic = 'force-dynamic'
 
 export default async function GrafikPage() {
-  const tenant = { name: 'ACME Sp. z o.o.', slug: 'acme.hrobot.ai' }
-  const user = { name: 'Jan Kowalski', role: 'Admin klienta', initials: 'JK' }
-  const roles: Role[] = ['ADMIN_KLIENTA']
+  const { user, tenant, roles } = await requirePageSession()
 
   const facilities = getFacilities()
   const employees = getEmployees().map((e) => ({

@@ -19,8 +19,22 @@ describe('Modal', () => {
   it('calls onClose when scrim is clicked', async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
-    render(<Modal open onClose={onClose} title="Test">Content</Modal>)
-    await user.click(screen.getByRole('dialog'))
+    const { container } = render(<Modal open onClose={onClose} title="Test">Content</Modal>)
+    // The scrim is the first child of the portal root (aria-hidden div)
+    const scrim = container.firstChild as HTMLElement
+    await user.click(scrim)
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('places role="dialog" on the card element, not the scrim', () => {
+    render(<Modal open title="Test" onClose={() => {}}>content</Modal>)
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(dialog).toHaveAttribute('aria-labelledby', 'modal-title')
+  })
+
+  it('h2 title element has id="modal-title"', () => {
+    render(<Modal open title="Test Title" onClose={() => {}}>content</Modal>)
+    expect(document.getElementById('modal-title')?.textContent).toBe('Test Title')
   })
 })

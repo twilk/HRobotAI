@@ -1,10 +1,22 @@
 'use client'
 
 import { useState, type FormEvent } from 'react'
+import { z } from 'zod'
+import toast from 'react-hot-toast'
 import { Modal } from '@/components/ui/modal'
 import { Field, Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import type { Employee } from '@/lib/employees'
+
+const employeeSchema = z.object({
+  firstName: z.string().min(1, 'Imię jest wymagane').max(100),
+  lastName: z.string().min(1, 'Nazwisko jest wymagane').max(100),
+  email: z.string().min(1, 'Email jest wymagany').email('Podaj poprawny adres email'),
+  position: z.string().min(1, 'Stanowisko jest wymagane').max(200),
+  unit: z.string().min(1, 'Jednostka jest wymagana').max(200),
+  contract: z.enum(['UoP', 'Zlecenie', 'B2B']),
+})
+type FormErrors = Partial<Record<keyof z.infer<typeof employeeSchema>, string>>
 
 interface NewEmployeeData {
   firstName: string
@@ -14,8 +26,6 @@ interface NewEmployeeData {
   unit: string
   contract: 'UoP' | 'Zlecenie' | 'B2B'
 }
-
-let _nextId = 100
 
 export function AddEmployeeModal({
   open,
@@ -29,27 +39,32 @@ export function AddEmployeeModal({
   const [form, setForm] = useState<NewEmployeeData>({
     firstName: '', lastName: '', email: '', position: '', unit: '', contract: 'UoP',
   })
+  const [errors, setErrors] = useState<FormErrors>({})
 
   function set(field: keyof NewEmployeeData, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }))
+    setErrors((prev) => ({ ...prev, [field]: undefined }))
   }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    const id = String(++_nextId)
-    onAdd({
-      id,
-      firstName: form.firstName,
-      lastName: form.lastName,
-      email: form.email,
-      position: form.position,
-      unit: form.unit,
-      contract: form.contract,
-      peselLast4: '0000',
-      status: 'active',
-    })
+    const result = employeeSchema.safeParse(form)
+    if (!result.success) {
+      const fe: FormErrors = {}
+      result.error.issues.forEach(i => {
+        if (!fe[i.path[0] as keyof FormErrors]) {
+          fe[i.path[0] as keyof FormErrors] = i.message
+        }
+      })
+      setErrors(fe)
+      return
+    }
+    const id = crypto.randomUUID()
+    onAdd({ id, ...result.data, peselLast4: '0000', status: 'active' })
+    setErrors({})
     setForm({ firstName: '', lastName: '', email: '', position: '', unit: '', contract: 'UoP' })
     onClose()
+    toast.success('Pracownik dodany')
   }
 
   return (
@@ -57,20 +72,25 @@ export function AddEmployeeModal({
       <form onSubmit={handleSubmit} noValidate>
         <div className="grid sm:grid-cols-2 gap-x-4">
           <Field label="Imię" htmlFor="add-firstName">
-            <Input id="add-firstName" aria-label="Imię" value={form.firstName} onChange={(e) => set('firstName', e.target.value)} required autoFocus />
+            <Input id="add-firstName" aria-label="Imię" value={form.firstName} onChange={(e) => set('firstName', e.target.value)} autoFocus />
+            {errors.firstName && <p className="mt-1 text-xs text-red-600">{errors.firstName}</p>}
           </Field>
           <Field label="Nazwisko" htmlFor="add-lastName">
-            <Input id="add-lastName" aria-label="Nazwisko" value={form.lastName} onChange={(e) => set('lastName', e.target.value)} required />
+            <Input id="add-lastName" aria-label="Nazwisko" value={form.lastName} onChange={(e) => set('lastName', e.target.value)} />
+            {errors.lastName && <p className="mt-1 text-xs text-red-600">{errors.lastName}</p>}
           </Field>
         </div>
         <Field label="Email" htmlFor="add-email">
-          <Input id="add-email" aria-label="Email" type="email" value={form.email} onChange={(e) => set('email', e.target.value)} required />
+          <Input id="add-email" aria-label="Email" type="email" value={form.email} onChange={(e) => set('email', e.target.value)} />
+          {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
         </Field>
         <Field label="Stanowisko" htmlFor="add-position">
-          <Input id="add-position" aria-label="Stanowisko" value={form.position} onChange={(e) => set('position', e.target.value)} required />
+          <Input id="add-position" aria-label="Stanowisko" value={form.position} onChange={(e) => set('position', e.target.value)} />
+          {errors.position && <p className="mt-1 text-xs text-red-600">{errors.position}</p>}
         </Field>
         <Field label="Jednostka" htmlFor="add-unit">
-          <Input id="add-unit" aria-label="Jednostka" value={form.unit} onChange={(e) => set('unit', e.target.value)} required />
+          <Input id="add-unit" aria-label="Jednostka" value={form.unit} onChange={(e) => set('unit', e.target.value)} />
+          {errors.unit && <p className="mt-1 text-xs text-red-600">{errors.unit}</p>}
         </Field>
         <Field label="Typ umowy" htmlFor="add-contract">
           <select
@@ -84,6 +104,7 @@ export function AddEmployeeModal({
             <option value="Zlecenie">Umowa zlecenie</option>
             <option value="B2B">Kontrakt B2B</option>
           </select>
+          {errors.contract && <p className="mt-1 text-xs text-red-600">{errors.contract}</p>}
         </Field>
         <p className="font-mono text-[11px] text-muted-2 mb-4">
           PESEL jest szyfrowany automatycznie przy tworzeniu profilu w docelowym systemie.

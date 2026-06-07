@@ -1,13 +1,14 @@
 import { AppShell } from '@/components/layout/app-shell'
 import { PracownicyClientView } from '@/components/employees/pracownicy-client-view'
 import { getEmployees } from '@/lib/employees'
-import type { Role } from '@/lib/nav'
+import { requirePageSession } from '@/lib/session'
 
 export default async function PracownicyPage() {
-  const tenant = { name: 'ACME Sp. z o.o.', slug: 'acme.hrobot.ai' }
-  const user = { name: 'Jan Kowalski', role: 'Admin klienta', initials: 'JK' }
-  const roles: Role[] = ['ADMIN_KLIENTA']
-  const employees = getEmployees()
+  const { user, tenant, roles } = await requirePageSession()
+  const rawEmployees = getEmployees()
+  const employees = rawEmployees.map(({ id, firstName, lastName, email, position, unit, contract, peselLast4, status }) =>
+    ({ id, firstName, lastName, email, position, unit, contract, peselLast4, status })
+  )
 
   return (
     <AppShell activeHref="/pracownicy" title="Pracownicy" tenant={tenant} user={user} roles={roles}>

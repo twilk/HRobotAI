@@ -1,12 +1,10 @@
 import { AppShell } from '@/components/layout/app-shell'
 import { UsersClientView } from '@/components/users/users-client-view'
 import { getUsers } from '@/lib/users'
-import type { Role } from '@/lib/nav'
+import { requirePageSession } from '@/lib/session'
 
 export default async function UzytkownicyPage() {
-  const tenant = { name: 'ACME Sp. z o.o.', slug: 'acme.hrobot.ai' }
-  const user = { name: 'Jan Kowalski', role: 'Admin klienta', initials: 'JK' }
-  const roles: Role[] = ['ADMIN_KLIENTA']
+  const { user, tenant, roles } = await requirePageSession()
   const users = getUsers()
 
   return (

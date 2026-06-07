@@ -2,19 +2,10 @@ import { AppShell } from '@/components/layout/app-shell'
 import { QuickActions } from '@/components/dashboard/quick-actions'
 import { SetupChecklist, type ChecklistStep } from '@/components/dashboard/setup-checklist'
 import { DataProtectionPanel } from '@/components/dashboard/data-protection-panel'
-import type { Role } from '@/lib/nav'
-
-// Server Component. In the real app, derive identity from the Auth.js session and
-// tenant context resolved by middleware, e.g.:
-//   const session = await auth()
-//   const tenant  = await getTenantForRequest()   // reads x-tenant-id header
-//   const roles   = session.user.roles as Role[]
-// Fetch independent data with Promise.all to avoid request waterfalls.
+import { requirePageSession } from '@/lib/session'
 
 export default async function DashboardPage() {
-  const tenant = { name: 'ACME Sp. z o.o.', slug: 'acme.hrobot.ai' }
-  const user = { name: 'Jan Kowalski', role: 'Admin klienta', initials: 'JK' }
-  const roles: Role[] = ['ADMIN_KLIENTA']
+  const { user, tenant, roles } = await requirePageSession()
 
   // From tenants.onboarding_checklist (org-level Json column).
   const checklist: ChecklistStep[] = [
