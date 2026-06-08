@@ -4,6 +4,20 @@ All notable changes to HRobot web-kit are documented here.
 
 ---
 
+## [0.4.0] - 2026-06-08
+
+### Added
+- **Employee onboarding integration** — `lib/actions/onboarding-actions.ts` exports `onboardNewEmployee` which atomically creates the employee record, a notification of type `employee-added`, default access entries for all 5 modules at `brak` level, and an initial leave balance record
+- `addLeaveBalance(employeeId, employeeName, year)` added to `lib/leave-balance.ts` — creates a default entitlement (26 annual / 14 paternity / 10 other) for new employees
+- **AddEmployeeModal** now calls `onboardNewEmployee` on form submit, replacing the piecemeal optimistic-only approach with full server-side coordination
+- **Leave balance tracking** — `lib/leave-balance.ts` with year-keyed in-memory store, `getLeaveBalance`, `getAllLeaveBalances`, `deductLeave` functions; API routes `GET /api/leave-balance` and `GET /api/leave-balance/[employeeId]`; `LeaveBalanceBadge` component
+- **Notifications system** — `lib/notifications.ts` with full CRUD (add, markRead, markAllRead, getUnreadCount); notification bell component in tenant layout; auto-notification added on wnioski approval
+- **GrafikGrid** wired to `grafik-actions.ts` server actions for shift assignment and removal
+- **DostepyClientView** wired to `dostepy-actions.ts` for per-module and bulk access updates
+- **Auto-deduct leave days** — approving a wnioski record calls `deductLeave` to subtract days from the employee's balance
+
+---
+
 ## [0.3.0] - 2026-06-08
 
 ### Added
