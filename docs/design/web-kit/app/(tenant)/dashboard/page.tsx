@@ -3,12 +3,15 @@ import { QuickActions } from '@/components/dashboard/quick-actions'
 import { SetupChecklist, type ChecklistStep } from '@/components/dashboard/setup-checklist'
 import { DataProtectionPanel } from '@/components/dashboard/data-protection-panel'
 import { StatsPanel } from '@/components/dashboard/stats-panel'
+import { ActivityFeed } from '@/components/dashboard/activity-feed'
 import { requirePageSession } from '@/lib/session'
 import { getHRSummary } from '@/lib/raporty'
+import { getNotifications } from '@/lib/notifications'
 
 export default async function DashboardPage() {
   const { user, tenant, roles } = await requirePageSession()
   const summary = getHRSummary()
+  const notifications = getNotifications({ limit: 10 })
 
   // From tenants.onboarding_checklist (org-level Json column).
   const checklist: ChecklistStep[] = [
@@ -38,6 +41,10 @@ export default async function DashboardPage() {
         <div className="grid lg:grid-cols-[1.06fr_0.94fr] gap-4 mt-4">
           <SetupChecklist steps={checklist} />
           <DataProtectionPanel />
+        </div>
+
+        <div className="mt-4">
+          <ActivityFeed notifications={notifications} />
         </div>
       </div>
     </AppShell>
