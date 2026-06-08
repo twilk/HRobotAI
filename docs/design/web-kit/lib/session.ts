@@ -17,12 +17,25 @@ export interface PageSession {
   roles: Role[]
 }
 
+const DEV_BYPASS =
+  process.env.NODE_ENV === 'development' &&
+  process.env.HROBOT_DEV_AUTH_BYPASS === '1'
+
+const DEV_SESSION: PageSession = {
+  user: { name: 'Jan Kowalski', email: 'admin@acme.hrobot.ai', initials: 'JK', role: 'Admin klienta' },
+  tenant: { slug: 'acme.hrobot.ai', name: 'ACME Sp. z o.o.' },
+  roles: ['ADMIN_KLIENTA'],
+}
+
 /**
  * Shared server helper for all (tenant) pages.
  * Reads auth session + x-tenant-slug header from middleware.
  * Calls redirect('/login') if unauthenticated.
+ * Dev: set HROBOT_DEV_AUTH_BYPASS=1 to skip auth entirely.
  */
 export async function requirePageSession(): Promise<PageSession> {
+  if (DEV_BYPASS) return DEV_SESSION
+
   const session = await auth()
   if (!session) redirect('/login')
 

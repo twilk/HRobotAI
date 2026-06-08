@@ -16,8 +16,14 @@ export default async function TenantLayout({
 }: {
   children: React.ReactNode
 }) {
-  const session = await auth()
-  if (!session) redirect('/login')
+  const devAuthBypass =
+    process.env.NODE_ENV === 'development' &&
+    process.env.HROBOT_DEV_AUTH_BYPASS === '1'
+
+  if (!devAuthBypass) {
+    const session = await auth()
+    if (!session) redirect('/login')
+  }
   return (
     <GuideProvider>
       {children}
