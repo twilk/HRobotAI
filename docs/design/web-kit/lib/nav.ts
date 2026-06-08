@@ -8,6 +8,7 @@ import {
   IconSettings,
   IconUser,
   IconBuilding,
+  IconBarChart2,
 } from '@/components/icons'
 
 export type Role = 'PRACOWNIK' | 'MANAGER' | 'HR' | 'ADMIN_KLIENTA'
@@ -35,6 +36,7 @@ export const NAV: NavGroup[] = [
       { label: 'Grafik', href: '/grafik', icon: IconCalendar },
       { label: 'Wnioski', href: '/wnioski', icon: IconRequests, tag: '3' },
       { label: 'Dostępy', href: '/dostepy', icon: IconKey, roles: ['MANAGER', 'HR', 'ADMIN_KLIENTA'] },
+      { label: 'Raporty', href: '/raporty', icon: IconBarChart2, roles: ['MANAGER', 'HR', 'ADMIN_KLIENTA'] },
     ],
   },
   {

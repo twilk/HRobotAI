@@ -180,3 +180,8 @@ export const IconBuilding = (p: IconProps) => (
     <path d="M14 8h5a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1h-5M7.5 7h3M7.5 11h3M7.5 15h3" />
   </Icon>
 )
+export const IconBarChart2 = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M18 20V10M12 20V4M6 20v-6" />
+  </Icon>
+)
