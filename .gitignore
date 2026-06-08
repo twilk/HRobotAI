@@ -25,3 +25,4 @@ Thumbs.db
 
 # Claude Code / gstack harness files (not project source)
 docs/superpowers/
+.gstack/

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveSpace, SPACES } from '@/lib/guide/registry'
+import { resolveSpace, SPACES, getSpaceLabel } from '@/lib/guide/registry'
 
 describe('resolveSpace', () => {
   it('resolves /dashboard → dashboard', () => {
@@ -46,5 +46,18 @@ describe('resolveSpace', () => {
 
   it('SPACES array exports 9 spaces', () => {
     expect(SPACES).toHaveLength(9)
+  })
+})
+
+describe('getSpaceLabel', () => {
+  it('returns the human-readable label for a valid space id', () => {
+    expect(getSpaceLabel('dashboard')).toBe('Dashboard')
+    expect(getSpaceLabel('pracownicy')).toBe('Pracownicy')
+    expect(getSpaceLabel('pracownicy-id')).toBe('Kartoteka pracownika')
+  })
+
+  it('falls back to the id itself for an unknown space id', () => {
+    // TypeScript cast lets us pass an arbitrary string to exercise the fallback branch
+    expect(getSpaceLabel('unknown-space' as any)).toBe('unknown-space')
   })
 })
