@@ -1,5 +1,6 @@
 'use server'
-import { addLeaveRequest, updateLeaveRequest, getLeaveRequests, type LeaveType } from '@/lib/wnioski'
+import { addLeaveRequest, updateLeaveRequest, getLeaveRequests, getLeaveRequest, type LeaveType } from '@/lib/wnioski'
+import { deductEmployeeLeave } from '@/lib/actions/leave-balance-actions'
 
 interface CreateLeaveRequestData {
   employeeId: string
@@ -47,6 +48,12 @@ export async function approveLeaveRequest(
   id: string,
   approvedBy: string,
 ): Promise<{ success: boolean; error?: string }> {
+  // Fetch request before updating so we know the employee + type + days
+  const req = getLeaveRequest(id)
+  if (!req) {
+    return { success: false, error: `Leave request '${id}' not found` }
+  }
+
   const updated = updateLeaveRequest(id, {
     status: 'approved',
     approvedBy,
@@ -55,6 +62,10 @@ export async function approveLeaveRequest(
   if (!updated) {
     return { success: false, error: `Leave request '${id}' not found` }
   }
+
+  // Auto-deduct the days from the employee's leave balance when trackable type
+  await deductEmployeeLeave(req.employeeId, req.type, req.days)
+
   return { success: true }
 }
 
