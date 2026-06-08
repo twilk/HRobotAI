@@ -4,6 +4,25 @@ All notable changes to HRobot web-kit are documented here.
 
 ---
 
+## [1.0.0] - 2026-06-08
+
+### Stable Release — HRobot web-kit v1.0.0
+
+This is the first stable release of the HRobot web-kit reference application.
+
+### Added
+- **Complete HR management suite** — all 7 tenant spaces fully implemented: Pracownicy, Grafik, Wnioski, Dostępy, Raporty, Placówki, Ustawienia
+- **Full TDD test suite** — 540+ tests covering all components, lib functions, server actions, and API routes
+- **Activity feed** — `ActivityFeed` server component in the dashboard showing last 10 notifications with priority dots, relative timestamps (Xh temu / wczoraj / X dni temu), and read/unread indicators
+- **Global search** — `lib/search.ts` with `globalSearch()` searching across employees, leave requests, and notifications; scored (exact=1.0, starts-with=0.7, contains=0.5); returns top 10 results
+- **SearchBar component** — debounced (300ms) search input in the topbar with dropdown results (max 5), type icons, and Escape-to-close
+- **Notifications bell** — topbar notification bell with unread badge, dropdown with priority dots, mark-all-read action
+- **All write paths wired via Server Actions** — employees, wnioski, dostępy, grafik, facilities
+- **Employee onboarding integration** — `onboardNewEmployee` atomically creates employee, notification, access entries, and leave balance
+- **Leave balance tracking** — year-keyed balances with auto-deduction on wnioski approval
+
+---
+
 ## [0.4.0] - 2026-06-08
 
 ### Added

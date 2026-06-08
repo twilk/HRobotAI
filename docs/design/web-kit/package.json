@@ -1,6 +1,6 @@
 {
   "name": "hrobot-web-kit",
-  "version": "0.4.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Runnable reference app for the HRobot design system (also a portable component kit).",
   "scripts": {
