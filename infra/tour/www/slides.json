@@ -1,0 +1,77 @@
+{
+  "title": "HRobot.AI — Virtual Tour",
+  "autoAdvanceSec": 6,
+  "transitionMs": 600,
+  "slides": [
+    {
+      "id": "overview",
+      "title": "HRobot.AI",
+      "badge": "Platforma HR",
+      "description": "Multi-tenant SaaS HR dla rynku polskiego i EU. Każdy klient dostaje własną izolowaną bazę danych, własny realm Keycloak i pełną separację danych zgodną z RODO.",
+      "status": "live",
+      "plan": 1,
+      "mockup": "architecture",
+      "screenshot": null
+    },
+    {
+      "id": "signup",
+      "title": "Rejestracja konta",
+      "badge": "Plan 4",
+      "description": "Formularz z live preview nazwy subdomeny, walidacją siły hasła (zxcvbn) i debounced sprawdzaniem dostępności adresu w czasie rzeczywistym. Automatyczne tworzenie izolowanego środowiska po kliknięciu „Utwórz konto".",
+      "status": "planned",
+      "plan": 4,
+      "mockup": "signup",
+      "screenshot": null
+    },
+    {
+      "id": "provisioning",
+      "title": "Konfiguracja konta",
+      "badge": "Backend gotowy · Plan 4",
+      "description": "5-etapowy tracker konfiguracji: CREATE_DB → RUN_MIGRATIONS → SEED → KEYCLOAK_SETUP → DONE. Polskie benefity dla każdego kroku. Polling co 3s bez odświeżania strony. Pipeline backendowy w pełni zaimplementowany.",
+      "status": "backend-ready",
+      "plan": 4,
+      "mockup": "provisioning",
+      "screenshot": null
+    },
+    {
+      "id": "dashboard",
+      "title": "Dashboard",
+      "badge": "Plan 5",
+      "description": "Personalizowane powitanie z nazwą firmy. 3 karty szybkich akcji (Dodaj pracownika, Skonfiguruj grafik, Zaproś użytkowników). Checklista onboardingu synchronizowana między urządzeniami przez bazę danych.",
+      "status": "planned",
+      "plan": 5,
+      "mockup": "dashboard",
+      "screenshot": null
+    },
+    {
+      "id": "sidebar",
+      "title": "Nawigacja",
+      "badge": "Plan 4",
+      "description": "Zgrupowane menu: MODUŁY HR (Dashboard, Pracownicy, Grafik, Wnioski, Dostępy) i ADMINISTRACJA. Mobilna szuflada z hamburgerem. Widoczność elementów zależna od roli użytkownika (RBAC gotowy w backendzie).",
+      "status": "planned",
+      "plan": 4,
+      "mockup": "sidebar",
+      "screenshot": null
+    },
+    {
+      "id": "employees",
+      "title": "Lista pracowników",
+      "badge": "Backend gotowy · Plan 5",
+      "description": "GET /api/employees działa — zwraca dane z fizycznie izolowanej bazy tenanta. PESEL szyfrowany AES-256-GCM, nigdy nie trafia do API. Pusty stan onboardingu z CTA i CSV import (disabled, tooltip „dostępne wkrótce").",
+      "status": "backend-ready",
+      "plan": 5,
+      "mockup": "employees",
+      "screenshot": null
+    },
+    {
+      "id": "keycloak",
+      "title": "Logowanie (Keycloak)",
+      "badge": "Plan 4",
+      "description": "Motyw HRobot Navy/Cyan aplikowany przez Keycloak Admin REST API w kroku KEYCLOAK_SETUP. FreeMarker templates z glassmorphism card. Każdy tenant ma własny realm z krótkim TTL tokenu (RODO).",
+      "status": "planned",
+      "plan": 4,
+      "mockup": "keycloak",
+      "screenshot": null
+    }
+  ]
+}

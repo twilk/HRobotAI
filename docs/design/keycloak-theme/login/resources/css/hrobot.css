@@ -1,0 +1,122 @@
+/* ============================================================
+   HRobot — Keycloak login theme overrides ("Refit for EU-trust").
+   Loaded AFTER the parent `keycloak` login.css, so these rules win.
+   Tokens mirror /DESIGN.md. Selectors target the classic `keycloak` login
+   markup; PatternFly v5 (keycloak.v2) equivalents are grouped where cheap.
+   Fonts: Fontshare (Cabinet Grotesk, General Sans) + Google (IBM Plex Mono).
+   For air-gapped Keycloak, vendor the woff2 into resources/fonts/ and swap @import for @font-face.
+   ============================================================ */
+@import url('https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@700,800&f[]=general-sans@400,500,600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --navy: #0b1f3b; --navy-700: #15355c; --accent-navy: #3cc3d6;
+  --ink: #101a2b; --muted: #5b6b82;
+  --canvas: #f6f4ee; --panel: #ffffff; --line: #e7e4da; --line-strong: #d9d5c8;
+  --accent: #0c8fa3; --accent-ink: #0a7b8c; --ok: #2e9e6b; --err: #c2443b;
+  --display: 'Cabinet Grotesk', 'General Sans', system-ui, sans-serif;
+  --sans: 'General Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+/* ---- page background: navy + faint engraved security motif ---- */
+body.login-pf,
+.login-pf body,
+.login-pf-page {
+  background: var(--navy) !important;
+  font-family: var(--sans) !important;
+  color: var(--ink);
+}
+body.login-pf { position: relative; }
+body.login-pf::before {
+  content: ''; position: fixed; inset: 0; pointer-events: none; opacity: 0.55;
+  background:
+    repeating-linear-gradient(115deg, rgba(60, 195, 214, 0.06) 0 1px, transparent 1px 11px),
+    radial-gradient(120% 80% at 80% -10%, rgba(60, 195, 214, 0.1), transparent 60%);
+}
+
+/* ---- brand header (realm name) ---- */
+#kc-header, #kc-header-wrapper {
+  font-family: var(--display); font-weight: 800; letter-spacing: -0.02em;
+  color: #fff; position: relative; z-index: 1;
+}
+
+/* ---- the login card: warm surface, hairline, real elevation (no glass) ---- */
+.login-pf-page .card-pf,
+.login-pf-page .card-pf.card-pf-aggregate,
+#kc-content .card-pf,
+.pf-v5-c-login__main {
+  background: var(--panel) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 2px 4px rgba(11, 31, 59, 0.06), 0 24px 48px -24px rgba(11, 31, 59, 0.3) !important;
+  position: relative; z-index: 1;
+}
+
+/* ---- titles ---- */
+#kc-page-title,
+.pf-v5-c-login__main-header-desc,
+h1#kc-page-title {
+  font-family: var(--display); font-weight: 700; letter-spacing: -0.02em;
+  color: var(--navy); font-size: 22px;
+}
+label, .pf-v5-c-form__label { color: var(--ink); font-weight: 500; }
+
+/* ---- inputs ---- */
+input.form-control,
+.pf-v5-c-form-control,
+input[type='text'], input[type='email'], input[type='password'] {
+  border: 1px solid var(--line-strong) !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+  color: var(--ink) !important;
+  font-family: var(--sans) !important;
+  box-shadow: none !important;
+}
+input.form-control:focus,
+.pf-v5-c-form-control:focus,
+input[type='text']:focus, input[type='email']:focus, input[type='password']:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px rgba(12, 143, 163, 0.14) !important;
+  outline: none !important;
+}
+
+/* ---- primary button (Sign in) ---- */
+.btn-primary,
+input[type='submit'].btn-primary,
+#kc-login,
+.pf-v5-c-button.pf-m-primary {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: #fff !important;
+  border-radius: 8px !important;
+  font-family: var(--sans) !important;
+  font-weight: 600 !important;
+  text-shadow: none !important;
+}
+.btn-primary:hover,
+#kc-login:hover,
+.pf-v5-c-button.pf-m-primary:hover {
+  background: var(--accent-ink) !important;
+  border-color: var(--accent-ink) !important;
+}
+.btn-default, .pf-v5-c-button.pf-m-secondary {
+  border-radius: 8px !important; border-color: var(--line-strong) !important; color: var(--ink) !important;
+  background: #fff !important;
+}
+
+/* ---- links ---- */
+a, #kc-info a, #kc-registration a, .pf-v5-c-login__main-footer-band a {
+  color: var(--accent-ink) !important; font-weight: 500;
+}
+a:hover { color: var(--accent) !important; }
+
+/* ---- alerts: semantic colors ---- */
+.alert-error, .pf-m-danger { background: rgba(194, 68, 59, 0.06) !important; border-color: rgba(194, 68, 59, 0.3) !important; color: var(--err) !important; }
+.alert-success { background: rgba(46, 158, 107, 0.08) !important; border-color: rgba(46, 158, 107, 0.3) !important; color: #247f56 !important; }
+
+/* ---- code / mono moments (e.g. realm hints) ---- */
+code, kbd, .mono { font-family: var(--mono) !important; }
+
+/* ---- language selector / footer ---- */
+#kc-locale a, #kc-locale-dropdown a { color: var(--muted) !important; font-family: var(--mono); font-size: 12px; }

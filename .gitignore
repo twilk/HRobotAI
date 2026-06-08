@@ -4,8 +4,24 @@
 # Dependencies & build output
 node_modules/
 dist/
+coverage/
+
+# Prisma generated clients (regenerated via `pnpm db:generate`)
+packages/db/generated/
 
 # Env files (never commit secrets)
 .env
 .env.local
 .env.*.local
+!.env.example
+
+# TypeScript incremental build info (generated per-package on build)
+*.tsbuildinfo
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
+
+# Claude Code / gstack harness files (not project source)
+docs/superpowers/

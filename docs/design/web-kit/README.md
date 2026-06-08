@@ -1,7 +1,7 @@
 # HRobot web-kit — portable Next.js + Tailwind components
 
 Production React/Tailwind implementation of the HRobot design system
-([`../DESIGN.md`](../DESIGN.md)), derived 1:1 from the rendered-verified mockups in
+([`DESIGN.md`](../../../DESIGN.md)), derived 1:1 from the rendered-verified mockups in
 [`../mockups/`](../mockups/). Drop these into the Foundation `apps/web` (Next.js 16 App
 Router). Server Components by default; only `mobile-drawer`, `slug-input`,
 `password-strength`, and `signup-form` are client components.
@@ -81,6 +81,6 @@ same primitives (`Card`, `Badge`, `Table` pattern, `AppShell`, `motif-navy`).
 
 ## Guardrails
 
-Keep the [`../DESIGN.md`](../DESIGN.md) anti-slop rules: no glassmorphism, no Inter/system-ui as
+Keep the [`DESIGN.md`](../../../DESIGN.md) anti-slop rules: no glassmorphism, no Inter/system-ui as
 display/body, no neon cyan, no gradient CTAs, no centered-everything, no icon-in-colored-circle
 grids. Teal is a sparing signal; green means verified; mono is the machine/security layer.

@@ -1,0 +1,21 @@
+import { Controller } from '@nestjs/common'
+import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices'
+import { ProvisioningService } from './provisioning.service.js'
+
+@Controller()
+export class ProvisioningConsumer {
+  constructor(private readonly provisioning: ProvisioningService) {}
+
+  // The outbox relay publishes with ClientProxy.emit() — an EVENT — so the handler must be
+  // @EventPattern, not @MessagePattern (which is for send()/RPC). Otherwise NestJS nacks the
+  // message ("unsupported event") and the job never leaves CREATE_DB.
+  @EventPattern('tenant.provision')
+  async handle(
+    @Payload() msg: { jobId: string; tenantId: string },
+    @Ctx() context: RmqContext,
+  ): Promise<void> {
+    await this.provisioning.process(msg)
+    const channel = context.getChannelRef() as { ack(msg: object): void }
+    channel.ack(context.getMessage() as object)
+  }
+}

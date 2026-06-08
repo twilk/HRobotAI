@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HRobot — onboarding</title>
+    <link rel="stylesheet" href="./vendor/shepherd.css" />
+    <link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@700,800&f[]=general-sans@400,500,600&display=swap"
+      rel="stylesheet"
+    />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <style>
+      /* HRobot design system — "Refit for EU-trust" (see DESIGN.md in repo root).
+         Navy anchor, warm parchment, signal teal, Cabinet Grotesk + General Sans + IBM Plex Mono.
+         No glassmorphism, no Inter/system-ui as display, no neon. JS hooks used by app.js/show.js/
+         tour.js (.out/.ok/.err/.warn, .pill up|down, .step active|done|failed, table, .note, .ghost,
+         .show-focus, #show-stage, #show-caption, .sc-*, element ids) are preserved. */
+      :root {
+        --navy: #0b1f3b; --navy-700: #15355c; --accent-navy: #3cc3d6;
+        --ink: #101a2b; --muted: #5b6b82; --muted-2: #8a97a8;
+        --canvas: #f6f4ee; --panel: #ffffff; --panel-2: #fbfaf6;
+        --line: #e7e4da; --line-strong: #d9d5c8;
+        --accent: #0c8fa3; --accent-ink: #0a7b8c;
+        --ok: #2e9e6b; --ok-ink: #247f56; --warn: #b8791f; --err: #c2443b;
+        --chip: #f1efe8; --radius: 14px; --r-sm: 8px;
+        --display: 'Cabinet Grotesk', 'General Sans', system-ui, sans-serif;
+        --sans: 'General Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+        --shadow: 0 1px 2px rgba(11, 31, 59, 0.05);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; font: 15px/1.55 var(--sans); color: var(--ink);
+        background: var(--canvas); min-height: 100vh; -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      header {
+        position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px;
+        padding: 14px 22px; background: var(--canvas); border-bottom: 1px solid var(--line);
+      }
+      .brand {
+        display: flex; align-items: center; gap: 10px; font-family: var(--display);
+        font-weight: 800; font-size: 19px; letter-spacing: -0.02em; color: var(--navy);
+      }
+      .brand .dot { color: var(--accent-ink); }
+      .logo {
+        width: 30px; height: 30px; border-radius: 8px;
+        background: linear-gradient(180deg, var(--navy-700), var(--navy));
+        border: 1px solid rgba(60, 195, 214, 0.35); display: grid; place-items: center;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+      }
+      .logo i {
+        width: 14px; height: 14px; border: 1.8px solid var(--accent-navy);
+        border-radius: 4px; display: grid; place-items: center;
+      }
+      .logo i::after { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--accent-navy); }
+      .spacer { flex: 1; }
+      .pill {
+        font-family: var(--mono); font-size: 11px; letter-spacing: 0.02em; padding: 5px 11px;
+        border-radius: 999px; background: var(--chip); color: var(--muted); border: 1px solid var(--line-strong);
+      }
+      .pill.up { background: rgba(46, 158, 107, 0.08); color: var(--ok-ink); border-color: rgba(46, 158, 107, 0.25); }
+      .pill.down { background: rgba(194, 68, 59, 0.07); color: var(--err); border-color: rgba(194, 68, 59, 0.25); }
+      button {
+        font: inherit; font-weight: 600; cursor: pointer; border: 1px solid transparent;
+        border-radius: var(--r-sm); padding: 10px 16px; background: var(--accent); color: #fff;
+        transition: background 0.12s ease, transform 0.12s ease;
+      }
+      button:hover { background: var(--accent-ink); }
+      button:active { transform: translateY(1px); }
+      button.ghost { background: #fff; color: var(--ink); border-color: var(--line-strong); }
+      button.ghost:hover { background: var(--panel-2); }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      main { max-width: 880px; margin: 0 auto; padding: 28px 20px 80px; }
+      .hero h1 {
+        font-family: var(--display); font-weight: 800; font-size: 32px; letter-spacing: -0.025em;
+        color: var(--navy); margin: 6px 0;
+      }
+      .hero p { color: var(--muted); max-width: 62ch; }
+      .card {
+        background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+        padding: 20px 22px; margin: 18px 0; box-shadow: var(--shadow);
+      }
+      .card h2 {
+        font-family: var(--display); font-weight: 700; letter-spacing: -0.01em;
+        margin: 0 0 4px; font-size: 18px; color: var(--navy);
+      }
+      .card .lead { color: var(--muted); margin: 0 0 14px; }
+      .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+      label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; font-weight: 500; }
+      input {
+        font: inherit; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+        min-width: 220px; background: #fff; color: var(--ink); transition: border-color 0.12s, box-shadow 0.12s;
+      }
+      input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(12, 143, 163, 0.14); }
+      .field { flex: 1; min-width: 220px; }
+      .out { margin-top: 12px; font-size: 14px; color: var(--ink); }
+      .muted { color: var(--muted); }
+      .ok { color: var(--ok-ink); }
+      .err { color: var(--err); }
+      .warn { color: var(--warn); }
+      .steps { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 4px; }
+      .step {
+        display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 12px;
+        letter-spacing: 0.02em; padding: 6px 11px; border-radius: 999px; background: var(--chip);
+        color: var(--muted); border: 1px solid var(--line-strong);
+      }
+      .step .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line-strong); }
+      .step.active { background: rgba(12, 143, 163, 0.08); color: var(--accent-ink); border-color: rgba(12, 143, 163, 0.3); }
+      .step.active .dot { background: var(--accent); }
+      .step.done { background: rgba(46, 158, 107, 0.08); color: var(--ok-ink); border-color: rgba(46, 158, 107, 0.3); }
+      .step.done .dot { background: var(--ok); }
+      .step.failed { background: rgba(194, 68, 59, 0.07); color: var(--err); border-color: rgba(194, 68, 59, 0.3); }
+      .step.failed .dot { background: var(--err); }
+      table {
+        width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 12px; font-size: 14px;
+        border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+      }
+      th {
+        text-align: left; padding: 11px 14px; font-family: var(--mono); font-size: 10.5px;
+        text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted-2);
+        background: var(--panel-2); border-bottom: 1px solid var(--line);
+      }
+      td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+      tbody tr:last-child td { border-bottom: none; }
+      .check { display: flex; align-items: center; gap: 10px; padding: 10px 0; }
+      .check input { min-width: 0; width: 18px; height: 18px; accent-color: var(--accent); }
+      code {
+        font-family: var(--mono); background: var(--panel-2); border: 1px solid var(--line);
+        padding: 1px 6px; border-radius: 6px; font-size: 12.5px; color: var(--accent-ink);
+      }
+      .note {
+        font-size: 13px; background: rgba(184, 121, 31, 0.06); border: 1px solid rgba(184, 121, 31, 0.25);
+        color: #6b5a1f; padding: 10px 12px; border-radius: 10px; margin-top: 10px;
+      }
+      footer { text-align: center; color: var(--muted-2); font-family: var(--mono); font-size: 12px; padding: 24px; }
+
+      /* ---- autoplay "show" stage — themed to HRobot ---- */
+      .show-focus {
+        outline: 3px solid var(--accent); outline-offset: 3px;
+        box-shadow: 0 0 0 6px rgba(12, 143, 163, 0.14); transition: outline-color 0.2s, box-shadow 0.2s;
+      }
+      #show-stage { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; display: flex;
+        justify-content: center; padding: 14px; pointer-events: none; }
+      #show-stage.hidden { display: none; }
+      #show-caption {
+        pointer-events: auto; width: min(760px, 94vw); background: var(--navy); color: #e4eaf3;
+        border-radius: 16px; padding: 16px 18px 12px; box-shadow: 0 18px 50px rgba(11, 31, 59, 0.4);
+        border: 1px solid var(--navy-700);
+      }
+      #show-caption .sc-row { display: flex; gap: 12px; align-items: flex-start; }
+      #show-caption .sc-badge { flex: none; width: 30px; height: 30px; border-radius: 9px;
+        background: linear-gradient(180deg, var(--navy-700), var(--navy)); border: 1px solid rgba(60, 195, 214, 0.4);
+        color: var(--accent-navy); display: grid; place-items: center; font-weight: 700; font-family: var(--mono); }
+      #show-caption .sc-title { font-family: var(--display); font-weight: 700; font-size: 15px; margin-bottom: 2px; color: #fff; }
+      #show-caption .sc-body { font-size: 14px; color: #aebbce; line-height: 1.45; }
+      #show-caption .sc-body code { font-family: var(--mono); background: rgba(60, 195, 214, 0.1); color: var(--accent-navy);
+        border: none; padding: 1px 6px; border-radius: 6px; }
+      #show-caption .sc-progress { height: 4px; background: var(--navy-700); border-radius: 999px; margin: 12px 0 10px; overflow: hidden; }
+      #show-caption .sc-progress-bar { height: 100%; width: 0; background: var(--accent-navy); border-radius: 999px; transition: width 0.4s ease; }
+      #show-caption .sc-controls { display: flex; align-items: center; gap: 8px; }
+      #show-caption .sc-btn { background: var(--accent); color: #fff; border: none; border-radius: 9px;
+        padding: 7px 12px; font: inherit; font-weight: 600; font-size: 13px; cursor: pointer; }
+      #show-caption .sc-btn:hover { background: var(--accent-ink); }
+      #show-caption .sc-btn.ghost { background: var(--navy-700); color: #cdd9ea; }
+      #show-caption .sc-btn:disabled { opacity: 0.5; cursor: default; }
+      #show-caption .sc-spacer { flex: 1; }
+      #show-caption .sc-speed { font-size: 12px; color: #9aa8bd; display: flex; align-items: center; gap: 6px; }
+      #show-caption .sc-speed select { background: var(--navy-700); color: #e4eaf3; border: 1px solid #25406a;
+        border-radius: 7px; padding: 4px 6px; font: inherit; font-size: 12px; }
+
+      /* ---- Shepherd guided tour — themed to HRobot ---- */
+      .shepherd-element.hrobot-step { border-radius: 14px; border: 1px solid var(--line);
+        box-shadow: 0 2px 4px rgba(11, 31, 59, 0.06), 0 24px 48px -24px rgba(11, 31, 59, 0.3); font-family: var(--sans); }
+      .shepherd-element.hrobot-step .shepherd-content { border-radius: 14px; background: var(--panel); overflow: hidden; }
+      .shepherd-element.hrobot-step .shepherd-header { background: var(--panel-2); padding: 14px 18px; }
+      .shepherd-element.hrobot-step .shepherd-title { font-family: var(--display); font-weight: 700; color: var(--navy); font-size: 15px; letter-spacing: -0.01em; }
+      .shepherd-element.hrobot-step .shepherd-text { color: var(--ink); font-size: 13.5px; line-height: 1.55; padding: 14px 18px; }
+      .shepherd-element.hrobot-step .shepherd-text code { font-family: var(--mono); background: var(--panel-2);
+        border: 1px solid var(--line); color: var(--accent-ink); padding: 1px 5px; border-radius: 5px; font-size: 12px; }
+      .shepherd-element.hrobot-step .shepherd-footer { padding: 0 18px 16px; gap: 8px; }
+      .shepherd-element.hrobot-step .shepherd-button { background: var(--accent); color: #fff; border-radius: 8px;
+        font-weight: 600; padding: 8px 14px; font-family: var(--sans); }
+      .shepherd-element.hrobot-step .shepherd-button:not(:disabled):hover { background: var(--accent-ink); }
+      .shepherd-element.hrobot-step .shepherd-button.shepherd-button-secondary { background: #fff; color: var(--ink); border: 1px solid var(--line-strong); }
+      .shepherd-element.hrobot-step .shepherd-button.shepherd-button-secondary:not(:disabled):hover { background: var(--panel-2); }
+      .shepherd-element.hrobot-step .shepherd-cancel-icon { color: var(--muted-2); }
+      .shepherd-element.hrobot-step .shepherd-arrow::before { background: var(--panel); border: 1px solid var(--line); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand"><span class="logo"><i></i></span> HRobot<span class="dot">.ai</span></div>
+      <span id="health" class="pill" data-tour="health">checking API…</span>
+      <div class="spacer"></div>
+      <button id="showBtn" data-tour="show-btn">🎬 Play the show</button>
+      <button id="tourBtn" class="ghost" data-tour="tour-btn">▶ Take the tour</button>
+    </header>
+
+    <main>
+      <section class="hero card" data-tour="welcome">
+        <h1>Welcome to HRobot</h1>
+        <p>Set up your company's HR workspace in minutes. This guided tour walks you through every
+          step: claim your URL, create the workspace, watch it provision, sign in, see your team,
+          and finish onboarding. Click <strong>Take the tour</strong> any time.</p>
+      </section>
+
+      <section class="card" data-tour="slug">
+        <h2>1. Claim your company URL</h2>
+        <p class="lead">Your workspace will live at <code><span id="slugPreview">acme</span>.hrobot.ai</code>. Pick an available slug.</p>
+        <div class="row">
+          <div class="field"><label for="slug">Company slug</label>
+            <input id="slug" value="acme" autocomplete="off" /></div>
+          <button id="slugBtn">Check availability</button>
+        </div>
+        <div id="slugOut" class="out muted">3–30 chars, lowercase letters, numbers and dashes.</div>
+      </section>
+
+      <section class="card" data-tour="signup">
+        <h2>2. Create your workspace</h2>
+        <p class="lead">We provision an isolated database and identity realm just for your company.</p>
+        <div class="row">
+          <div class="field"><label for="company">Company name</label>
+            <input id="company" value="Acme Sp. z o.o." /></div>
+          <div class="field"><label for="email">Admin email</label>
+            <input id="email" value="owner@acme.test" /></div>
+          <button id="signupBtn">Create workspace</button>
+        </div>
+        <div id="signupOut" class="out muted">Starts an asynchronous provisioning job.</div>
+      </section>
+
+      <section class="card" data-tour="provisioning">
+        <h2>3. Provisioning</h2>
+        <p class="lead">HRobot builds your tenant through a state machine. This view polls live status.</p>
+        <div id="steps" class="steps">
+          <span class="step" data-step="CREATE_DB"><span class="dot"></span>Create DB</span>
+          <span class="step" data-step="RUN_MIGRATIONS"><span class="dot"></span>Run migrations</span>
+          <span class="step" data-step="SEED"><span class="dot"></span>Seed</span>
+          <span class="step" data-step="KEYCLOAK_SETUP"><span class="dot"></span>Keycloak setup</span>
+          <span class="step" data-step="DONE"><span class="dot"></span>Done</span>
+        </div>
+        <div id="provOut" class="out muted">Create a workspace above to begin, or
+          <a href="#" id="trackLink">track an existing job id</a>.</div>
+      </section>
+
+      <section class="card" data-tour="login">
+        <h2>4. Sign in</h2>
+        <p class="lead">Platform operators sign in here; tenant employees sign in through their company's
+          Keycloak realm. Demo uses the seeded global admin.</p>
+        <div class="row">
+          <div class="field"><label for="loginEmail">Email</label>
+            <input id="loginEmail" value="admin@hrobot.local" /></div>
+          <div class="field"><label for="loginPass">Password</label>
+            <input id="loginPass" type="password" value="admin12345" /></div>
+          <button id="loginBtn">Sign in</button>
+        </div>
+        <div id="loginOut" class="out muted">Returns a signed JWT.</div>
+      </section>
+
+      <section class="card" data-tour="team">
+        <h2>5. Your team</h2>
+        <p class="lead">The employee directory is tenant-scoped and RBAC-guarded; PESEL (national ID) is
+          never sent to the browser.</p>
+        <div class="row">
+          <button id="teamBtn" class="ghost">Load employees</button>
+        </div>
+        <div id="teamOut" class="out"></div>
+      </section>
+
+      <section class="card" data-tour="checklist">
+        <h2>6. Finish onboarding</h2>
+        <p class="lead">Track setup tasks. Saving requires the tenant-admin (ADMIN_KLIENTA) role.</p>
+        <div class="check"><input type="checkbox" id="ck-addEmployees" /><label for="ck-addEmployees" style="margin:0">Add employees</label></div>
+        <div class="check"><input type="checkbox" id="ck-configureSchedule" /><label for="ck-configureSchedule" style="margin:0">Configure work schedule</label></div>
+        <div class="check"><input type="checkbox" id="ck-inviteUsers" /><label for="ck-inviteUsers" style="margin:0">Invite users</label></div>
+        <div class="row"><button id="checklistBtn" class="ghost">Save checklist</button></div>
+        <div id="checklistOut" class="out muted"></div>
+      </section>
+    </main>
+
+    <footer>HRobot onboarding demo · drives the live control-plane &amp; tenant-runtime APIs</footer>
+
+    <script src="./vendor/shepherd.min.js"></script>
+    <script src="./app.js"></script>
+    <script src="./tour.js"></script>
+    <script src="./show.js"></script>
+    <script>
+      // Wire the header "Play the show" button to the autoplay orchestrator.
+      document.getElementById('showBtn').addEventListener('click', () => window.HRobotShow && window.HRobotShow.start())
+    </script>
+  </body>
+</html>

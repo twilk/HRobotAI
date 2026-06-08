@@ -4,6 +4,43 @@ Deferred items surfaced by `/autoplan`. Items here are NOT in the current plan's
 they are parked decisions or follow-up work. Merge-blocking fixes live in the plan file's
 review report, not here.
 
+## Autoplay "show" + provisioning pipeline (2026-06-01)
+
+- [x] **Autoplay "show" mode** (`apps/web/show.js`, `5c1f4bc`/`4cae992`): one click → hands-free,
+      timed walkthrough that drives the REAL APIs (fresh slug → signup → live provisioning awaited
+      to DONE → login → team → checklist), with a Pause/Resume/Skip/Restart/Stop + speed control bar.
+      Verified in-browser: show runs to the finale with all 5 provisioning steps ✓ and tenant ACTIVE.
+- [x] **Provisioning pipeline now completes end-to-end** — fixed 5 stacked bugs that made signup→DONE
+      never work on a real run (none caught by 114 unit tests; only running it surfaced them):
+      @MessagePattern→@EventPattern; consumer providers→controllers; re-emit next step (incl. →DONE
+      so DoneStep flips tenant ACTIVE); emit() wrapped in firstValueFrom; `pnpm prisma`→`node <prisma>`
+      (Windows spawn hang); execute-actions-email best-effort (no dev SMTP). Live: 5 jobs reached DONE.
+- [ ] **SeedStep idempotency** (codex Medium): `process()` has no per-job claim/lock, and SeedStep
+      blindly creates "Cała firma" — at-least-once RMQ redelivery could double-process. Add a
+      compare-and-set on job.step (claim the step) or make each step idempotent.
+- [ ] **Keycloak temp-password fallback** (codex Medium): when `execute-actions-email` fails (no SMTP),
+      the generated temp password is neither persisted nor surfaced, so the initial admin has no
+      onboarding path. Persist/return it, or configure dev SMTP (Mailhog), or set a known dev password.
+
+## Consolidation — `main` trunk (2026-06-01)
+
+- [x] **All five feature branches consolidated into `main`** (default branch): two services
+      (`apps/control-plane`, `apps/tenant-runtime`) + `apps/web` on the hardened data layer.
+      `pnpm build` + 114 unit tests green. PRs #1-#5 closed as superseded (branches kept).
+- [x] **Container build fixed for the two-app layout** (`e7bee40`, `37da00e`): per-app
+      Dockerfiles (paths/name corrected, `packages/db/prisma` copied before install for the
+      `postinstall` db:generate, bcrypt check run from the app dir); compose now has profile-gated
+      `control-plane` (:3000) + `tenant-runtime` (:3001). Both images build; tenant-runtime image
+      verified booting (health live/ready ok).
+- [x] **Boot-blocker fixed (found by booting the image, not by tests):** `@TenantRoute()`
+      re-instantiates `TenantContextInterceptor` per host module, but `REDIS_FALLBACK_COUNTER`
+      wasn't exported from the `@Global()` `TenantRuntimeModule` → app crashed at startup. Exported
+      the token + prom counter. All 42 unit specs mocked the token, so only a real boot caught it.
+- [ ] **End-to-end container boot of BOTH services via `docker compose --profile full up`** on a
+      fresh stack (control-plane was verified in an earlier session; tenant-runtime verified now via
+      `docker run`; the combined compose path + a real signup→DONE through the containers is the
+      remaining check). Also: slim the 858MB images (`pnpm deploy --prod` / distroless).
+
 ## Foundation Plan 2 — Control Plane (review 2026-05-31)
 
 ### Deferred — foundation scope exclusion (premise P5, held by user)
