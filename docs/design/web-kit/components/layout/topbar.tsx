@@ -1,6 +1,7 @@
 import { MobileNav } from './mobile-drawer'
 import { SecuredChip } from '@/components/ui/secured-chip'
 import { NotificationBell } from '@/components/notifications/notification-bell'
+import { SearchBar } from '@/components/search/search-bar'
 import { getNotifications, getUnreadCount } from '@/lib/notifications'
 import type { Role } from '@/lib/nav'
 
@@ -24,6 +25,7 @@ export function TopBar({ title, user, activeHref, roles, tenant }: TopBarProps) 
         <span className="font-mono text-[11px] text-muted-2 mt-px">{tenant.slug}</span>
       </div>
       <div className="ml-auto flex items-center gap-3.5">
+        <SearchBar />
         <SecuredChip className="hidden sm:inline-flex" />
         <NotificationBell notifications={notifications} unreadCount={unreadCount} />
         <div className="flex items-center gap-2.5 pl-1.5">
