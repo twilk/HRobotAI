@@ -32,7 +32,8 @@ export function PasswordField({ name = 'password' }: { name?: string }) {
   )
 }
 
-function estimate(v: string): number {
+/** Exported for unit testing. Demo heuristic — replace with zxcvbn in production. */
+export function estimate(v: string): number {
   if (!v) return 0
   let s = 0
   if (v.length >= 8) s++

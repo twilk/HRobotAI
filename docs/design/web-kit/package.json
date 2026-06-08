@@ -1,28 +1,43 @@
 {
   "name": "hrobot-web-kit",
-  "version": "0.1.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Runnable reference app for the HRobot design system (also a portable component kit).",
   "scripts": {
     "dev": "next dev -p 5601",
     "build": "next build",
     "start": "next start -p 5601",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "dependencies": {
+    "clsx": "^2.1.1",
+    "focus-trap-react": "^12.0.2",
     "next": "^15.0.0",
+    "next-auth": "^5.0.0-beta.25",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "clsx": "^2.1.1",
-    "tailwind-merge": "^2.5.4"
+    "react-hot-toast": "^2.6.0",
+    "shepherd.js": "^15.2.2",
+    "tailwind-merge": "^2.5.4",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "typescript": "^5.6.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "tailwindcss": "^3.4.14",
+    "@vitejs/plugin-react": "^4.7.0",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^15.5.19",
+    "jsdom": "^25.0.1",
     "postcss": "^8.4.47",
-    "autoprefixer": "^10.4.20"
+    "tailwindcss": "^3.4.14",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.9"
   }
 }

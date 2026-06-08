@@ -141,3 +141,47 @@ export const IconGlobe = (p: IconProps) => (
     <path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18" />
   </Icon>
 )
+export const IconEye = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M2.5 12S6 5.6 12 5.6 21.5 12 21.5 12 18 18.4 12 18.4 2.5 12 2.5 12Z" />
+    <circle cx="12" cy="12" r="2.8" />
+  </Icon>
+)
+export const IconEdit = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M14.5 5.5l4 4M4 20l1-4L16.5 4.5a1.5 1.5 0 0 1 2 0l1 1a1.5 1.5 0 0 1 0 2L8 19Z" />
+  </Icon>
+)
+export const IconChevronLeft = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M14 6l-6 6 6 6" />
+  </Icon>
+)
+export const IconChevronDown = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M6 9l6 6 6-6" />
+  </Icon>
+)
+export const IconFileText = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M14 3v5h5" />
+    <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+    <path d="M8 13h6M8 16h4" />
+  </Icon>
+)
+export const IconPhone = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M6.5 3h3l1.5 4-2 1.3a11 11 0 0 0 4.7 4.7L16 14l4 1.5v3a2 2 0 0 1-2.1 2A16 16 0 0 1 4 5.1 2 2 0 0 1 6.5 3Z" />
+  </Icon>
+)
+export const IconBuilding = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="4" y="3" width="10" height="18" rx="1.5" />
+    <path d="M14 8h5a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1h-5M7.5 7h3M7.5 11h3M7.5 15h3" />
+  </Icon>
+)
+export const IconBarChart2 = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M18 20V10M12 20V4M6 20v-6" />
+  </Icon>
+)

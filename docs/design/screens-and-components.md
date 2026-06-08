@@ -97,10 +97,30 @@ Route: `(tenant)/pracownicy/page.tsx`. Proof-of-stack: real `GET /api/employees`
   + ghost **disabled** "Importuj z CSV / wkrótce" (`title="Dostępne wkrótce"`, `aria-disabled`).
   Not "No items found."
 
-### C4. Pracownik — detail (stub) ⚪
-Route: `pracownicy/[id]/page.tsx`. Header (avatar + name + role badge + status) → tabbed sections
-(Dane / Umowa / Grafik / Wnioski); 🔒 sensitive fields (PESEL) masked with a reveal action that
-writes an `audit_log` row. Build on `.card` + `.field` + `.badge`.
+### C4. Pracownik — detail — `employee-detail.html` 🟢
+Route: `pracownicy/[id]/page.tsx`. ADMIN_KLIENTA / HR arrive from the C2 table.
+- **Layout:** two-column — a **sticky identity pane** (`.idcard`: avatar, name, status, kontakt,
+  masked PESEL reference, `Dane szyfrowane · EU` chip) + a right column of **anchored sections**
+  (`.anchorbar` → Dane / Umowa / Grafik / Wnioski / Dziennik). The breadcrumb names the person.
+- 🔒 **Sensitive data (RODO):** PESEL is masked everywhere; a **single reveal owner** lives in the
+  Dane section (`Ujawnij i zapisz wpis`) — the identity pane shows only a masked reference and points
+  to it. The reveal states its consequence before action ("zapisze wpis: imię, czas, adres IP") and
+  writes an `audit_log` row. Plaintext PESEL is never rendered until an audited, time-limited reveal.
+- 🔒 **Dziennik audytu (grafted from variant E):** the closing section is a semantic `<ol>` audit
+  timeline (mono timestamps, actor, IP); the most recent `Ujawniono PESEL` event is highlighted.
+  Closes the trust loop: reveal → logged → visible. `Pełny dziennik →` leads to the filterable view.
+- **Sections:** Dane podstawowe (`.fields` + reveal), Umowa, Grafik (wzorzec / wymiar / okres /
+  przełożony), Wnioski (`.req` rows with `.badge` status). Built on `.card`/`.field`/`.badge` plus the
+  new `.idcard` / `.anchorbar` / `.sec-block` / `.tl` components in [`mockups/detail.css`](mockups/detail.css).
+- **Provenance:** chosen via `/design-shotgun` (14 variants over 2 rounds) → base **B** (sticky identity
+  + anchored sections) grafted with **E** (audit log); a codex outside-voice review was folded in
+  (Grafik gap, PESEL de-dup, explicit reveal consequence, mono contrast, person breadcrumb, semantic `<ol>`).
+- **Build notes (codex-flagged, address at implementation):** real scroll-spy + `aria-current` on the
+  anchor nav; visible focus rings + ≥44px targets on reveal/edit/tabs/menu; responsive (desktop sticky
+  pane → tablet summary row → mobile collapsible summary + overflow anchor nav + single column); runtime
+  states (`Brak danych`, `Nie masz uprawnień`, loading skeleton, failed audit-write, archived/terminated);
+  section-level edit affordances (`Edytuj dane` / `Edytuj umowę` / `Dodaj aneks`); a reveal confirmation
+  modal; the full filterable audit view behind `Pełny dziennik`.
 
 ### C5. Stubs — Grafik · Wnioski · Dostępy · Ustawienia ⚪
 Routes under `(tenant)/`. Each is a "visible future intent" stub: page header + a single `.empty`

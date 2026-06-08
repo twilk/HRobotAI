@@ -1,14 +1,14 @@
-import { StubScreen } from '@/components/stub-screen'
-import { IconKey } from '@/components/icons'
+import { AppShell } from '@/components/layout/app-shell'
+import { requirePageSession } from '@/lib/session'
+import { getAllAccessSummaries } from '@/lib/dostepy'
+import { DostepyClientView } from '@/components/dostepy/dostepy-client-view'
 
-export default function DostepyPage() {
+export default async function DostepyPage() {
+  const { user, tenant, roles } = await requirePageSession()
+  const initialData = getAllAccessSummaries()
   return (
-    <StubScreen
-      activeHref="/dostepy"
-      title="Dostępy"
-      icon={IconKey}
-      heading="Dostępy wkrótce"
-      body="Zarządzanie kartami, kluczami i uprawnieniami fizycznymi będzie dostępne w module Dostępy."
-    />
+    <AppShell activeHref="/dostepy" title="Dostępy" tenant={tenant} user={user} roles={roles}>
+      <DostepyClientView initialData={initialData} />
+    </AppShell>
   )
 }

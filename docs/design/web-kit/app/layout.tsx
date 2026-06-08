@@ -1,5 +1,6 @@
 import './globals.css'
 import type { ReactNode, CSSProperties } from 'react'
+import { Toaster } from 'react-hot-toast'
 
 export const metadata = {
   title: 'HRobot · System projektowy',
@@ -18,6 +19,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="pl" style={fontVars}>
       <body>
+        {/* TODO(Phase1B-T2): Migrate fonts from CDN to next/font/local for GDPR compliance.
+            Cabinet Grotesk + General Sans: download woff2 from api.fontshare.com to public/fonts/.
+            IBM Plex Mono: replace CDN with next/font/google({ subsets: ['latin'] }). */}
         {/* React 19 hoists these <link> tags into <head>. */}
         <link rel="preconnect" href="https://api.fontshare.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -27,6 +31,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         />
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" />
         {children}
+        <Toaster position="top-right" />
       </body>
     </html>
   )

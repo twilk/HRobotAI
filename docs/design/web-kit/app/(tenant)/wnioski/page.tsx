@@ -1,14 +1,17 @@
-import { StubScreen } from '@/components/stub-screen'
-import { IconRequests } from '@/components/icons'
+import { AppShell } from '@/components/layout/app-shell'
+import { WnioskiClientView } from '@/components/wnioski/wnioski-client-view'
+import { getLeaveRequests } from '@/lib/wnioski'
+import { getAllLeaveBalances } from '@/lib/leave-balance'
+import { requirePageSession } from '@/lib/session'
 
-export default function WnioskiPage() {
+export default async function WnioskiPage() {
+  const { user, tenant, roles } = await requirePageSession()
+  const initialRequests = getLeaveRequests()
+  const balances = getAllLeaveBalances()
+
   return (
-    <StubScreen
-      activeHref="/wnioski"
-      title="Wnioski"
-      icon={IconRequests}
-      heading="Wnioski wkrótce"
-      body="Wnioski urlopowe i kadrowe z automatycznym obiegiem akceptacji pojawią się wkrótce."
-    />
+    <AppShell activeHref="/wnioski" title="Wnioski" tenant={tenant} user={user} roles={roles}>
+      <WnioskiClientView initialRequests={initialRequests} balances={balances} />
+    </AppShell>
   )
 }

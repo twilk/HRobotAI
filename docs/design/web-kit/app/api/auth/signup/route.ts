@@ -5,6 +5,7 @@ const TAKEN = new Set(['test', 'demo', 'admin', 'hrobot', 'acme-corp'])
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>
   const slug = String(body.slug_normalized ?? body.slug ?? '').toLowerCase()
+  if (!slug) return NextResponse.json({ error: 'slug required' }, { status: 400 })
 
   if (TAKEN.has(slug)) {
     return NextResponse.json({ field: 'slug', message: 'Ta nazwa jest już zajęta' }, { status: 409 })
