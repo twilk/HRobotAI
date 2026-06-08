@@ -6,18 +6,18 @@ const VALID_LEVELS: AccessLevel[] = ['brak', 'podgląd', 'edycja', 'admin']
 
 export async function updateEmployeeAccess(
   employeeId: string,
-  module: AccessModule,
+  accessModule: AccessModule,
   level: AccessLevel,
   grantedBy: string,
 ): Promise<{ success: boolean; error?: string }> {
-  if (!VALID_MODULES.includes(module)) {
-    return { success: false, error: `Invalid module: '${module}'. Must be one of: ${VALID_MODULES.join(', ')}` }
+  if (!VALID_MODULES.includes(accessModule)) {
+    return { success: false, error: `Invalid module: '${accessModule}'. Must be one of: ${VALID_MODULES.join(', ')}` }
   }
   if (!VALID_LEVELS.includes(level)) {
     return { success: false, error: `Invalid level: '${level}'. Must be one of: ${VALID_LEVELS.join(', ')}` }
   }
 
-  updateAccess(employeeId, module, level, grantedBy)
+  updateAccess(employeeId, accessModule, level, grantedBy)
   return { success: true }
 }
 
@@ -26,15 +26,15 @@ export async function updateAllEmployeeAccess(
   accessMap: Record<AccessModule, AccessLevel>,
   grantedBy: string,
 ): Promise<{ success: boolean; error?: string }> {
-  for (const module of VALID_MODULES) {
-    const level = accessMap[module]
+  for (const mod of VALID_MODULES) {
+    const level = accessMap[mod]
     if (!VALID_LEVELS.includes(level)) {
-      return { success: false, error: `Invalid level '${level}' for module '${module}'` }
+      return { success: false, error: `Invalid level '${level}' for module '${mod}'` }
     }
   }
 
-  for (const module of VALID_MODULES) {
-    updateAccess(employeeId, module, accessMap[module], grantedBy)
+  for (const mod of VALID_MODULES) {
+    updateAccess(employeeId, mod, accessMap[mod], grantedBy)
   }
 
   return { success: true }
