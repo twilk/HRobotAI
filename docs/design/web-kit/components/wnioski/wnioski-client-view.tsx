@@ -22,6 +22,8 @@ import {
   approveLeaveRequest,
   rejectLeaveRequest,
 } from '@/lib/actions/wnioski-actions'
+import { LeaveBalanceBadge } from '@/components/wnioski/leave-balance-badge'
+import type { LeaveBalance } from '@/lib/leave-balance'
 
 type TabValue = 'all' | LeaveStatus
 
@@ -59,7 +61,13 @@ const EMPTY_FORM: AddFormState = {
   reason: '',
 }
 
-export function WnioskiClientView({ initialRequests }: { initialRequests: LeaveRequest[] }) {
+export function WnioskiClientView({
+  initialRequests,
+  balances = [],
+}: {
+  initialRequests: LeaveRequest[]
+  balances?: LeaveBalance[]
+}) {
   const [requests, setRequests] = useState<LeaveRequest[]>(initialRequests)
   const [activeTab, setActiveTab] = useState<TabValue>('all')
   const [showAdd, setShowAdd] = useState(false)
@@ -275,6 +283,20 @@ export function WnioskiClientView({ initialRequests }: { initialRequests: LeaveR
                 </option>
               ))}
             </select>
+            {form.employeeId && (() => {
+              const bal = balances.find((b) => b.employeeId === form.employeeId)
+              if (!bal) return null
+              return (
+                <div className="mt-2 flex items-center gap-2 text-xs text-muted">
+                  <span>Pozostały urlop:</span>
+                  <LeaveBalanceBadge
+                    remaining={bal.urlop_wypoczynkowy.remaining}
+                    leaveType="urlop_wypoczynkowy"
+                    label="wypoczynkowy"
+                  />
+                </div>
+              )
+            })()}
           </div>
 
           <div>
