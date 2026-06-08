@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import {
   getFacilities,
   getFacility,
@@ -7,7 +7,14 @@ import {
   weeklyOpenHours,
   hoursBetween,
   updateFacilityHours,
+  setFacilityHours,
+  setFacilityAddress,
+  resetFacilities,
 } from '@/lib/facilities'
+
+beforeEach(() => {
+  resetFacilities()
+})
 
 describe('facilities lib', () => {
   it('lists facilities and looks up by id', () => {
@@ -36,5 +43,62 @@ describe('facilities lib', () => {
     expect(next.hours[6]).toEqual({ open: '10:00', close: '14:00' })
     expect(f1.hours[6]).toBeNull() // original untouched
     expect(next).not.toBe(f1)
+  })
+})
+
+describe('setFacilityHours (store mutation)', () => {
+  it('updates the weekly hours for a known facility and returns updated facility', () => {
+    const newHours: import('@/lib/facilities').WeeklyHours = [
+      { open: '09:00', close: '17:00' },
+      { open: '09:00', close: '17:00' },
+      { open: '09:00', close: '17:00' },
+      { open: '09:00', close: '17:00' },
+      { open: '09:00', close: '17:00' },
+      null,
+      null,
+    ]
+    const updated = setFacilityHours('f1', newHours)
+    expect(updated).toBeDefined()
+    expect(updated!.hours[0]).toEqual({ open: '09:00', close: '17:00' })
+    expect(updated!.hours[5]).toBeNull()
+  })
+
+  it('persists the change — getFacility reflects updated hours', () => {
+    const newHours: import('@/lib/facilities').WeeklyHours = [
+      null, null, null, null, null, null, null,
+    ]
+    setFacilityHours('f2', newHours)
+    expect(getFacility('f2')?.hours[0]).toBeNull()
+  })
+
+  it('returns undefined for an unknown facilityId', () => {
+    const newHours: import('@/lib/facilities').WeeklyHours = [
+      null, null, null, null, null, null, null,
+    ]
+    expect(setFacilityHours('nonexistent', newHours)).toBeUndefined()
+  })
+})
+
+describe('setFacilityAddress (store mutation)', () => {
+  it('updates address fields for a known facility and returns updated facility', () => {
+    const updated = setFacilityAddress('f1', { street: 'ul. Nowa 99' })
+    expect(updated).toBeDefined()
+    expect(updated!.address.street).toBe('ul. Nowa 99')
+    expect(updated!.address.city).toBe('Warszawa') // unchanged
+  })
+
+  it('persists the change — getFacility reflects updated address', () => {
+    setFacilityAddress('f3', { postalCode: '99-999' })
+    expect(getFacility('f3')?.address.postalCode).toBe('99-999')
+  })
+
+  it('returns undefined for an unknown facilityId', () => {
+    expect(setFacilityAddress('nonexistent', { city: 'X' })).toBeUndefined()
+  })
+
+  it('resetFacilities restores original data', () => {
+    setFacilityAddress('f1', { street: 'ul. Zmieniona 1' })
+    resetFacilities()
+    expect(getFacility('f1')?.address.street).toBe('ul. Prosta 12')
   })
 })

@@ -34,7 +34,7 @@ export const DAY_LABELS_LONG = ['Poniedziałek', 'Wtorek', 'Środa', 'Czwartek',
 const h = (open: string, close: string): DayHours => ({ open, close })
 const X: DayHours = null
 
-const FACILITIES: Facility[] = [
+const SEED_FACILITIES: Facility[] = [
   {
     id: 'f1',
     name: 'Centrala Warszawa',
@@ -60,6 +60,18 @@ const FACILITIES: Facility[] = [
     employeeIds: ['1', '4'],
   },
 ]
+
+/** Deep-clone seed data so mutations don't bleed between test runs. */
+function cloneSeed(): Facility[] {
+  return SEED_FACILITIES.map((f) => ({
+    ...f,
+    address: { ...f.address },
+    hours: [...f.hours] as WeeklyHours,
+    employeeIds: [...f.employeeIds],
+  }))
+}
+
+let FACILITIES: Facility[] = cloneSeed()
 
 export function getFacilities(): Facility[] {
   return FACILITIES
@@ -103,4 +115,33 @@ export function updateFacilityHours(facility: Facility, dayIndex: number, hours:
   const next = [...facility.hours] as WeeklyHours
   next[dayIndex] = hours
   return { ...facility, hours: next }
+}
+
+// ---- mutable store mutations ----
+
+/** Set the full weekly hours for a facility in the store. Returns updated facility or undefined. */
+export function setFacilityHours(facilityId: string, hours: WeeklyHours): Facility | undefined {
+  let updated: Facility | undefined
+  FACILITIES = FACILITIES.map((f) => {
+    if (f.id !== facilityId) return f
+    updated = { ...f, hours: [...hours] as WeeklyHours }
+    return updated
+  })
+  return updated
+}
+
+/** Patch address fields for a facility in the store. Returns updated facility or undefined. */
+export function setFacilityAddress(facilityId: string, address: Partial<Address>): Facility | undefined {
+  let updated: Facility | undefined
+  FACILITIES = FACILITIES.map((f) => {
+    if (f.id !== facilityId) return f
+    updated = { ...f, address: { ...f.address, ...address } }
+    return updated
+  })
+  return updated
+}
+
+/** Reset the in-memory store to seed data (for tests). */
+export function resetFacilities(): void {
+  FACILITIES = cloneSeed()
 }
