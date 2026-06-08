@@ -1,9 +1,9 @@
 import type { Tour, StepOptions } from 'shepherd.js'
 import { makeButtons } from '../shepherd'
 
-export function pracownicyIdSteps(tour: Tour): StepOptions[] {
+export function pracownicyIdSteps(tour: Tour, onDisable?: () => void): StepOptions[] {
   const btn = (i: number, total: number) =>
-    makeButtons(tour, { isFirst: i === 0, isLast: i === total - 1 })
+    makeButtons(tour, { isFirst: i === 0, isLast: i === total - 1, onDisable })
 
   return [
     {
@@ -19,7 +19,7 @@ export function pracownicyIdSteps(tour: Tour): StepOptions[] {
     {
       id: 'pracid-pesel',
       title: 'PESEL — dane wrażliwe',
-      text: 'Kliknij "Odkryj PESEL" i potwierdź przyciskiem. Każde odkrycie jest logowane z Twoją nazwą użytkownika zgodnie z RODO Art.30.',
+      text: 'Kliknij "Ujawnij i zapisz wpis" i potwierdź przyciskiem. Każde odkrycie jest logowane z Twoją nazwą użytkownika zgodnie z RODO Art.30.',
       attachTo: { element: '[data-guide="pracownicy-id:pesel-reveal"]', on: 'bottom' },
       buttons: btn(1, 4),
       showOn() {

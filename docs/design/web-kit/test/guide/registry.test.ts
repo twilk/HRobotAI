@@ -42,6 +42,7 @@ describe('resolveSpace', () => {
     expect(resolveSpace('/login')).toBeNull()
     expect(resolveSpace('/')).toBeNull()
     expect(resolveSpace('/signup')).toBeNull()
+    expect(resolveSpace('')).toBeNull()
   })
 
   it('SPACES array exports 9 spaces', () => {

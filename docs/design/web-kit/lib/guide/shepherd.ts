@@ -1,5 +1,40 @@
 import type { GuideSpaceId } from './types'
 
+function scrollInsideAppShell(element: HTMLElement) {
+  const scrollParent = findScrollableParent(element)
+
+  if (!scrollParent) {
+    return
+  }
+
+  const parentRect = scrollParent.getBoundingClientRect()
+  const elementRect = element.getBoundingClientRect()
+  const elementCenter = elementRect.top - parentRect.top + scrollParent.scrollTop + elementRect.height / 2
+  const nextTop = elementCenter - parentRect.height / 2
+
+  scrollParent.scrollTo({
+    top: Math.max(0, nextTop),
+    behavior: 'smooth',
+  })
+}
+
+function findScrollableParent(element: HTMLElement) {
+  let parent = element.parentElement
+
+  while (parent && parent !== document.body && parent !== document.documentElement) {
+    const style = window.getComputedStyle(parent)
+    const canScrollY = /(auto|scroll)/.test(style.overflowY) && parent.scrollHeight > parent.clientHeight
+
+    if (canScrollY) {
+      return parent
+    }
+
+    parent = parent.parentElement
+  }
+
+  return null
+}
+
 /**
  * Lazily imports Shepherd to avoid SSR issues (Shepherd accesses `document`).
  * Returns a new Tour configured with HRobot's defaults.
@@ -25,6 +60,7 @@ export async function createTour(spaceId: GuideSpaceId) {
         attrs: { 'data-testid': 'guide-cancel-icon' },
       },
       scrollTo: { behavior: 'smooth', block: 'center' },
+      scrollToHandler: scrollInsideAppShell,
       modalOverlayOpeningPadding: 8,
       modalOverlayOpeningRadius: 6,
       arrow: { padding: 8 },

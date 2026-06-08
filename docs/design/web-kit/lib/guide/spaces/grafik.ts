@@ -1,9 +1,9 @@
 import type { Tour, StepOptions } from 'shepherd.js'
 import { makeButtons } from '../shepherd'
 
-export function grafikSteps(tour: Tour): StepOptions[] {
+export function grafikSteps(tour: Tour, onDisable?: () => void): StepOptions[] {
   const btn = (i: number, total: number) =>
-    makeButtons(tour, { isFirst: i === 0, isLast: i === total - 1 })
+    makeButtons(tour, { isFirst: i === 0, isLast: i === total - 1, onDisable })
 
   return [
     {

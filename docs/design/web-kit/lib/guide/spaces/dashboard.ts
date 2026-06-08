@@ -1,9 +1,9 @@
 import type { Tour, StepOptions } from 'shepherd.js'
 import { makeButtons } from '../shepherd'
 
-export function dashboardSteps(tour: Tour): StepOptions[] {
+export function dashboardSteps(tour: Tour, onDisable?: () => void): StepOptions[] {
   const btn = (i: number, total: number) =>
-    makeButtons(tour, { isFirst: i === 0, isLast: i === total - 1 })
+    makeButtons(tour, { isFirst: i === 0, isLast: i === total - 1, onDisable })
 
   return [
     {
@@ -11,9 +11,6 @@ export function dashboardSteps(tour: Tour): StepOptions[] {
       title: 'Witaj w HRobot! 👋',
       text: 'To jest Twoja przestrzeń robocza. Zarządzaj pracownikami, grafikami i wnioskami — wszystko w jednym miejscu.',
       buttons: btn(0, 4),
-      when: {
-        show() { console.log('[guide] dashboard:welcome') },
-      },
     },
     {
       id: 'dashboard-checklist',
