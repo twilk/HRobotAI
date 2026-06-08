@@ -2,10 +2,13 @@ import { AppShell } from '@/components/layout/app-shell'
 import { QuickActions } from '@/components/dashboard/quick-actions'
 import { SetupChecklist, type ChecklistStep } from '@/components/dashboard/setup-checklist'
 import { DataProtectionPanel } from '@/components/dashboard/data-protection-panel'
+import { StatsPanel } from '@/components/dashboard/stats-panel'
 import { requirePageSession } from '@/lib/session'
+import { getHRSummary } from '@/lib/raporty'
 
 export default async function DashboardPage() {
   const { user, tenant, roles } = await requirePageSession()
+  const summary = getHRSummary()
 
   // From tenants.onboarding_checklist (org-level Json column).
   const checklist: ChecklistStep[] = [
@@ -25,6 +28,10 @@ export default async function DashboardPage() {
         </p>
 
         <div className="mt-6">
+          <StatsPanel summary={summary} />
+        </div>
+
+        <div className="mt-4">
           <QuickActions />
         </div>
 
