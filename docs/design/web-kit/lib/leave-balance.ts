@@ -92,6 +92,34 @@ export function getLeaveBalance(
 }
 
 /**
+ * Adds an initial leave balance record for a new employee.
+ * Uses default entitlements: 26 days annual, 14 days paternity, 10 days other.
+ * Returns the created LeaveBalance.
+ */
+export function addLeaveBalance(
+  employeeId: string,
+  employeeName: string,
+  year?: number,
+): LeaveBalance {
+  const y = year ?? new Date().getFullYear()
+  const balances = ensureYear(y)
+  const existing = balances.find((b) => b.employeeId === employeeId)
+  if (existing) return existing
+
+  const entry: LeaveBalance = {
+    id: `lb-${employeeId}-${y}`,
+    employeeId,
+    employeeName,
+    year: y,
+    urlop_wypoczynkowy: { entitled: 26, used: 0, remaining: 26 },
+    urlop_ojcowski: { entitled: 14, used: 0, remaining: 14 },
+    inne: { entitled: 10, used: 0, remaining: 10 },
+  }
+  balances.push(entry)
+  return entry
+}
+
+/**
  * Deducts `days` from the employee's leave balance for a given type.
  * Returns true on success, false if insufficient balance or employee not found.
  */
