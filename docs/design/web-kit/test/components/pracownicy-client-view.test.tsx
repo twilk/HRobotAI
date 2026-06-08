@@ -24,11 +24,16 @@ vi.mock('@/lib/actions/employees-actions', () => ({
   addNewEmployee: vi.fn().mockResolvedValue({ success: true, employee: { id: 'mock-1' } }),
 }))
 
+vi.mock('@/lib/actions/onboarding-actions', () => ({
+  onboardNewEmployee: vi.fn().mockResolvedValue({ success: true, employeeId: 'onboard-mock-1' }),
+}))
+
 import { PracownicyClientView } from '@/components/employees/pracownicy-client-view'
 import { getEmployees, resetEmployees } from '@/lib/employees'
 
 beforeEach(() => {
   resetEmployees()
+  vi.clearAllMocks()
 })
 
 const employees = getEmployees()
@@ -99,6 +104,37 @@ describe('PracownicyClientView', () => {
     await user.type(screen.getByLabelText('Jednostka'), 'IT')
     await user.click(screen.getByRole('button', { name: /Zapisz/ }))
     expect(toast.default.success).toHaveBeenCalledWith('Pracownik dodany')
+  }, 15_000)
+
+  it('calls onboardNewEmployee when add-employee form is submitted', async () => {
+    const { onboardNewEmployee } = await import('@/lib/actions/onboarding-actions')
+    const user = userEvent.setup()
+    render(<PracownicyClientView initialEmployees={employees} />)
+    await user.click(screen.getByRole('button', { name: /Dodaj pracownika/ }))
+    await user.type(screen.getByLabelText('Imię'), 'Zofia')
+    await user.type(screen.getByLabelText('Nazwisko'), 'Onboard')
+    await user.type(screen.getByLabelText('Email'), 'z.onboard@acme.pl')
+    await user.type(screen.getByLabelText('Stanowisko'), 'Dev')
+    await user.type(screen.getByLabelText('Jednostka'), 'IT')
+    await user.click(screen.getByRole('button', { name: /Zapisz/ }))
+    expect(onboardNewEmployee).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Zofia Onboard',
+        email: 'z.onboard@acme.pl',
+        position: 'Dev',
+        department: 'IT',
+      }),
+    )
+  }, 15_000)
+
+  it('does not call onboardNewEmployee when validation fails', async () => {
+    const { onboardNewEmployee } = await import('@/lib/actions/onboarding-actions')
+    const user = userEvent.setup()
+    render(<PracownicyClientView initialEmployees={employees} />)
+    await user.click(screen.getByRole('button', { name: /Dodaj pracownika/ }))
+    // Submit without filling any required field
+    await user.click(screen.getByRole('button', { name: /Zapisz/ }))
+    expect(onboardNewEmployee).not.toHaveBeenCalled()
   }, 15_000)
 })
 

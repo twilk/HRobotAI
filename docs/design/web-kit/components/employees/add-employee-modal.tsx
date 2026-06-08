@@ -7,6 +7,7 @@ import { Modal } from '@/components/ui/modal'
 import { Field, Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import type { Employee } from '@/lib/employees'
+import { onboardNewEmployee } from '@/lib/actions/onboarding-actions'
 
 const employeeSchema = z.object({
   firstName: z.string().min(1, 'Imię jest wymagane').max(100),
@@ -46,7 +47,7 @@ export function AddEmployeeModal({
     setErrors((prev) => ({ ...prev, [field]: undefined }))
   }
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     const result = employeeSchema.safeParse(form)
     if (!result.success) {
@@ -59,7 +60,20 @@ export function AddEmployeeModal({
       setErrors(fe)
       return
     }
-    const id = crypto.randomUUID()
+
+    const onboardResult = await onboardNewEmployee({
+      name: `${result.data.firstName} ${result.data.lastName}`,
+      department: result.data.unit,
+      position: result.data.position,
+      email: result.data.email,
+    })
+
+    if (!onboardResult.success) {
+      toast.error(onboardResult.error ?? 'Błąd tworzenia pracownika')
+      return
+    }
+
+    const id = onboardResult.employeeId ?? crypto.randomUUID()
     onAdd({ id, ...result.data, peselLast4: '0000', status: 'active' })
     setErrors({})
     setForm({ firstName: '', lastName: '', email: '', position: '', unit: '', contract: 'UoP' })
