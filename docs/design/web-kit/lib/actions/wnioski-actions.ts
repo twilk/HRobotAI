@@ -1,6 +1,7 @@
 'use server'
 import { addLeaveRequest, updateLeaveRequest, getLeaveRequests, getLeaveRequest, type LeaveType } from '@/lib/wnioski'
 import { deductEmployeeLeave } from '@/lib/actions/leave-balance-actions'
+import { addNotification } from '@/lib/notifications'
 
 interface CreateLeaveRequestData {
   employeeId: string
@@ -66,6 +67,16 @@ export async function approveLeaveRequest(
   // Auto-deduct the days from the employee's leave balance when trackable type
   await deductEmployeeLeave(req.employeeId, req.type, req.days)
 
+  addNotification({
+    type: 'leave-approved',
+    priority: 'high',
+    title: 'Wniosek zatwierdzony',
+    message: `Wniosek urlopowy pracownika ${req.employeeName ?? ''} został zatwierdzony.`,
+    employeeId: req.employeeId,
+    employeeName: req.employeeName,
+    actionUrl: '/wnioski',
+  })
+
   return { success: true }
 }
 
@@ -74,6 +85,7 @@ export async function rejectLeaveRequest(
   approvedBy: string,
   reason: string,
 ): Promise<{ success: boolean; error?: string }> {
+  const req = getLeaveRequest(id)
   const updated = updateLeaveRequest(id, {
     status: 'rejected',
     rejectionReason: reason,
@@ -81,6 +93,17 @@ export async function rejectLeaveRequest(
   if (!updated) {
     return { success: false, error: `Leave request '${id}' not found` }
   }
+
+  addNotification({
+    type: 'leave-rejected',
+    priority: 'high',
+    title: 'Wniosek odrzucony',
+    message: `Wniosek urlopowy pracownika ${req?.employeeName ?? ''} został odrzucony.`,
+    employeeId: req?.employeeId,
+    employeeName: req?.employeeName,
+    actionUrl: '/wnioski',
+  })
+
   return { success: true }
 }
 
