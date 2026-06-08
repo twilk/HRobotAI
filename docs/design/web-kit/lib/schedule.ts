@@ -9,6 +9,8 @@ export interface Shift {
   date: string
   start: string // 'HH:MM'
   end: string // 'HH:MM'
+  /** Optional role/position label for this shift. */
+  role?: string
 }
 
 /** Reference data keyed by weekday (0 = Pon … 6 = Nd) so any shown week is populated. */
