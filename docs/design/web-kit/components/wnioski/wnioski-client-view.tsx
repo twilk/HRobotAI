@@ -17,6 +17,11 @@ import {
   type LeaveStatus,
   type LeaveType,
 } from '@/lib/wnioski'
+import {
+  createLeaveRequest,
+  approveLeaveRequest,
+  rejectLeaveRequest,
+} from '@/lib/actions/wnioski-actions'
 
 type TabValue = 'all' | LeaveStatus
 
@@ -72,6 +77,7 @@ export function WnioskiClientView({ initialRequests }: { initialRequests: LeaveR
       : requests.filter((r) => r.status === activeTab)
 
   function handleApprove(id: string) {
+    // Optimistic local update
     const updated = updateLeaveRequest(id, {
       status: 'approved',
       approvedBy: 'Admin',
@@ -80,6 +86,8 @@ export function WnioskiClientView({ initialRequests }: { initialRequests: LeaveR
     if (updated) {
       setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)))
     }
+    // Persist via server action (fire-and-forget; optimistic state already applied)
+    void approveLeaveRequest(id, 'manager@hrobot.ai')
   }
 
   function openReject(id: string) {
@@ -90,6 +98,7 @@ export function WnioskiClientView({ initialRequests }: { initialRequests: LeaveR
 
   function handleReject() {
     if (!rejectId) return
+    // Optimistic local update
     const updated = updateLeaveRequest(rejectId, {
       status: 'rejected',
       rejectionReason: rejectReason,
@@ -97,6 +106,8 @@ export function WnioskiClientView({ initialRequests }: { initialRequests: LeaveR
     if (updated) {
       setRequests((prev) => prev.map((r) => (r.id === rejectId ? updated : r)))
     }
+    // Persist via server action
+    void rejectLeaveRequest(rejectId, 'manager@hrobot.ai', rejectReason)
     setShowReject(false)
     setRejectId(null)
   }
@@ -124,7 +135,18 @@ export function WnioskiClientView({ initialRequests }: { initialRequests: LeaveR
       requestedAt: new Date().toISOString(),
     }
 
+    // Optimistic local update
     setRequests((prev) => [newRequest, ...prev])
+    // Persist via server action (fire-and-forget)
+    void createLeaveRequest({
+      employeeId: form.employeeId,
+      employeeName,
+      type: form.type,
+      dateFrom: form.dateFrom,
+      dateTo: form.dateTo,
+      days: Number(form.days),
+      reason: form.reason || undefined,
+    })
     setForm(EMPTY_FORM)
     setFormError(null)
     setShowAdd(false)
