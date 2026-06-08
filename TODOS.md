@@ -4,6 +4,13 @@ Deferred items surfaced by `/autoplan`. Items here are NOT in the current plan's
 they are parked decisions or follow-up work. Merge-blocking fixes live in the plan file's
 review report, not here.
 
+## Przewodnik (Guide) — deferred follow-up (2026-06-08, v0.2.0)
+
+- [ ] **Journey execution (v2)** — `startJourney()` is a stub (`console.log` only). Wire the 4 journey configs (`lib/guide/journeys/`) into a multi-step cross-space execution engine. Requires: active journey state in GuideProvider, step-resume on route change, journey entry buttons on each space's first step.
+- [ ] **Shepherd.js Business License** — production use requires the commercial license ($50/year at https://shepherdjs.dev/pricing). Purchase before public ship.
+- [ ] **Space step factories DRY** — the `const btn = makeBtnFactory(tour)` pattern is repeated in all 9 space files. Extract `makeBtnFactory(tour)` to `lib/guide/shepherd.ts` and import it.
+- [ ] **Guide magic-number constants** — `GUIDE_AUTO_LAUNCH_DELAY_MS = 1200`, `GUIDE_TOAST_CANCEL_MS = 3500`, `GUIDE_TOAST_COMPLETE_MS = 3000` should be named constants at the top of `guide-provider.tsx` instead of bare literals.
+
 ## Autoplay "show" + provisioning pipeline (2026-06-01)
 
 - [x] **Autoplay "show" mode** (`apps/web/show.js`, `5c1f4bc`/`4cae992`): one click → hands-free,
