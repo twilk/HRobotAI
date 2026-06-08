@@ -18,6 +18,7 @@ import {
   minutesOf,
   newShiftId,
 } from '@/lib/schedule'
+import { createShift, deleteShift } from '@/lib/actions/grafik-actions'
 
 interface Emp {
   id: string
@@ -79,13 +80,30 @@ export function ScheduleGrid({
 
   function addShift(employeeId: string, dayIndex: number, start: string, end: string) {
     if (minutesOf(end) <= minutesOf(start)) return
+    // Optimistic update — instant UI feedback
     setShifts((prev) => [
       ...prev,
       { id: newShiftId(), employeeId, facilityId: facility.id, date: dayIso[dayIndex], start, end },
     ])
     setAdding(null)
+    // Persist to server (fire-and-forget, optimistic state stays)
+    void createShift({
+      facilityId: facility.id,
+      employeeId,
+      employeeName: '',
+      weekStart: ymd(weekStart),
+      dayIndex,
+      startTime: start,
+      endTime: end,
+    })
   }
-  const removeShift = (id: string) => setShifts((prev) => prev.filter((s) => s.id !== id))
+
+  function removeShift(id: string) {
+    // Optimistic update — instant UI feedback
+    setShifts((prev) => prev.filter((s) => s.id !== id))
+    // Persist to server (fire-and-forget, optimistic state stays)
+    void deleteShift(id)
+  }
 
   const weekLabel = `${days[0].getDate()}.${days[0].getMonth() + 1} – ${days[6].getDate()}.${days[6].getMonth() + 1}.${days[6].getFullYear()}`
 
