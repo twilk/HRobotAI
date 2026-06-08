@@ -4,6 +4,19 @@ All notable changes to HRobot web-kit are documented here.
 
 ---
 
+## [0.3.0] - 2026-06-08
+
+### Added
+- **Employee profile editing** — `EditEmployeeModal` with pre-filled name, position, department, email, phone fields and status dropdown (Aktywny / Nieaktywny / Na urlopie / Zawieszony); pencil-icon Edit button per row in the employees table
+- `updateEmployee` and `setEmployeeStatus` mutation functions in `lib/employees.ts` with full TDD coverage (10+ tests)
+- `lib/actions/employees-actions.ts` — `editEmployee`, `changeEmployeeStatus`, `addEmployee` server actions with validation and TDD coverage (7+ tests)
+- `GET /api/pracownicy/[id]` and `PATCH /api/pracownicy/[id]` routes — returns single employee or 404; PATCH handles profile fields and status (6+ tests)
+- **Raporty (Reports) module** — HR analytics dashboard with StatsPanel summary metrics
+- **Server Actions** for all write paths: wnioski, dostępy, grafik, facilities
+- **Dashboard StatsPanel** — real metrics panel using live HRSummary data
+
+---
+
 ## [0.2.0] - 2026-06-08
 
 ### Added
