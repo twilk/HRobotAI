@@ -4,6 +4,14 @@ All notable changes to HRobot web-kit are documented here.
 
 ---
 
+## [1.1.0] - 2026-06-08
+
+### Added
+- **LeaveSummaryWidget** — new server component in the dashboard showing: total pending wnioski (with link to /wnioski), this month's approved count, and employees with fewer than 5 annual leave days remaining (danger zone)
+- **Improved search scoring** — `globalSearch` now applies tiered scoring: exact full-string match=1.0, starts-with=0.7, substring contains=0.5; results are sorted descending and capped at 10
+
+---
+
 ## [1.0.0] - 2026-06-08
 
 ### Stable Release — HRobot web-kit v1.0.0

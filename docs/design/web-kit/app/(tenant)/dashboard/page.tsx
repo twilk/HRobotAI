@@ -4,14 +4,32 @@ import { SetupChecklist, type ChecklistStep } from '@/components/dashboard/setup
 import { DataProtectionPanel } from '@/components/dashboard/data-protection-panel'
 import { StatsPanel } from '@/components/dashboard/stats-panel'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
+import { LeaveSummaryWidget } from '@/components/wnioski/leave-summary-widget'
 import { requirePageSession } from '@/lib/session'
 import { getHRSummary } from '@/lib/raporty'
 import { getNotifications } from '@/lib/notifications'
+import { getLeaveRequests } from '@/lib/wnioski'
+import { getAllLeaveBalances } from '@/lib/leave-balance'
 
 export default async function DashboardPage() {
   const { user, tenant, roles } = await requirePageSession()
   const summary = getHRSummary()
   const notifications = getNotifications({ limit: 10 })
+
+  // Leave summary data for LeaveSummaryWidget
+  const allRequests = getLeaveRequests()
+  const pendingCount = allRequests.filter((r) => r.status === 'pending').length
+  const currentMonth = new Date().getMonth()
+  const currentYear = new Date().getFullYear()
+  const approvedThisMonthCount = allRequests.filter((r) => {
+    if (r.status !== 'approved' || !r.approvedAt) return false
+    const d = new Date(r.approvedAt)
+    return d.getMonth() === currentMonth && d.getFullYear() === currentYear
+  }).length
+  const allBalances = getAllLeaveBalances()
+  const dangerZoneEmployees = allBalances.filter(
+    (b) => b.urlop_wypoczynkowy.remaining < 5
+  )
 
   // From tenants.onboarding_checklist (org-level Json column).
   const checklist: ChecklistStep[] = [
@@ -43,8 +61,13 @@ export default async function DashboardPage() {
           <DataProtectionPanel />
         </div>
 
-        <div className="mt-4">
+        <div className="grid lg:grid-cols-2 gap-4 mt-4">
           <ActivityFeed notifications={notifications} />
+          <LeaveSummaryWidget
+            pendingCount={pendingCount}
+            approvedThisMonthCount={approvedThisMonthCount}
+            dangerZoneEmployees={dangerZoneEmployees}
+          />
         </div>
       </div>
     </AppShell>
