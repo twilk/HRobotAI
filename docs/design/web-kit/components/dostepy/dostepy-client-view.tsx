@@ -16,6 +16,7 @@ import {
   type AccessLevel,
   type EmployeeAccessSummary,
 } from '@/lib/dostepy'
+import { updateAllEmployeeAccess } from '@/lib/actions/dostepy-actions'
 
 const MODULES: AccessModule[] = ['grafik', 'wnioski', 'dostepy', 'raporty', 'ustawienia']
 const LEVELS: AccessLevel[] = ['brak', 'podgląd', 'edycja', 'admin']
@@ -56,7 +57,7 @@ export function DostepyClientView({
   function handleSave() {
     if (!managing || !form) return
 
-    // Apply all module changes
+    // Apply all module changes (local lib state)
     for (const mod of MODULES) {
       updateAccess(managing.employeeId, mod, form.access[mod])
     }
@@ -69,6 +70,9 @@ export function DostepyClientView({
           : s,
       ),
     )
+
+    // Persist to server (fire-and-forget, optimistic state stays)
+    void updateAllEmployeeAccess(managing.employeeId, form.access, 'admin@hrobot.ai')
 
     setManaging(null)
     setForm(null)
