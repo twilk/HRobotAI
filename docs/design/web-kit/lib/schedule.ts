@@ -104,6 +104,58 @@ export function newShiftId(): string {
   return `s-new-${shiftCounter}`
 }
 
+// ---- in-memory shift store ----
+
+let SHIFT_STORE: Shift[] = []
+
+/** Return all stored shifts, optionally filtered by facilityId and/or weekStart (YYYY-MM-DD of Monday). */
+export function getShifts(facilityId?: string, weekStart?: string): Shift[] {
+  let result = SHIFT_STORE
+  if (facilityId !== undefined) {
+    result = result.filter((s) => s.facilityId === facilityId)
+  }
+  if (weekStart !== undefined) {
+    // Include shifts whose date falls within the 7-day window Mon … Sun
+    const start = weekStart
+    const endDate = new Date(weekStart)
+    endDate.setDate(endDate.getDate() + 6)
+    const end = ymd(endDate)
+    result = result.filter((s) => s.date >= start && s.date <= end)
+  }
+  return result
+}
+
+/** Add a new shift to the store. Returns the stored shift with a generated id. */
+export function addShift(shift: Omit<Shift, 'id'>): Shift {
+  const stored: Shift = { id: newShiftId(), ...shift }
+  SHIFT_STORE = [...SHIFT_STORE, stored]
+  return stored
+}
+
+/** Remove a shift by id. Returns true if found and removed, false if not found. */
+export function removeShift(shiftId: string): boolean {
+  const before = SHIFT_STORE.length
+  SHIFT_STORE = SHIFT_STORE.filter((s) => s.id !== shiftId)
+  return SHIFT_STORE.length < before
+}
+
+/** Patch a shift by id. Returns the updated shift, or undefined if not found. */
+export function updateShift(shiftId: string, patch: Partial<Omit<Shift, 'id'>>): Shift | undefined {
+  let updated: Shift | undefined
+  SHIFT_STORE = SHIFT_STORE.map((s) => {
+    if (s.id !== shiftId) return s
+    updated = { ...s, ...patch }
+    return updated
+  })
+  return updated
+}
+
+/** Reset the in-memory store (for tests). */
+export function resetShifts(): void {
+  SHIFT_STORE = []
+  shiftCounter = 0
+}
+
 /** Turn the weekday-keyed seed into dated shifts for a given facility + week. */
 export function materializeWeek(seed: SeedShift[], weekStart: Date, facilityId: string): Shift[] {
   return seed

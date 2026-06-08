@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import {
   startOfWeek,
   addDays,
@@ -10,6 +10,11 @@ import {
   employeeWeekHours,
   materializeWeek,
   SEED_SHIFTS,
+  addShift,
+  removeShift,
+  updateShift,
+  getShifts,
+  resetShifts,
   type Shift,
 } from '@/lib/schedule'
 
@@ -48,6 +53,84 @@ describe('schedule hours', () => {
     ]
     expect(employeeWeekHours(shifts, '1')).toBe(12)
     expect(employeeWeekHours(shifts, '2')).toBe(8)
+  })
+})
+
+describe('shift mutations (in-memory store)', () => {
+  beforeEach(() => {
+    resetShifts()
+  })
+
+  it('getShifts returns empty array initially', () => {
+    expect(getShifts()).toEqual([])
+  })
+
+  it('addShift stores a shift and returns it with a generated id', () => {
+    const shift = addShift({
+      employeeId: '1',
+      facilityId: 'f1',
+      date: '2026-06-02',
+      start: '08:00',
+      end: '16:00',
+    })
+    expect(shift.id).toBeTruthy()
+    expect(shift.employeeId).toBe('1')
+    expect(shift.facilityId).toBe('f1')
+    expect(shift.date).toBe('2026-06-02')
+    expect(shift.start).toBe('08:00')
+    expect(shift.end).toBe('16:00')
+    expect(getShifts()).toHaveLength(1)
+  })
+
+  it('addShift generates unique ids for multiple shifts', () => {
+    const a = addShift({ employeeId: '1', facilityId: 'f1', date: '2026-06-02', start: '08:00', end: '16:00' })
+    const b = addShift({ employeeId: '2', facilityId: 'f1', date: '2026-06-02', start: '09:00', end: '17:00' })
+    expect(a.id).not.toBe(b.id)
+    expect(getShifts()).toHaveLength(2)
+  })
+
+  it('removeShift deletes an existing shift and returns true', () => {
+    const shift = addShift({ employeeId: '1', facilityId: 'f1', date: '2026-06-02', start: '08:00', end: '16:00' })
+    const removed = removeShift(shift.id)
+    expect(removed).toBe(true)
+    expect(getShifts()).toHaveLength(0)
+  })
+
+  it('removeShift returns false for unknown id', () => {
+    const removed = removeShift('nonexistent')
+    expect(removed).toBe(false)
+  })
+
+  it('updateShift patches an existing shift', () => {
+    const shift = addShift({ employeeId: '1', facilityId: 'f1', date: '2026-06-02', start: '08:00', end: '16:00' })
+    const updated = updateShift(shift.id, { start: '09:00', end: '17:00' })
+    expect(updated).toBeDefined()
+    expect(updated!.start).toBe('09:00')
+    expect(updated!.end).toBe('17:00')
+    expect(updated!.employeeId).toBe('1') // unchanged fields preserved
+    // store is updated
+    expect(getShifts()[0].start).toBe('09:00')
+  })
+
+  it('updateShift returns undefined for unknown id', () => {
+    const result = updateShift('nonexistent', { start: '10:00' })
+    expect(result).toBeUndefined()
+  })
+
+  it('getShifts filters by facilityId', () => {
+    addShift({ employeeId: '1', facilityId: 'f1', date: '2026-06-02', start: '08:00', end: '16:00' })
+    addShift({ employeeId: '2', facilityId: 'f2', date: '2026-06-02', start: '06:00', end: '14:00' })
+    const f1Only = getShifts('f1')
+    expect(f1Only).toHaveLength(1)
+    expect(f1Only[0].facilityId).toBe('f1')
+  })
+
+  it('getShifts filters by weekStart', () => {
+    addShift({ employeeId: '1', facilityId: 'f1', date: '2026-06-01', start: '08:00', end: '16:00' })
+    addShift({ employeeId: '2', facilityId: 'f1', date: '2026-06-08', start: '08:00', end: '16:00' })
+    const week1 = getShifts(undefined, '2026-06-01') // Mon June 1
+    expect(week1).toHaveLength(1)
+    expect(week1[0].date).toBe('2026-06-01')
   })
 })
 
