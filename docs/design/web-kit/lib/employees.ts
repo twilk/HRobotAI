@@ -5,6 +5,8 @@
 // "reveal" action is logged as an audit_log row. The detail fields here mirror
 // what a tenant-scoped `GET /api/employees/:id` would return.
 
+export type EmployeeStatus = 'active' | 'inactive' | 'on-leave' | 'suspended' | 'leave'
+
 export interface Employee {
   id: string
   firstName: string
@@ -15,7 +17,7 @@ export interface Employee {
   contract: 'UoP' | 'Zlecenie' | 'B2B'
   /** Last 4 of PESEL only — plaintext PESEL never reaches the client. */
   peselLast4: string
-  status: 'active' | 'leave'
+  status: EmployeeStatus
 }
 
 export interface AuditEntry {
@@ -56,7 +58,11 @@ function audit(extra: AuditEntry[] = []): AuditEntry[] {
   ]
 }
 
-const EMPLOYEES: EmployeeDetail[] = [
+// Mutable in-memory store (resets on server restart / test module reload)
+let EMPLOYEES: EmployeeDetail[] = []
+
+function makeEmployees(): EmployeeDetail[] {
+  return [
   {
     id: '1', firstName: 'Anna', lastName: 'Nowak', email: 'anna.nowak@acme.pl',
     position: 'Kierownik zmiany', unit: 'Produkcja', contract: 'UoP', peselLast4: '4821', status: 'active',
@@ -108,7 +114,15 @@ const EMPLOYEES: EmployeeDetail[] = [
     manager: 'Jan Kowalski', salaryMasked: '•• ••• PLN', region: REGION, realm: REALM,
     audit: audit(),
   },
-]
+  ]
+}
+
+EMPLOYEES = makeEmployees()
+
+/** Reset to initial seed data (for test isolation). */
+export function resetEmployees(): void {
+  EMPLOYEES = makeEmployees()
+}
 
 /** List view: returns the full set (table reads only the Employee subset). */
 export function getEmployees(): EmployeeDetail[] {
@@ -123,3 +137,42 @@ export function getEmployee(id: string): EmployeeDetail | undefined {
 export const employeeFullName = (e: Pick<Employee, 'firstName' | 'lastName'>) => `${e.firstName} ${e.lastName}`
 export const employeeInitials = (e: Pick<Employee, 'firstName' | 'lastName'>) =>
   (e.firstName.charAt(0) + e.lastName.charAt(0)).toUpperCase()
+
+export type EmployeeUpdateFields = Partial<Pick<EmployeeDetail, 'firstName' | 'lastName' | 'position' | 'unit' | 'email' | 'phone'>>
+
+/**
+ * Update basic profile fields of an employee.
+ * Returns the updated employee or null if not found.
+ */
+export function updateEmployee(id: string, updates: EmployeeUpdateFields): EmployeeDetail | null {
+  const idx = EMPLOYEES.findIndex((e) => e.id === id)
+  if (idx === -1) return null
+  EMPLOYEES[idx] = { ...EMPLOYEES[idx], ...updates }
+  return EMPLOYEES[idx]
+}
+
+/**
+ * Change the status of an employee.
+ * Returns the updated employee or null if not found.
+ */
+export function setEmployeeStatus(id: string, status: 'active' | 'inactive' | 'on-leave' | 'suspended'): EmployeeDetail | null {
+  const idx = EMPLOYEES.findIndex((e) => e.id === id)
+  if (idx === -1) return null
+  EMPLOYEES[idx] = { ...EMPLOYEES[idx], status }
+  return EMPLOYEES[idx]
+}
+
+/**
+ * Add a new employee to the store.
+ * Returns the newly created EmployeeDetail.
+ */
+export function addEmployee(data: Omit<EmployeeDetail, 'region' | 'realm' | 'audit'>): EmployeeDetail {
+  const entry: EmployeeDetail = {
+    ...data,
+    region: 'EU-CENTRAL',
+    realm: 'hrobot-acme',
+    audit: [{ ts: new Date().toISOString().slice(0, 16).replace('T', ' '), action: 'Utworzono profil', actor: 'System' }],
+  }
+  EMPLOYEES.push(entry)
+  return entry
+}
