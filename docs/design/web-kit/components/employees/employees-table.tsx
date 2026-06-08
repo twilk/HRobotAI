@@ -1,9 +1,32 @@
 import Link from 'next/link'
 import { Table, Th, Td } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { IconEdit } from '@/components/icons'
 import { type Employee, employeeInitials } from '@/lib/employees'
 
-export function EmployeesTable({ employees }: { employees: Employee[] }) {
+function statusBadge(status: Employee['status']) {
+  switch (status) {
+    case 'active':
+      return <Badge tone="ok" data-guide="pracownicy:status-badge">Aktywny</Badge>
+    case 'inactive':
+      return <Badge tone="danger" data-guide="pracownicy:status-badge">Nieaktywny</Badge>
+    case 'on-leave':
+    case 'leave':
+      return <Badge tone="warn" data-guide="pracownicy:status-badge">Urlop</Badge>
+    case 'suspended':
+      return <Badge tone="warn" data-guide="pracownicy:status-badge">Zawieszony</Badge>
+    default:
+      return <Badge data-guide="pracownicy:status-badge">{status}</Badge>
+  }
+}
+
+export function EmployeesTable({
+  employees,
+  onEdit,
+}: {
+  employees: Employee[]
+  onEdit?: (employee: Employee) => void
+}) {
   return (
     <Table data-guide="pracownicy:table">
       <thead>
@@ -14,6 +37,7 @@ export function EmployeesTable({ employees }: { employees: Employee[] }) {
           <Th>Typ</Th>
           <Th>PESEL</Th>
           <Th>Status</Th>
+          {onEdit && <Th><span className="sr-only">Akcje</span></Th>}
         </tr>
       </thead>
       <tbody>
@@ -43,7 +67,18 @@ export function EmployeesTable({ employees }: { employees: Employee[] }) {
             <Td>
               <span className="font-mono text-[12.5px] tabular-nums text-muted">•••••••{e.peselLast4}</span>
             </Td>
-            <Td>{e.status === 'active' ? <Badge tone="ok" data-guide="pracownicy:status-badge">Aktywny</Badge> : <Badge tone="warn" data-guide="pracownicy:status-badge">Urlop</Badge>}</Td>
+            <Td>{statusBadge(e.status)}</Td>
+            {onEdit && (
+              <Td>
+                <button
+                  aria-label={`Edytuj ${e.firstName} ${e.lastName}`}
+                  onClick={() => onEdit(e)}
+                  className="grid h-7 w-7 place-items-center rounded-sm text-muted hover:bg-card-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                >
+                  <IconEdit className="w-[15px] h-[15px]" strokeWidth={1.7} />
+                </button>
+              </Td>
+            )}
           </tr>
         ))}
       </tbody>

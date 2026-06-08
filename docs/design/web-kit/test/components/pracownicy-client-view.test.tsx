@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
@@ -18,8 +18,18 @@ vi.mock('react-hot-toast', () => ({
   },
 }))
 
+vi.mock('@/lib/actions/employees-actions', () => ({
+  editEmployee: vi.fn().mockResolvedValue({ success: true }),
+  changeEmployeeStatus: vi.fn().mockResolvedValue({ success: true }),
+  addNewEmployee: vi.fn().mockResolvedValue({ success: true, employee: { id: 'mock-1' } }),
+}))
+
 import { PracownicyClientView } from '@/components/employees/pracownicy-client-view'
-import { getEmployees } from '@/lib/employees'
+import { getEmployees, resetEmployees } from '@/lib/employees'
+
+beforeEach(() => {
+  resetEmployees()
+})
 
 const employees = getEmployees()
 
@@ -89,5 +99,48 @@ describe('PracownicyClientView', () => {
     await user.type(screen.getByLabelText('Jednostka'), 'IT')
     await user.click(screen.getByRole('button', { name: /Zapisz/ }))
     expect(toast.default.success).toHaveBeenCalledWith('Pracownik dodany')
+  }, 15_000)
+})
+
+describe('PracownicyClientView — EditEmployeeModal', () => {
+  it('shows Edit button for each employee row', () => {
+    render(<PracownicyClientView initialEmployees={employees} />)
+    const editButtons = screen.getAllByRole('button', { name: /Edytuj/ })
+    expect(editButtons.length).toBeGreaterThanOrEqual(employees.length)
+  })
+
+  it('clicking Edit opens the modal with the correct employee name pre-filled', async () => {
+    const user = userEvent.setup()
+    render(<PracownicyClientView initialEmployees={employees} />)
+    const editButtons = screen.getAllByRole('button', { name: /Edytuj/ })
+    await user.click(editButtons[0])
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toBeInTheDocument()
+    // The first employee is Anna Nowak — her firstName should be pre-filled
+    const firstNameInput = screen.getByLabelText('Imię') as HTMLInputElement
+    expect(firstNameInput.value).toBe('Anna')
+  }, 15_000)
+
+  it('submitting edit form calls editEmployee action', async () => {
+    const { editEmployee } = await import('@/lib/actions/employees-actions')
+    const user = userEvent.setup()
+    render(<PracownicyClientView initialEmployees={employees} />)
+    const editButtons = screen.getAllByRole('button', { name: /Edytuj/ })
+    await user.click(editButtons[0])
+    // Submit the form as-is
+    await user.click(screen.getByRole('button', { name: /Zapisz zmiany/ }))
+    expect(editEmployee).toHaveBeenCalled()
+  }, 15_000)
+
+  it('changing status dropdown and saving calls changeEmployeeStatus action', async () => {
+    const { changeEmployeeStatus } = await import('@/lib/actions/employees-actions')
+    const user = userEvent.setup()
+    render(<PracownicyClientView initialEmployees={employees} />)
+    const editButtons = screen.getAllByRole('button', { name: /Edytuj/ })
+    await user.click(editButtons[0])
+    const statusSelect = screen.getByLabelText('Status') as HTMLSelectElement
+    await user.selectOptions(statusSelect, 'inactive')
+    await user.click(screen.getByRole('button', { name: /Zapisz zmiany/ }))
+    expect(changeEmployeeStatus).toHaveBeenCalledWith(expect.any(String), 'inactive', expect.any(String))
   }, 15_000)
 })
