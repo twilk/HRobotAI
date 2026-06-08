@@ -61,8 +61,8 @@ export async function onboardNewEmployee(data: {
     actionUrl: `/pracownicy/${newEmployee.id}`,
   })
 
-  for (const module of ALL_MODULES) {
-    updateAccess(newEmployee.id, module, 'brak', 'System')
+  for (const mod of ALL_MODULES) {
+    updateAccess(newEmployee.id, mod, 'brak', 'System')
   }
 
   addLeaveBalance(newEmployee.id, fullName)
