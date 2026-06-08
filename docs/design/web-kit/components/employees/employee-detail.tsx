@@ -3,7 +3,7 @@ import { cn } from '@/lib/cn'
 import { IconChevronLeft, IconLock } from '@/components/icons'
 import { SecuredChip } from '@/components/ui/secured-chip'
 import { EmployeeRecord } from './employee-record'
-import { type EmployeeDetail, employeeFullName, employeeInitials } from '@/lib/employees'
+import { type EmployeeDetail, type EmployeeStatus, employeeFullName, employeeInitials } from '@/lib/employees'
 
 /**
  * Pracownik — szczegóły (screen C4). Sticky identity pane (left) + the
@@ -67,17 +67,45 @@ function IdentityPane({ employee }: { employee: EmployeeDetail }) {
   )
 }
 
-function StatusPill({ status }: { status: 'active' | 'leave' }) {
-  const ok = status === 'active'
+const STATUS_CONFIG: Record<EmployeeStatus, { label: string; className: string; dotClass: string }> = {
+  active: {
+    label: 'Aktywny',
+    className: 'border-verified/25 bg-verified/[0.08] text-verified',
+    dotClass: 'bg-verified',
+  },
+  inactive: {
+    label: 'Nieaktywny',
+    className: 'border-warn/25 bg-warn/[0.08] text-warn',
+    dotClass: 'bg-warn',
+  },
+  'on-leave': {
+    label: 'Urlop',
+    className: 'border-warn/25 bg-warn/[0.08] text-warn',
+    dotClass: 'bg-warn',
+  },
+  leave: {
+    label: 'Urlop',
+    className: 'border-warn/25 bg-warn/[0.08] text-warn',
+    dotClass: 'bg-warn',
+  },
+  suspended: {
+    label: 'Zawieszony',
+    className: 'border-warn/25 bg-warn/[0.08] text-warn',
+    dotClass: 'bg-warn',
+  },
+}
+
+function StatusPill({ status }: { status: EmployeeStatus }) {
+  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.active
   return (
     <span
       className={cn(
         'inline-flex items-center gap-1.5 rounded-full border px-[11px] py-1 text-[12.5px] font-medium',
-        ok ? 'border-verified/25 bg-verified/[0.08] text-verified' : 'border-warn/25 bg-warn/[0.08] text-warn',
+        cfg.className,
       )}
     >
-      <span className={cn('h-[7px] w-[7px] rounded-full', ok ? 'bg-verified' : 'bg-warn')} />
-      {ok ? 'Aktywny' : 'Urlop'}
+      <span className={cn('h-[7px] w-[7px] rounded-full', cfg.dotClass)} />
+      {cfg.label}
     </span>
   )
 }

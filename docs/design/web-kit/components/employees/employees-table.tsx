@@ -9,7 +9,7 @@ function statusBadge(status: Employee['status']) {
     case 'active':
       return <Badge tone="ok" data-guide="pracownicy:status-badge">Aktywny</Badge>
     case 'inactive':
-      return <Badge tone="danger" data-guide="pracownicy:status-badge">Nieaktywny</Badge>
+      return <Badge tone="warn" data-guide="pracownicy:status-badge">Nieaktywny</Badge>
     case 'on-leave':
     case 'leave':
       return <Badge tone="warn" data-guide="pracownicy:status-badge">Urlop</Badge>
