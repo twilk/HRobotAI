@@ -1,0 +1,157 @@
+name: ci
+
+# HRobot CI quality pipeline (M2-B1).
+# Gates run in order — each must pass before the next, so a lint / typecheck /
+# unit failure fails the whole job (red) and, once the `ci` check is required on
+# `main` (see the PR description follow-up), blocks merge. [spec §8 CI-1]
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+
+    # Connection config the apps read through @hrobot/config (packages/config/src/env.ts).
+    # Names MUST match env.ts exactly — do not rename. Values are synthetic CI-only
+    # placeholders (RODO: never put real personal data here). Postgres/Redis point at the
+    # service containers below (published on localhost). Integration tests that boot an app
+    # go through parseEnv(), which requires every one of these to be present and well-formed.
+    env:
+      CONTROL_PLANE_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/hrobot_control
+      POSTGRES_SUPERUSER_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      REDIS_URL: redis://localhost:6379
+      RABBITMQ_URL: amqp://guest:guest@localhost:5672
+      # 32-byte AES key, hex-encoded (64 hex chars) — dev placeholder from .env.example.
+      TENANT_DB_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      KEYCLOAK_URL: http://localhost:8080
+      KEYCLOAK_CLIENT_ID: admin-cli
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ci-placeholder-keycloak-secret
+      NEXTAUTH_SECRET: ci-placeholder-nextauth-secret
+      # parseEnv() enforces min length 32.
+      GLOBAL_ADMIN_JWT_SECRET: ci-placeholder-global-admin-jwt-secret-change-me
+      TURBO_TELEMETRY_DISABLED: "1"
+
+    services:
+      # Postgres 16 — the integration lane runs against this. [spec §8 CI-2]
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      # Redis 7 — throttler storage / caches used by the backends.
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # pnpm must be set up before setup-node so `cache: pnpm` can locate the store.
+      # Version comes from package.json "packageManager" (pnpm@10.x).
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      # Node version comes from .nvmrc. NOTE: the repo pins Node 22 (.nvmrc + package.json
+      # engines ">=22" + @types/node ^22), so CI runs 22 rather than the 20 named in the
+      # original spec draft — running <22 risks engine/runtime failures and the acceptance
+      # bar is a green pipeline. `cache: pnpm` caches the pnpm store keyed on pnpm-lock.yaml.
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # Turbo local cache, keyed on the lockfile (falls back to older caches on a miss).
+      - name: Cache turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            turbo-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Gate 1 — static analysis. eslint + tsc --noEmit across the graph. [CI-1]
+      - name: Lint + typecheck
+        run: pnpm turbo run lint typecheck --cache-dir=.turbo/cache
+
+      # Gate 2 — unit tests (Jest). Source-mapped, no live services needed. [CI-1]
+      - name: Unit tests
+        run: pnpm turbo run test --cache-dir=.turbo/cache
+
+      # Gate 3 — DB-backed integration tests, run against the Postgres + Redis services above. [CI-2]
+      # Currently a --passWithNoTests placeholder in each backend package (no *.integration.spec.ts
+      # exist yet); the lane + services are wired so tenant-isolation / provisioning / throttler
+      # integration suites drop straight in later.
+      - name: Integration tests
+        run: pnpm turbo run test:integration --cache-dir=.turbo/cache
+
+      # Gate 4 — Playwright smoke lane.
+      # TODO(M2-B4): this is a passing placeholder (scripts/e2e-smoke-placeholder.mjs). The real
+      # browser smoke — Playwright against the docker-compose / staging stack — is a downstream
+      # task that depends on staging; it will replace the root //#test:e2e:smoke placeholder with a
+      # dedicated web e2e package.
+      - name: E2E smoke
+        run: pnpm turbo run test:e2e:smoke --cache-dir=.turbo/cache
+
+      # Gate 5 — fan-out tenant migrations.
+      # TODO(M2-B2): DEFERRED. `pnpm tsx packages/db/scripts/migrate-all-tenants.ts` reads ACTIVE
+      # tenants from the control-plane DB and runs `prisma migrate deploy` against each tenant DB.
+      # It needs (a) the control-plane schema migrated and (b) at least one provisioned tenant —
+      # neither exists on a bare Postgres service (that requires the full docker-compose provisioning
+      # stack). Enabling it here would hard-fail, so it is deferred to M2-B2, which stands up
+      # control-plane migrations + tenant provisioning in CI. Do NOT un-comment until then.
+      # - name: Fan-out tenant migrations
+      #   run: pnpm tsx packages/db/scripts/migrate-all-tenants.ts
+
+  # ---------------------------------------------------------------------------
+  # TODO(spec §7): future Python matrix lane for the agent workers (pytest + ruff).
+  # When the Python agent service lands, add a sibling job — sketch:
+  #
+  #   python:
+  #     name: python
+  #     runs-on: ubuntu-latest
+  #     strategy:
+  #       matrix:
+  #         python-version: ["3.12"]
+  #     steps:
+  #       - uses: actions/checkout@v4
+  #       - uses: actions/setup-python@v5
+  #         with:
+  #           python-version: ${{ matrix.python-version }}
+  #       - run: pip install ruff pytest
+  #       - run: ruff check .
+  #       - run: pytest
+  #
+  # (The docker-compose `agent` service placeholder from spec §7 is intentionally NOT added here —
+  # it touches docker-compose.yml, which is owned by another crewmate.)
+  # ---------------------------------------------------------------------------
