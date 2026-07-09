@@ -13,6 +13,7 @@ import { RbacGuard } from '../tenant-runtime/rbac/rbac.guard.js'
 import type { JwtPayload } from '../tenant-runtime/keycloak/keycloak-jwt.strategy.js'
 
 const mockService = {
+  solveGrafik: jest.fn(),
   listShifts: jest.fn(),
   getShift: jest.fn(),
   createShift: jest.fn(),
@@ -66,6 +67,16 @@ describe('GrafikController', () => {
     )
   })
 
+  it('delegates solve with an actor projected from the JWT + IP', async () => {
+    mockService.solveGrafik.mockResolvedValue({ status: 'OPTIMAL', assignmentsCreated: 2, unmet: [], metrics: {}, shifts: [] })
+    const dto = { weekStart: '2026-07-13', unitId: '11111111-1111-1111-1111-111111111111' }
+
+    const result = await controller.solve(client, user, '1.2.3.4', dto)
+
+    expect(result).toEqual({ status: 'OPTIMAL', assignmentsCreated: 2, unmet: [], metrics: {}, shifts: [] })
+    expect(mockService.solveGrafik).toHaveBeenCalledWith(client, { userId: 'kc-1', roles: [Role.HR], ipAddress: '1.2.3.4' }, dto)
+  })
+
   it('delegates listShifts and returns the service result', async () => {
     mockService.listShifts.mockResolvedValue([{ id: 'shift-1' }])
     expect(await controller.listShifts(client, user, '1.2.3.4')).toEqual([{ id: 'shift-1' }])
@@ -89,6 +100,10 @@ describe('GrafikController', () => {
       expect(rolesFor('createShift')).toContain(Role.MANAGER)
       expect(rolesFor('updateShift')).toContain(Role.MANAGER)
       expect(rolesFor('deleteShift')).toContain(Role.MANAGER)
+    })
+
+    it('allows MANAGER/HR/ADMIN on solve (unit-scoped in the service)', () => {
+      expect(rolesFor('solve')).toEqual([Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA])
     })
 
     it('restricts demand/template mutations to HR/ADMIN — MANAGER excluded', () => {
