@@ -34,6 +34,18 @@ enum ShiftSource {
   MANUAL
 }
 
+/// Lifecycle of a shift-swap request (M2 #3). DRAFT → PENDING_PEER → PEER_AGREED →
+/// PENDING_MANAGER → APPROVED, with REJECTED/CANCELLED as terminal off-ramps.
+enum SwapState {
+  DRAFT
+  PENDING_PEER
+  PEER_AGREED
+  PENDING_MANAGER
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 model User {
   id           String               @id
   email        String               @unique
@@ -103,6 +115,8 @@ model Employee {
   createdAt      DateTime           @default(now()) @map("created_at")
   updatedAt      DateTime           @updatedAt @map("updated_at")
   shifts         Shift[]
+  swapsRequested ShiftSwapRequest[] @relation("SwapRequester")
+  swapsTargeted  ShiftSwapRequest[] @relation("SwapTarget")
 
   @@map("employees")
 }
@@ -177,6 +191,8 @@ model Shift {
   source        ShiftSource  @default(AUTO)
   createdAt     DateTime     @default(now()) @map("created_at")
   updatedAt     DateTime     @updatedAt @map("updated_at")
+  swapsAsRequesterShift ShiftSwapRequest[] @relation("SwapRequesterShift")
+  swapsAsTargetShift    ShiftSwapRequest[] @relation("SwapTargetShift")
 
   @@map("shifts")
 }
@@ -192,4 +208,29 @@ model AuditLog {
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("audit_log")
+}
+
+/// A worker-initiated shift-swap request (M2 #3). A 1:1 swap (both target fields set) or a
+/// "give away shift" (target fields null). Never mutates `Shift` until APPROVED; the state
+/// machine (apps/tenant-runtime src/shift-swap) drives transitions and performs the atomic
+/// employeeId swap + audit on approval.
+model ShiftSwapRequest {
+  id                  String    @id @default(uuid())
+  requesterEmployeeId String    @map("requester_employee_id")
+  requester           Employee  @relation("SwapRequester", fields: [requesterEmployeeId], references: [id])
+  requesterShiftId    String    @map("requester_shift_id")
+  requesterShift      Shift     @relation("SwapRequesterShift", fields: [requesterShiftId], references: [id])
+  /// Null for a "give away shift" request (no counterparty); set for a 1:1 swap.
+  targetEmployeeId    String?   @map("target_employee_id")
+  target              Employee? @relation("SwapTarget", fields: [targetEmployeeId], references: [id])
+  targetShiftId       String?   @map("target_shift_id")
+  targetShift         Shift?    @relation("SwapTargetShift", fields: [targetShiftId], references: [id])
+  state               SwapState @default(DRAFT)
+  reason              String?
+  /// Manager who took the approve/reject decision (set on the manager decision only).
+  decidedByManagerId  String?   @map("decided_by_manager_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@map("shift_swap_requests")
 }
