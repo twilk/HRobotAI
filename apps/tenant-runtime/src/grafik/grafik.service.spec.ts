@@ -4,6 +4,7 @@ import type { TenantClient } from '@hrobot/db'
 import { Role } from '@hrobot/shared'
 import { GrafikService, GrafikActor } from './grafik.service.js'
 import { AuditService } from '../tenant-runtime/audit/audit.service.js'
+import { OPTIMIZER_CLIENT, type OptimizerClient } from './optimizer.client.js'
 
 /** A mock tenant client exposing exactly the delegates GrafikService touches. */
 function makeClient() {
@@ -14,6 +15,7 @@ function makeClient() {
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
+      deleteMany: jest.fn(),
     },
     shiftDemand: {
       findMany: jest.fn(),
@@ -29,8 +31,10 @@ function makeClient() {
       update: jest.fn(),
       delete: jest.fn(),
     },
-    employee: { findUnique: jest.fn() },
+    employee: { findUnique: jest.fn(), findMany: jest.fn() },
+    lokalizacja: { findMany: jest.fn() },
     userRole: { findMany: jest.fn() },
+    $transaction: jest.fn(),
   }
 }
 type MockClient = ReturnType<typeof makeClient>
@@ -43,12 +47,18 @@ const ADMIN: GrafikActor = { userId: 'kc-admin', roles: [Role.ADMIN_KLIENTA], ip
 describe('GrafikService', () => {
   let service: GrafikService
   let audit: { log: jest.Mock }
+  let optimizer: { solve: jest.Mock }
   let client: MockClient
 
   beforeEach(async () => {
     audit = { log: jest.fn().mockResolvedValue(undefined) }
+    optimizer = { solve: jest.fn() }
     const module: TestingModule = await Test.createTestingModule({
-      providers: [GrafikService, { provide: AuditService, useValue: audit }],
+      providers: [
+        GrafikService,
+        { provide: AuditService, useValue: audit },
+        { provide: OPTIMIZER_CLIENT, useValue: optimizer as OptimizerClient },
+      ],
     }).compile()
     service = module.get(GrafikService)
     client = makeClient()

@@ -17,10 +17,11 @@ import { TenantRoute } from '../tenant-runtime/tenant-route.decorator.js'
 import { Roles } from '../tenant-runtime/rbac/roles.decorator.js'
 import { CurrentTenantClient, CurrentUser } from '../tenant-runtime/tenant-context/current-tenant-client.decorator.js'
 import type { JwtPayload } from '../tenant-runtime/keycloak/keycloak-jwt.strategy.js'
-import { GrafikService, type GrafikActor } from './grafik.service.js'
+import { GrafikService, type GrafikActor, type SolveGrafikResult } from './grafik.service.js'
 import { CreateShiftDto, UpdateShiftDto } from './dto/shift.dto.js'
 import { CreateShiftDemandDto, UpdateShiftDemandDto } from './dto/shift-demand.dto.js'
 import { CreateShiftTemplateDto, UpdateShiftTemplateDto } from './dto/shift-template.dto.js'
+import { SolveGrafikDto } from './dto/solve.dto.js'
 
 /** Any scheduling staff role may read the grafik. */
 const READ_ROLES = [Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA] as const
@@ -46,6 +47,24 @@ export class GrafikController {
 
   private actor(user: JwtPayload, ip: string): GrafikActor {
     return { userId: user.sub, roles: user.hrobot_roles ?? [], ipAddress: ip }
+  }
+
+  // --- Solve -------------------------------------------------------------------------------------
+
+  /**
+   * Pack the week × scope, call the optimizer, and persist the assignments as `Shift(source=AUTO)`.
+   * Shift-writer roles (MANAGER/HR/ADMIN); a MANAGER is unit-scoped in the service. INFEASIBLE
+   * returns `status` + `unmet[]` without persisting.
+   */
+  @Post('solve')
+  @Roles(...SHIFT_WRITE_ROLES)
+  async solve(
+    @CurrentTenantClient() client: TenantClient,
+    @CurrentUser() user: JwtPayload,
+    @Ip() ip: string,
+    @Body() dto: SolveGrafikDto,
+  ): Promise<SolveGrafikResult> {
+    return this.grafik.solveGrafik(client, this.actor(user, ip), dto)
   }
 
   // --- Shift -------------------------------------------------------------------------------------
