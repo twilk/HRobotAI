@@ -1,4 +1,3 @@
-import { Logger } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import { ProvisioningService } from './provisioning.service.js'
 import { ControlPlanePrismaService } from '../common/prisma/control-plane-prisma.service.js'

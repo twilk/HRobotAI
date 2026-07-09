@@ -2,7 +2,6 @@ import { Reflector } from '@nestjs/core'
 import { ExecutionContext, ForbiddenException } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import { RbacGuard } from './rbac.guard.js'
-import { ROLES_KEY } from './roles.decorator.js'
 
 function makeCtx(roles: string[]): ExecutionContext {
   return {

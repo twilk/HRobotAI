@@ -15,7 +15,9 @@
     "seed:admin:dev": "prisma db execute --schema=prisma/control-plane/schema.prisma --file=prisma/control-plane/seed-dev-admin.sql",
     "build": "tsc -p tsconfig.json",
     "lint": "eslint src",
-    "test": "jest"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "jest",
+    "test:integration": "jest --testMatch '**/*.integration.spec.ts' --passWithNoTests"
   },
   "dependencies": {
     "@hrobot/shared": "workspace:*",

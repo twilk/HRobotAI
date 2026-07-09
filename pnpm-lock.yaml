@@ -141,6 +141,9 @@ importers:
       '@types/pg':
         specifier: ^8.11.6
         version: 8.20.0
+      eslint:
+        specifier: ^9.13.0
+        version: 9.39.4
       jest:
         specifier: ^29.7.0
         version: 29.7.0(@types/node@22.19.19)
@@ -274,6 +277,9 @@ importers:
       '@types/pg':
         specifier: ^8.11.6
         version: 8.20.0
+      eslint:
+        specifier: ^9.13.0
+        version: 9.39.4
       jest:
         specifier: ^29.7.0
         version: 29.7.0(@types/node@22.19.19)

@@ -25,7 +25,7 @@ describe('KeycloakSetupStep', () => {
 
   beforeEach(async () => {
     callIndex = 0
-    mockFetch.mockImplementation((url: string, opts: { method: string }) => {
+    mockFetch.mockImplementation((_url: string, _opts: { method: string }) => {
       callIndex++
       // 1: token, 2: create realm, 3: create client, 4: create user, 5: send email
       if (callIndex === 1) return Promise.resolve({ ok: true, json: async () => ({ access_token: 'tok' }) })
@@ -62,7 +62,7 @@ describe('KeycloakSetupStep', () => {
     mockPrisma.tenant.update.mockResolvedValue({})
     mockPrisma.provisioningJob.update.mockResolvedValue({})
     callIndex = 0
-    mockFetch.mockImplementation((url: string, _opts: RequestInit) => {
+    mockFetch.mockImplementation((_url: string, _opts: RequestInit) => {
       callIndex++
       if (callIndex === 1) return Promise.resolve({ ok: true, json: async () => ({ access_token: 'tok' }) })
       if (callIndex === 4) return Promise.resolve({
