@@ -22,6 +22,18 @@ enum EmploymentType {
   B2B
 }
 
+/// Where a ShiftDemand came from: expanded from a ShiftTemplate, or entered by hand.
+enum DemandSource {
+  TEMPLATE
+  MANUAL
+}
+
+/// How a Shift was produced: by the grafik solver (auto), or placed/edited by a human.
+enum ShiftSource {
+  AUTO
+  MANUAL
+}
+
 model User {
   id           String               @id
   email        String               @unique
@@ -76,10 +88,97 @@ model Employee {
   hiredAt        DateTime           @map("hired_at")
   unitId         String             @map("unit_id")
   unit           OrganizationalUnit @relation(fields: [unitId], references: [id])
+  /// ENCRYPTED (AES-256-GCM, AAD-bound) RODO PII — home address, used to derive homeLat/homeLng for
+  /// haversine commute. Encrypt via @hrobot/shared EncryptionService before persisting; never store
+  /// plaintext. Unlike `pesel` this is NOT looked up by value, so it needs no blind index.
+  homeAddress    String?            @map("home_address")
+  /// Home latitude for haversine commute (derived from homeAddress; not PII on its own).
+  homeLat        Float?             @map("home_lat")
+  /// Home longitude for haversine commute (derived from homeAddress; not PII on its own).
+  homeLng        Float?             @map("home_lng")
+  /// Contract fraction (etat). targetWeeklyHours = etat × 40. 1.0 = full-time.
+  etat           Decimal            @default(1.0)
+  /// Job qualifications the employee can cover (matched against ShiftDemand.requiredRole).
+  qualifications String[]           @default([])
   createdAt      DateTime           @default(now()) @map("created_at")
   updatedAt      DateTime           @updatedAt @map("updated_at")
+  shifts         Shift[]
 
   @@map("employees")
+}
+
+/// A physical site shifts are scheduled at. Minimal FK target for ShiftDemand/Shift.lokalizacjaId;
+/// full facility attributes + web-kit seed reconciliation (facilityId string → UUID) land later (A5).
+model Lokalizacja {
+  id      String        @id @default(uuid())
+  name    String
+  /// Facility type; matches ShiftTemplate.lokalizacjaTyp (free-form, not an FK).
+  typ     String
+  /// Optional geolocation for haversine commute (nullable; may be geocoded later).
+  lat     Float?
+  lng     Float?
+  demands ShiftDemand[]
+  shifts  Shift[]
+
+  @@map("lokalizacje")
+}
+
+/// Reusable weekly staffing pattern for a location type. `okna` holds the demand windows as JSON
+/// (`[{ start, end, rola, liczba }]`); expanding a template produces ShiftDemand rows (source=TEMPLATE).
+model ShiftTemplate {
+  id             String   @id @default(uuid())
+  lokalizacjaTyp String   @map("lokalizacja_typ")
+  nazwa          String
+  /// Days of week the template applies to (e.g. ["MON","TUE"]).
+  dni            String[] @default([])
+  /// Demand windows: [{ start, end, rola, liczba }]. JSON keeps the skeleton simple; shape mirrors ShiftDemand.
+  okna           Json
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("shift_templates")
+}
+
+/// Concrete staffing need: N employees of a role at a location for a dated window. Solver input.
+model ShiftDemand {
+  id            String       @id @default(uuid())
+  lokalizacjaId String       @map("lokalizacja_id")
+  lokalizacja   Lokalizacja  @relation(fields: [lokalizacjaId], references: [id])
+  date          DateTime     @db.Date
+  /// Window start/end as "HH:mm" local time (kept as text to avoid tz ambiguity in the skeleton).
+  start         String
+  end           String
+  requiredRole  String       @map("required_role")
+  requiredCount Int          @map("required_count")
+  source        DemandSource @default(MANUAL)
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  shifts        Shift[]
+
+  @@map("shift_demands")
+}
+
+/// An assignment of one employee to one dated window at a location. Produced by the solver
+/// (source=AUTO) or by a human (source=MANUAL). `demandId` links back to the need it fills (nullable
+/// for manual shifts with no originating demand).
+model Shift {
+  id            String       @id @default(uuid())
+  employeeId    String       @map("employee_id")
+  employee      Employee     @relation(fields: [employeeId], references: [id])
+  lokalizacjaId String       @map("lokalizacja_id")
+  lokalizacja   Lokalizacja  @relation(fields: [lokalizacjaId], references: [id])
+  demandId      String?      @map("demand_id")
+  demand        ShiftDemand? @relation(fields: [demandId], references: [id])
+  date          DateTime     @db.Date
+  /// Window start/end as "HH:mm" local time (see ShiftDemand).
+  start         String
+  end           String
+  role          String
+  source        ShiftSource  @default(AUTO)
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  @@map("shifts")
 }
 
 model AuditLog {

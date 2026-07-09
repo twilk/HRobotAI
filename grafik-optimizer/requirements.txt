@@ -1,0 +1,8 @@
+# grafik-optimizer runtime deps (single source of truth; the Dockerfile installs this file).
+# Pinned so M2-A2 (CP-SAT solver) forks with a known-good, reproducible toolchain.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+# ortools is NOT imported by the A1 stub, but is pinned now so A2's CP-SAT work needs no dep PR.
+# ortools ships wheels for CPython 3.9–3.12 → the Dockerfile base is python:3.12-slim.
+ortools==9.11.4210
