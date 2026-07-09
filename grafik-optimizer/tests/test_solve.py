@@ -1,7 +1,9 @@
-"""Smoke tests for the A1 skeleton: /health liveness + /solve contract round-trip.
+"""API-level round-trip tests: /health liveness + /solve contract via the real CP-SAT solver.
 
-No solver assertions here — the stub is expected to return INFEASIBLE with every demand unmet.
-Run: `pip install -r requirements.txt httpx pytest && pytest` from grafik-optimizer/.
+Solver acceptance (G1–G4) lives in ``test_solver.py``; this file exercises the FastAPI surface —
+that the endpoint validates ProblemInput against the frozen contract and returns a schema-valid
+SolveResult. The SAMPLE_PROBLEM is trivially feasible (one qualified employee, one demand, not on
+leave that date) so the solver returns a real assignment, not the old A1 stub.
 """
 
 from fastapi.testclient import TestClient
@@ -50,10 +52,24 @@ def test_solve_accepts_valid_problem_and_returns_schema_valid_result() -> None:
     resp = client.post("/solve", json=SAMPLE_PROBLEM)
     assert resp.status_code == 200
     body = resp.json()
-    assert body["status"] == "INFEASIBLE"
-    assert body["assignments"] == []
+    # Trivially feasible → the sole qualified, available employee covers the sole demand.
+    assert body["status"] == "OPTIMAL"
+    assert body["assignments"] == [{"employeeId": "emp-1", "demandId": "dem-1"}]
     assert set(body["metrics"]) == {"commuteTotal", "etatDeviation", "fairnessScore"}
-    assert [u["demandId"] for u in body["unmet"]] == ["dem-1"]
+    assert body["unmet"] == []
+
+
+def test_solve_infeasible_reports_unmet_not_error() -> None:
+    # Demand for a role nobody is qualified for → INFEASIBLE with the slot echoed into unmet[].
+    payload = {
+        **SAMPLE_PROBLEM,
+        "demands": [{**SAMPLE_PROBLEM["demands"][0], "id": "dem-x", "role": "PILOT"}],
+    }
+    resp = client.post("/solve", json=payload)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "INFEASIBLE"
+    assert [u["demandId"] for u in body["unmet"]] == ["dem-x"]
 
 
 def test_solve_rejects_malformed_problem() -> None:
