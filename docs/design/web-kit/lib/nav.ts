@@ -32,6 +32,7 @@ export const NAV: NavGroup[] = [
       { label: 'Dashboard', href: '/dashboard', icon: IconDashboard },
       { label: 'Pracownicy', href: '/pracownicy', icon: IconUsers },
       { label: 'Grafik', href: '/grafik', icon: IconCalendar },
+      { label: 'Zamiany', href: '/zamiany', icon: IconRequests },
       { label: 'Wnioski', href: '/wnioski', icon: IconRequests, tag: '3' },
       { label: 'Dostępy', href: '/dostepy', icon: IconKey, roles: ['MANAGER', 'HR', 'ADMIN_KLIENTA'] },
     ],

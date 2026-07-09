@@ -1,12 +1,21 @@
-import { Inject, Injectable } from '@nestjs/common'
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
+import { Role } from '@hrobot/shared'
 import {
   SwapAction,
+  SwapState,
   SwapRequestNotFoundError,
   SwapNotFeasibleError,
   InvalidSwapTargetError,
   nextState,
 } from './swap-state-machine.js'
+import type { CreateSwapRequestDto } from './dto/shift-swap.dto.js'
 import {
   SWAP_FEASIBILITY_VALIDATOR,
   type SwapFeasibilityValidator,
@@ -16,6 +25,20 @@ import {
 type SwapRequestRow = NonNullable<
   Awaited<ReturnType<TenantClient['shiftSwapRequest']['findUnique']>>
 >
+
+/**
+ * The authenticated caller, projected from the Keycloak JWT (`sub` + `hrobot_roles`), mirroring
+ * `GrafikActor`. Carries what row-level RBAC needs; the controller assembles it so the service never
+ * touches the HTTP request.
+ */
+export interface SwapActor {
+  userId: string // Keycloak subject → tenant User.keycloakSub
+  roles: string[] // hrobot_roles claim
+}
+
+/** HR and the tenant admin act across every unit; MANAGER is scoped to the unit(s) they manage. */
+const GLOBAL_ROLES: string[] = [Role.HR, Role.ADMIN_KLIENTA]
+const isGlobal = (roles: string[]): boolean => roles.some((r) => GLOBAL_ROLES.includes(r))
 
 /** Context threaded through the manager decision — the deciding manager + audit provenance. */
 export interface ManagerDecisionInput {
@@ -44,6 +67,165 @@ export class ShiftSwapService {
     @Inject(SWAP_FEASIBILITY_VALIDATOR)
     private readonly feasibility: SwapFeasibilityValidator,
   ) {}
+
+  // --- create + list (M2-D2) ---------------------------------------------------------------------
+
+  /**
+   * Create a DRAFT swap request. RBAC: the requester shift MUST belong to the caller's own employee
+   * record (a worker only swaps their own shift). A `targetShiftId` makes it a 1:1 swap with that
+   * shift's holder; omitting it is a "give away" request (no counterparty).
+   */
+  async create(
+    client: TenantClient,
+    actor: SwapActor,
+    dto: CreateSwapRequestDto,
+  ): Promise<SwapRequestRow> {
+    const caller = await this.requireCallerEmployee(client, actor)
+
+    const requesterShift = await client.shift.findUnique({ where: { id: dto.requesterShiftId } })
+    if (!requesterShift) throw new NotFoundException(`Shift ${dto.requesterShiftId} not found`)
+    if (requesterShift.employeeId !== caller.id) {
+      throw new ForbiddenException('You may only request a swap of your own shift')
+    }
+
+    let targetEmployeeId: string | null = null
+    let targetShiftId: string | null = null
+    if (dto.targetShiftId) {
+      const targetShift = await client.shift.findUnique({ where: { id: dto.targetShiftId } })
+      if (!targetShift) throw new NotFoundException(`Shift ${dto.targetShiftId} not found`)
+      if (targetShift.employeeId === caller.id) {
+        throw new BadRequestException('Target shift must belong to another employee')
+      }
+      targetEmployeeId = targetShift.employeeId
+      targetShiftId = targetShift.id
+    }
+
+    return client.shiftSwapRequest.create({
+      data: {
+        requesterEmployeeId: caller.id,
+        requesterShiftId: requesterShift.id,
+        targetEmployeeId,
+        targetShiftId,
+        state: SwapState.DRAFT,
+      },
+    })
+  }
+
+  /**
+   * List swap requests for polling, tenant-scoped by the per-request client and RBAC-scoped by role:
+   *  - `mine=true` → requests where the caller is the requester or target;
+   *  - HR/ADMIN → all requests;
+   *  - MANAGER → requests in a unit they manage (either party), plus their own;
+   *  - a plain worker → only their own (requester or target), regardless of `mine`.
+   */
+  async list(
+    client: TenantClient,
+    actor: SwapActor,
+    filter: { state?: string; mine?: boolean },
+  ): Promise<SwapRequestRow[]> {
+    const where: Record<string, unknown> = {}
+    if (filter.state) where.state = filter.state
+
+    const caller = await this.callerEmployee(client, actor)
+    const ownScope: Array<Record<string, unknown>> = caller
+      ? [{ requesterEmployeeId: caller.id }, { targetEmployeeId: caller.id }]
+      : []
+
+    if (filter.mine) {
+      if (!ownScope.length) return []
+      where.OR = ownScope
+    } else if (!isGlobal(actor.roles)) {
+      // Non-global (MANAGER / worker): own requests + any request in a managed unit.
+      const managedUnits = await this.managedUnitIds(client, actor.userId)
+      const scope: Array<Record<string, unknown>> = [...ownScope]
+      if (managedUnits.length) {
+        scope.push(
+          { requester: { unitId: { in: managedUnits } } },
+          { target: { unitId: { in: managedUnits } } },
+        )
+      }
+      if (!scope.length) return []
+      where.OR = scope
+    }
+
+    return client.shiftSwapRequest.findMany({ where, orderBy: { createdAt: 'desc' } })
+  }
+
+  // --- row-level RBAC assertions (M2-D2) ---------------------------------------------------------
+
+  /** Assert the caller's employee is the request's requester (submit / cancel). */
+  async assertRequester(client: TenantClient, actor: SwapActor, id: string): Promise<SwapRequestRow> {
+    const request = await this.load(client, id)
+    const caller = await this.requireCallerEmployee(client, actor)
+    if (request.requesterEmployeeId !== caller.id) {
+      throw new ForbiddenException('Only the requester may perform this action')
+    }
+    return request
+  }
+
+  /** Assert the caller's employee is the request's target (peer-decision). */
+  async assertTarget(client: TenantClient, actor: SwapActor, id: string): Promise<SwapRequestRow> {
+    const request = await this.load(client, id)
+    const caller = await this.requireCallerEmployee(client, actor)
+    if (request.targetEmployeeId !== caller.id) {
+      throw new ForbiddenException('Only the swap target may accept or reject')
+    }
+    return request
+  }
+
+  /**
+   * Assert the caller may take the manager decision: HR/ADMIN act globally; a MANAGER must manage the
+   * unit of the requester or the target (the relevant unit).
+   */
+  async assertManager(client: TenantClient, actor: SwapActor, id: string): Promise<SwapRequestRow> {
+    const request = await this.load(client, id)
+    if (isGlobal(actor.roles)) return request
+
+    const managedUnits = await this.managedUnitIds(client, actor.userId)
+    if (!managedUnits.length) {
+      throw new ForbiddenException('Only a MANAGER of the relevant unit, HR, or ADMIN may decide')
+    }
+    const partyIds = [request.requesterEmployeeId, request.targetEmployeeId].filter(
+      (v): v is string => v !== null,
+    )
+    const units = await client.employee.findMany({
+      where: { id: { in: partyIds } },
+      select: { unitId: true },
+    })
+    if (!units.some((u) => managedUnits.includes(u.unitId))) {
+      throw new ForbiddenException('MANAGER may only decide swaps in a unit they manage')
+    }
+    return request
+  }
+
+  /** Unit IDs the user holds a MANAGER role for (via tenant `UserRole`) — mirrors GrafikService. */
+  private async managedUnitIds(client: TenantClient, userId: string): Promise<string[]> {
+    const rows = await client.userRole.findMany({
+      where: { user: { keycloakSub: userId }, role: Role.MANAGER, unitId: { not: null } },
+      select: { unitId: true },
+    })
+    return rows.map((r) => r.unitId).filter((u): u is string => u !== null)
+  }
+
+  /** The caller's own Employee (via User.keycloakSub), or null if the user has no employee record. */
+  private async callerEmployee(
+    client: TenantClient,
+    actor: SwapActor,
+  ): Promise<{ id: string; unitId: string } | null> {
+    return client.employee.findFirst({
+      where: { user: { keycloakSub: actor.userId } },
+      select: { id: true, unitId: true },
+    })
+  }
+
+  private async requireCallerEmployee(
+    client: TenantClient,
+    actor: SwapActor,
+  ): Promise<{ id: string; unitId: string }> {
+    const caller = await this.callerEmployee(client, actor)
+    if (!caller) throw new ForbiddenException('Caller has no employee record in this tenant')
+    return caller
+  }
 
   /** DRAFT → PENDING_PEER. */
   async submit(client: TenantClient, id: string): Promise<SwapRequestRow> {
@@ -111,6 +293,7 @@ export class ShiftSwapService {
 
     // D1 no-op validator (allow-all); D2 swaps in the real solver check (SW2). Runs BEFORE mutation.
     const decision = await this.feasibility.validate({
+      client,
       requesterShift: { id: requesterShift.id, employeeId: requesterShift.employeeId },
       targetShift: targetShift ? { id: targetShift.id, employeeId: targetShift.employeeId } : null,
       incomingRequesterShiftEmployeeId: request.targetEmployeeId,

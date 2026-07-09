@@ -23,6 +23,11 @@ Workspace packages must be built before an app type-checks/builds: a bare `nest 
 `apps/*` fails with `Cannot find module '@hrobot/db'`. Use turbo so deps build first:
 `npx turbo run build --filter=@hrobot/<pkg>` (it also runs `db:generate`). Same for lint/test order.
 
+`docs/design/web-kit` (the Next.js tenant reference app, port 5601) is NOT a pnpm-workspace member —
+turbo won't build it. Install + build it standalone from that dir: `npm install && npm run build`
+(build runs type-check). Its data is static/mock proof-of-stack (e.g. `lib/swaps.ts` stands in for the
+tenant-runtime swap API); wire to real `fetch` when auth lands.
+
 ## Prisma enums
 
 Prisma can't import TS, so enums are duplicated as TS const-objects and kept in sync by a
