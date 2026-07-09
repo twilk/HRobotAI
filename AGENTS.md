@@ -35,6 +35,17 @@ schema-parity test — see `packages/db/src/enumParity.test.ts` (shared enums) o
 `apps/tenant-runtime/src/shift-swap/swap-state-machine.spec.ts` (a module-local enum). Add a
 parity assertion whenever you mirror a new `enum` block.
 
+## Staging deploy pipeline
+
+`.github/workflows/deploy-staging.yml` (+ scripts in `infra/deploy/`, doc `docs/infra/staging-runner.md`)
+deploys staging on the self-hosted `staging-dev-box` runner after the `ci` workflow goes green on
+`main`. Non-obvious: DB migrate/seed steps run **inside** the control-plane container
+(`docker compose exec … --workdir /app`), not on the host — tenant DB URLs are encrypted with the
+compose-internal `postgres` hostname (unreachable from the host) and the container carries the same
+`TENANT_DB_ENCRYPTION_KEY` (from `.env`) that encrypted them. The web front (`apps/web`) and the
+Cloudflare named tunnel are **not** compose services (governance: don't edit `docker-compose.yml`);
+they run runner-side via `infra/deploy/edge-up.sh`.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
