@@ -356,6 +356,10 @@ importers:
         version: 8.60.0(eslint@9.39.4)(typescript@5.9.3)
 
   packages/shared:
+    dependencies:
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
     devDependencies:
       '@hrobot/config':
         specifier: workspace:*

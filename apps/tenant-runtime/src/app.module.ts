@@ -13,6 +13,7 @@ import { OutboxModule } from './outbox/outbox.module.js'
 import { ProvisioningModule } from './provisioning/provisioning.module.js'
 import { EmployeesModule } from './employees/employees.module.js'
 import { OnboardingModule } from './onboarding/onboarding.module.js'
+import { GrafikModule } from './grafik/grafik.module.js'
 import { RedisService } from './common/redis/redis.service.js'
 
 @Module({
@@ -41,6 +42,7 @@ import { RedisService } from './common/redis/redis.service.js'
     ProvisioningModule,
     EmployeesModule,
     OnboardingModule,
+    GrafikModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

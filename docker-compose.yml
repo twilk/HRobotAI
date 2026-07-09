@@ -119,5 +119,33 @@ services:
     ports:
       - "3001:3001"
 
+  # Grafik solver (FastAPI + CP-SAT). M2-A1 skeleton: GET /health + a STUB POST /solve carrying the
+  # frozen ProblemInput/SolveResult contract; the CP-SAT model lands in M2-A2. Built from the
+  # separate ./grafik-optimizer Python image (not the monorepo Node build). Gated behind "full"
+  # like the other app services so a bare `docker compose up -d` starts only backing services.
+  optimizer:
+    profiles: ["full"]
+    build:
+      context: ./grafik-optimizer
+      dockerfile: Dockerfile
+    environment:
+      # Unbuffered stdout so uvicorn/solver logs stream promptly under Docker.
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "8000:8000"
+
+  # RESERVED SLOT — RL agent (roadmap #2, spec #1 §3/§41). The agent shares the optimizer image and
+  # container build (same ./grafik-optimizer context); its training/serving entrypoint and behavior
+  # are implemented in a later task, NOT here. Gated behind its own "agent" profile so it never
+  # starts via `up -d` or `--profile full`; enable explicitly with `--profile agent` once built.
+  agent:
+    profiles: ["agent"]
+    build:
+      context: ./grafik-optimizer
+      dockerfile: Dockerfile
+    environment:
+      PYTHONUNBUFFERED: "1"
+    # command:  # set by the RL-agent task (shares the optimizer image; runs the agent loop, not uvicorn)
+
 volumes:
   hrobot_pgdata:
