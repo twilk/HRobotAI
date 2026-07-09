@@ -15,3 +15,4 @@ export {
   employeePeselBlindIndex,
 } from './employeePii.js'
 export type { EncryptedPesel } from './employeePii.js'
+export * from './seed/index.js'
