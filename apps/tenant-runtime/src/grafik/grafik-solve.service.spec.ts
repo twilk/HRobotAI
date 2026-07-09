@@ -37,6 +37,7 @@ function makeClient() {
     },
     shiftDemand: { findMany: jest.fn().mockResolvedValue(demandRows) },
     employee: { findMany: jest.fn().mockResolvedValue(employeeRows) },
+    leaveRequest: { findMany: jest.fn().mockResolvedValue([]) },
     lokalizacja: { findMany: jest.fn().mockResolvedValue(locationRows) },
     userRole: { findMany: jest.fn() },
     $transaction: jest.fn(async (fn: (tx: unknown) => unknown) => fn(makeTxProxy())),
@@ -103,7 +104,7 @@ describe('GrafikService.solveGrafik (A4 vertical slice)', () => {
     expect(problem.horizon).toEqual({ weekStart: D1 })
     expect(problem.demands).toHaveLength(2)
     expect(problem.demands[0]).toEqual({ id: 'dem-1', locId: 'loc-1', date: '2026-07-13', start: '08:00', end: '16:00', role: 'NURSE', count: 1 })
-    // DATA-GAP: no LeaveRequest / AttendanceRecord model → packed as empty / zero.
+    // No approved leave rows for this week → approvedLeaveDates empty; historyHours still a DATA-GAP (0).
     expect(problem.employees).toEqual([
       { id: 'emp-1', qualifications: ['NURSE'], etat: 1, homeLatLng: { lat: 52.0, lng: 21.0 }, approvedLeaveDates: [], historyHours: 0 },
       { id: 'emp-2', qualifications: ['NURSE'], etat: 0.5, homeLatLng: null, approvedLeaveDates: [], historyHours: 0 },
@@ -114,6 +115,55 @@ describe('GrafikService.solveGrafik (A4 vertical slice)', () => {
     expect(problem.travelMatrix[0]).toMatchObject({ employeeId: 'emp-1', locId: 'loc-1' })
     expect(problem.travelMatrix[0].minutes).toBeGreaterThan(0)
     expect(problem.solverConfig.seed).toBe(42)
+  })
+
+  // --- leave packing (H3 data-gap closed) -----------------------------------------------------
+
+  it('queries only APPROVED leave overlapping the solve week, for the in-scope employees, in one query', async () => {
+    optimizer.solve.mockResolvedValue(feasible)
+
+    await service.solveGrafik(asClient(client), HR, { weekStart: D1 })
+
+    expect(client.leaveRequest.findMany).toHaveBeenCalledTimes(1)
+    expect(client.leaveRequest.findMany).toHaveBeenCalledWith({
+      where: {
+        employeeId: { in: ['emp-1', 'emp-2'] },
+        status: 'APPROVED',
+        // Overlap of [startDate, endDate] with [weekStart, weekEnd): starts before the week ends and ends on/after it starts.
+        startDate: { lt: weekDate('2026-07-20') }, // weekStart + 7d (exclusive)
+        endDate: { gte: weekDate('2026-07-13') }, // weekStart
+      },
+    })
+  })
+
+  it('expands an approved leave interval to the in-week ISO dates and packs them per employee', async () => {
+    // emp-1 on leave Tue–Wed of the solved week; emp-2 has none.
+    client.leaveRequest.findMany.mockResolvedValue([
+      { employeeId: 'emp-1', startDate: weekDate('2026-07-14'), endDate: weekDate('2026-07-15'), status: 'APPROVED', type: 'URLOP_WYPOCZYNKOWY' },
+    ])
+    optimizer.solve.mockResolvedValue(feasible)
+
+    await service.solveGrafik(asClient(client), HR, { weekStart: D1 })
+
+    const problem = optimizer.solve.mock.calls[0][0]
+    const emp1 = problem.employees.find((e: { id: string }) => e.id === 'emp-1')
+    const emp2 = problem.employees.find((e: { id: string }) => e.id === 'emp-2')
+    expect(emp1.approvedLeaveDates).toEqual(['2026-07-14', '2026-07-15'])
+    expect(emp2.approvedLeaveDates).toEqual([])
+  })
+
+  it('clamps a leave interval spanning the week boundaries to only the dates inside the solve week', async () => {
+    // Leave runs Fri (prev week) → Mon of the solved week; only the Monday (2026-07-13) is in-week.
+    client.leaveRequest.findMany.mockResolvedValue([
+      { employeeId: 'emp-1', startDate: weekDate('2026-07-10'), endDate: weekDate('2026-07-13'), status: 'APPROVED', type: 'URLOP_WYPOCZYNKOWY' },
+    ])
+    optimizer.solve.mockResolvedValue(feasible)
+
+    await service.solveGrafik(asClient(client), HR, { weekStart: D1 })
+
+    const problem = optimizer.solve.mock.calls[0][0]
+    const emp1 = problem.employees.find((e: { id: string }) => e.id === 'emp-1')
+    expect(emp1.approvedLeaveDates).toEqual(['2026-07-13'])
   })
 
   // --- persist (feasible) ---------------------------------------------------------------------

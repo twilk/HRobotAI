@@ -328,9 +328,11 @@ export class GrafikService {
    * within the solved scope (unit + touched locations), then insert the new ones — a re-solve
    * REPLACES the machine's previous answer. Human-placed MANUAL shifts are never touched.
    *
-   * DATA-GAP: the tenant schema has no LeaveRequest / AttendanceRecord model, so every employee is
-   * packed with `approvedLeaveDates: []` and `historyHours: 0` (see PR body). Adding those models is
-   * out of A4 scope.
+   * Approved leave (urlop) is packed as `approvedLeaveDates`: one query loads every `LeaveRequest`
+   * with `status = APPROVED` that overlaps the solve week for the in-scope employees, expanded to the
+   * ISO dates within the week — the solver treats those as an H3 hard constraint (no assignment on a
+   * leave date). DATA-GAP: the tenant schema still has no AttendanceRecord model, so every employee is
+   * packed with `historyHours: 0` (see PR body). Adding that model is out of scope.
    */
   async solveGrafik(client: TenantClient, actor: GrafikActor, dto: SolveGrafikDto): Promise<SolveGrafikResult> {
     const unitScope = await this.resolveUnitScope(client, actor, dto.unitId)
@@ -349,6 +351,34 @@ export class GrafikService {
     const employeeRows = await client.employee.findMany({
       where: unitScope ? { unitId: { in: unitScope } } : {},
     })
+    // approved leave overlapping the solve week [weekStart, weekEnd): startDate < weekEnd AND
+    // endDate >= weekStart. ONE query for all in-scope employees (no N+1); indexed by
+    // (employee_id, start_date, end_date). Only APPROVED leave is a hard constraint.
+    const employeeIds = employeeRows.map((e) => e.id)
+    const leaveRows = employeeIds.length
+      ? await client.leaveRequest.findMany({
+          where: {
+            employeeId: { in: employeeIds },
+            status: 'APPROVED',
+            startDate: { lt: weekEndExcl },
+            endDate: { gte: weekStartDate },
+          },
+        })
+      : []
+    // Per employee, the set of ISO `YYYY-MM-DD` dates *within the solve week* covered by any approved
+    // leave interval (closed [startDate, endDate]). Sorted for a deterministic packed shape.
+    const leaveByEmployee = new Map<string, Set<string>>()
+    for (const lv of leaveRows) {
+      let set = leaveByEmployee.get(lv.employeeId)
+      if (!set) {
+        set = new Set<string>()
+        leaveByEmployee.set(lv.employeeId, set)
+      }
+      for (let offset = 0; offset < 7; offset++) {
+        const day = new Date(weekStartDate.getTime() + offset * 24 * 60 * 60 * 1000)
+        if (day >= lv.startDate && day <= lv.endDate) set.add(this.isoDate(day))
+      }
+    }
     // locations: those actually referenced by the week's demands.
     const locIds = [...new Set(demandRows.map((d) => d.lokalizacjaId))]
     const locationRows = locIds.length
@@ -369,7 +399,7 @@ export class GrafikService {
       qualifications: e.qualifications,
       etat: Number(e.etat),
       homeLatLng: e.homeLat != null && e.homeLng != null ? { lat: e.homeLat, lng: e.homeLng } : null,
-      approvedLeaveDates: [], // DATA-GAP: no LeaveRequest model (see PR body)
+      approvedLeaveDates: [...(leaveByEmployee.get(e.id) ?? [])].sort(),
       historyHours: 0, // DATA-GAP: no AttendanceRecord model (see PR body)
     }))
     const locations: LocationInput[] = locationRows.map((l) => ({

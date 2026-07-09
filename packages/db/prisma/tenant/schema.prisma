@@ -46,6 +46,16 @@ enum SwapState {
   CANCELLED
 }
 
+/// Lifecycle of a leave request (urlop) (M2 leave support). APPROVED is the default: the seed and
+/// most callers create already-decided leave; PENDING/REJECTED/CANCELLED exist for a future
+/// request/approval flow. Only APPROVED leave feeds the grafik solver as an H3 hard constraint.
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 model User {
   id           String               @id
   email        String               @unique
@@ -117,6 +127,7 @@ model Employee {
   shifts         Shift[]
   swapsRequested ShiftSwapRequest[] @relation("SwapRequester")
   swapsTargeted  ShiftSwapRequest[] @relation("SwapTarget")
+  leaves         LeaveRequest[]
 
   @@map("employees")
 }
@@ -233,4 +244,24 @@ model ShiftSwapRequest {
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
   @@map("shift_swap_requests")
+}
+
+/// An employee's leave (urlop) over a closed date interval [startDate, endDate]. APPROVED rows that
+/// overlap a solve week feed the grafik solver as `approvedLeaveDates` — an H3 hard constraint (the
+/// employee cannot be scheduled on those dates). `type` is the leave kind as a free-form string
+/// (URLOP_WYPOCZYNKOWY etc.), intentionally not modelled as an enum. Additive; never mutates Shift.
+model LeaveRequest {
+  id         String      @id @default(uuid())
+  employeeId String      @map("employee_id")
+  employee   Employee    @relation(fields: [employeeId], references: [id])
+  startDate  DateTime    @map("start_date") @db.Date
+  endDate    DateTime    @map("end_date") @db.Date
+  status     LeaveStatus @default(APPROVED)
+  /// Leave kind (URLOP_WYPOCZYNKOWY, URLOP_NA_ZADANIE, …). Free-form string, not over-modelled.
+  type       String
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
+
+  @@index([employeeId, startDate, endDate])
+  @@map("leave_requests")
 }
