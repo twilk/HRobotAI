@@ -1,22 +1,21 @@
-"""grafik-optimizer — FastAPI service scaffold (M2-A1 skeleton).
+"""grafik-optimizer — FastAPI service (M2-A2).
 
 Exposes:
   GET  /health  — liveness probe.
-  POST /solve   — parses a ProblemInput and returns a schema-valid SolveResult **STUB**.
+  POST /solve   — parses a ProblemInput and runs the CP-SAT solver, returning a SolveResult.
 
-There is intentionally NO CP-SAT / OR-Tools logic here: the stub returns ``INFEASIBLE`` with
-no assignments and every demand echoed into ``unmet``. Real solving (num_search_workers=1 +
-fixed seed for determinism) lands in M2-A2. ortools is already pinned in requirements.txt so A2
-has its deps in place.
+The real solver lives in ``solver.py`` (H1–H4 hard, H5 soft proxy, L1 etat-deviation, haversine
+commute, deterministic ``num_search_workers=1`` + fixed seed). See that module for the model.
 """
 
 from __future__ import annotations
 
 from fastapi import FastAPI
 
-from .contract import Metrics, ProblemInput, SolveResult, SolveStatus, Unmet
+from .contract import ProblemInput, SolveResult
+from .solver import solve as solve_problem
 
-app = FastAPI(title="grafik-optimizer", version="0.1.0")
+app = FastAPI(title="grafik-optimizer", version="0.2.0")
 
 
 @app.get("/health")
@@ -26,13 +25,10 @@ def health() -> dict[str, str]:
 
 @app.post("/solve", response_model=SolveResult)
 def solve(problem: ProblemInput) -> SolveResult:
-    """STUB: validates the contract and returns a schema-valid placeholder result.
+    """Validate the frozen ProblemInput contract and run the CP-SAT solver.
 
-    Every demand is reported as unmet so callers can wire the round-trip before A2 exists.
+    Returns a schema-valid SolveResult: OPTIMAL/FEASIBLE with assignments + metrics when a
+    schedule satisfying H1–H4 exists, otherwise INFEASIBLE with a non-empty ``unmet[]`` naming the
+    uncoverable slots (never a silent error).
     """
-    return SolveResult(
-        status=SolveStatus.INFEASIBLE,
-        assignments=[],
-        metrics=Metrics(commuteTotal=0.0, etatDeviation=0.0, fairnessScore=0.0),
-        unmet=[Unmet(demandId=d.id, reason="stub: solver not yet implemented (M2-A2)") for d in problem.demands],
-    )
+    return solve_problem(problem)
