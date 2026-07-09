@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common'
+import type { TenantClient } from '@hrobot/db'
 
 /** Minimal view of a Shift the feasibility check needs (id + current holder). */
 export interface SwapShiftRef {
@@ -15,6 +16,12 @@ export interface SwapShiftRef {
  * the provider with the real optimizer client; NOTHING in D1 calls the solver.
  */
 export interface SwapFeasibilityInput {
+  /**
+   * The per-request tenant client. The real (D2) validator uses it to pack the affected employees'
+   * post-swap shifts for the affected week and load their qualifications; the D1 allow-all default
+   * ignores it. Multi-tenant: there is no singleton tenant client, so the seam receives it per call.
+   */
+  client: TenantClient
   /** The requester's shift as it exists today (pre-swap). */
   requesterShift: SwapShiftRef
   /** The target's shift for a 1:1 swap, or null for a "give away shift" request. */
