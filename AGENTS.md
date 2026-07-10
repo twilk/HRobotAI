@@ -51,6 +51,17 @@ compose-internal `postgres` hostname (unreachable from the host) and the contain
 Cloudflare named tunnel are **not** compose services (governance: don't edit `docker-compose.yml`);
 they run runner-side via `infra/deploy/edge-up.sh`.
 
+## Python/ML services & docker.exe
+
+The Python services (`grafik-optimizer/` = lean CP-SAT; `agent-service/` = RL/imitation, a
+**distinct** image — never merge their deps) build on `python:3.12-slim` (SB3/ortools/torch have no
+CPython ≥ 3.13 wheels). On the WSL host use **`docker.exe`** (Windows binary → Docker Desktop
+daemon), not `docker`; there is no usable host Python. `docker.exe` chokes on this repo's WSL
+symlinks (every `CLAUDE.md` → `AGENTS.md`), so each build context's `.dockerignore` MUST exclude
+`**/CLAUDE.md`. Both services consume the FROZEN grafik contract via an own pydantic mirror +
+parity test (same schema-parity idiom as *Prisma enums* above) — see each service's `README.md`.
+Note the TS `agent/` dir (cold-start dataset gen, above) is a different thing from `agent-service/`.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
