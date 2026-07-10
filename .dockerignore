@@ -5,6 +5,17 @@
 **/coverage
 **/generated
 **/*.tsbuildinfo
+# Local Python virtualenvs (e.g. agent-service/.venv) carry broken `bin/python` symlinks that
+# docker.exe's context transfer rejects, and never belong in a Node image.
+**/.venv
+**/venv
+
+# The top-level typecheck-only `agent/` workspace member (M2-C1 cold-start dataset gen) is not a
+# dependency of any image built from this context (tenant-runtime, control-plane). The Dockerfiles
+# don't install its devDeps, so a whole-workspace `turbo run build` fails trying to typecheck it
+# ("Cannot find type definition file for 'jest'/'node'"). Excluding the dir from the build context
+# drops it from pnpm's workspace resolution so turbo skips it — the images never needed it.
+/agent
 
 # VCS + editor
 .git
@@ -20,3 +31,8 @@
 *.log
 docker-compose.yml
 README.md
+
+# WSL symlinks: every CLAUDE.md is a symlink → AGENTS.md, which docker.exe's build context
+# transfer rejects ("invalid file request CLAUDE.md"). Excluded per the repo CLAUDE.md's
+# "Python/ML services & docker.exe" note; also unneeded in any image.
+**/CLAUDE.md

@@ -5,3 +5,5 @@ venv/
 .pytest_cache/
 .ruff_cache/
 tests/
+# WSL symlink CLAUDE.md → AGENTS.md breaks docker.exe context transfer (see repo CLAUDE.md).
+**/CLAUDE.md

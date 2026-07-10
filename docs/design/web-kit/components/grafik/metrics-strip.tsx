@@ -18,7 +18,7 @@ export function MetricsStrip({ result, requiredCountTotal }: MetricsStripProps) 
   const m = deriveGrafikMetrics(result, requiredCountTotal)
   return (
     <div
-      className="grid grid-cols-2 sm:grid-cols-4 gap-px rounded-lg border border-line-strong bg-line-strong overflow-hidden mb-5"
+      className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-px rounded-lg border border-line-strong bg-line-strong overflow-hidden mb-5"
       role="group"
       aria-label="Podsumowanie grafiku"
     >
@@ -26,6 +26,11 @@ export function MetricsStrip({ result, requiredCountTotal }: MetricsStripProps) 
       <StatTile label="Odchyłka etatu" value={m.etatDeviationLabel} hint="suma |przepracowane − cel|" />
       <StatTile label="Godziny" value={m.scheduledHoursLabel} hint="łączny czas zaplanowanych zmian" />
       <StatTile label="Pokrycie" value={m.coverageLabel} hint="obsadzone / wymagane" />
+      <StatTile
+        label="Preferencje uwzględnione"
+        value={m.preferencesHonoredLabel}
+        hint="odsetek obsadzeń zgodnych z preferencjami pracownika"
+      />
     </div>
   )
 }
