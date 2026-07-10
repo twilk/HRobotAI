@@ -1,0 +1,19 @@
+# Build-context hygiene for `docker.exe build ./agent-service`.
+#
+# CRITICAL (WSL symlink gotcha): docker.exe chokes on this repo's WSL symlinks (every CLAUDE.md is
+# a symlink to AGENTS.md). This build context is `./agent-service` and ships no such symlink, but
+# the exclusion is kept defensively so a stray symlink can never break the build.
+**/CLAUDE.md
+
+# Regenerated inside the image / host-only artifacts.
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Docs/build outputs that don't belong in the image.
+README.md
+data/README.md

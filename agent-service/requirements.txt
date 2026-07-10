@@ -1,0 +1,23 @@
+# agent-service runtime + training deps (single source of dep truth; the Dockerfile installs this).
+# DISTINCT image from grafik-optimizer on purpose — SB3/torch live here, NOT in the lean CP-SAT
+# image. Base is python:3.12-slim because SB3/ortools/torch publish wheels for CPython <= 3.12.
+#
+# Versions are pinned to a known-good, imitation-1.0-compatible set. torch is installed separately
+# in the Dockerfile from the CPU wheel index (avoids pulling the multi-GB CUDA build); it is listed
+# here too so this file stays the single manifest and the second pip pass sees it satisfied.
+
+# --- API scaffold (kept in lockstep with grafik-optimizer's pins where shared) ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+httpx==0.27.2
+
+# --- RL / imitation stack ---
+torch==2.3.1
+stable-baselines3==2.3.2
+gymnasium==0.29.1
+imitation==1.0.0
+numpy==1.26.4
+
+# --- in-container test runner (smoke evidence runs pytest inside the image) ---
+pytest==8.3.4
