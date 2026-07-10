@@ -1,0 +1,70 @@
+{
+  "scenario": "canonical-feasible (36 employees, 38 demands) \u2014 reused from the AG2 demo",
+  "managerPreference": "give hours to full-timers first (etat-priority) \u2014 not encoded by the fixed-weight solver",
+  "learning": "BATCH retrain pipeline (app.retrain) \u2014 re-fit from cold-start + full feedback log, NOT the online nudge",
+  "metric": "acceptanceMetric = 1 - editDistance/(2*|accepted|); editDistance = |proposed \u25b3 manager_accepted|",
+  "correctionBudgetPerRound": 6,
+  "acceptedAssignments": 52,
+  "policyVersions": 5,
+  "acceptanceRising": true,
+  "editDistanceDropping": true,
+  "firstAcceptance": 0.5192,
+  "lastAcceptance": 1.0,
+  "firstEditDistance": 50,
+  "lastEditDistance": 0,
+  "history": [
+    {
+      "version": 1,
+      "stage": "cold-start-bc",
+      "editDistance": 50,
+      "acceptanceMetric": 0.5192,
+      "feedbackRows": 0,
+      "artefactPath": null
+    },
+    {
+      "version": 2,
+      "stage": "batch-retrain",
+      "editDistance": 44,
+      "acceptanceMetric": 0.5769,
+      "feedbackRows": 8,
+      "feedbackApplied": 8,
+      "artefactPath": "/home/wilk/.treehouse/HRobot-ac94f1/2/HRobot/agent-service/evidence/ag5_artifacts/policy_ag5-demo_v2.json"
+    },
+    {
+      "version": 3,
+      "stage": "batch-retrain",
+      "editDistance": 28,
+      "acceptanceMetric": 0.7308,
+      "feedbackRows": 15,
+      "feedbackApplied": 15,
+      "artefactPath": "/home/wilk/.treehouse/HRobot-ac94f1/2/HRobot/agent-service/evidence/ag5_artifacts/policy_ag5-demo_v3.json"
+    },
+    {
+      "version": 4,
+      "stage": "batch-retrain",
+      "editDistance": 18,
+      "acceptanceMetric": 0.8269,
+      "feedbackRows": 21,
+      "feedbackApplied": 21,
+      "artefactPath": "/home/wilk/.treehouse/HRobot-ac94f1/2/HRobot/agent-service/evidence/ag5_artifacts/policy_ag5-demo_v4.json"
+    },
+    {
+      "version": 5,
+      "stage": "batch-retrain",
+      "editDistance": 4,
+      "acceptanceMetric": 0.9615,
+      "feedbackRows": 27,
+      "feedbackApplied": 27,
+      "artefactPath": "/home/wilk/.treehouse/HRobot-ac94f1/2/HRobot/agent-service/evidence/ag5_artifacts/policy_ag5-demo_v5.json"
+    },
+    {
+      "version": 6,
+      "stage": "batch-retrain",
+      "editDistance": 0,
+      "acceptanceMetric": 1.0,
+      "feedbackRows": 29,
+      "feedbackApplied": 29,
+      "artefactPath": "/home/wilk/.treehouse/HRobot-ac94f1/2/HRobot/agent-service/evidence/ag5_artifacts/policy_ag5-demo_v6.json"
+    }
+  ]
+}

@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from .fixtures import resolve_problem
 from .forecast import forecast_demand
-from .schemas import FeedbackRequest, ForecastRequest, HealRequest, ProposeRequest
+from .schemas import FeedbackRequest, ForecastRequest, HealRequest, ProposeRequest, RetrainRequest
 from .service import AgentService, DEFAULT_TENANT
 from .store import AgentStore
 
@@ -75,6 +75,14 @@ def explain(
 @router.post("/forecast")
 def forecast(req: ForecastRequest):
     return {"predictedDemand": forecast_demand(req.locationId, req.horizon)}
+
+
+@router.post("/retrain")
+def retrain(req: RetrainRequest):
+    """Trigger the formal batch retrain (M2-C3): re-fit from the full accumulated feedback log,
+    producing a new versioned policy with a persisted training artifact. Distinct from the online
+    nudge that ``/agent/feedback`` applies per-correction — see :mod:`app.retrain`."""
+    return _service.retrain(req.tenantId, note=req.note)
 
 
 @router.get("/policy")

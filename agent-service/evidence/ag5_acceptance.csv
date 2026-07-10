@@ -1,0 +1,7 @@
+version,stage,editDistance,acceptanceMetric,feedbackRows,artefactPath
+1,cold-start-bc,50,0.5192,0,
+2,batch-retrain,44,0.5769,8,/home/wilk/.treehouse/HRobot-ac94f1/2/HRobot/agent-service/evidence/ag5_artifacts/policy_ag5-demo_v2.json
+3,batch-retrain,28,0.7308,15,/home/wilk/.treehouse/HRobot-ac94f1/2/HRobot/agent-service/evidence/ag5_artifacts/policy_ag5-demo_v3.json
+4,batch-retrain,18,0.8269,21,/home/wilk/.treehouse/HRobot-ac94f1/2/HRobot/agent-service/evidence/ag5_artifacts/policy_ag5-demo_v4.json
+5,batch-retrain,4,0.9615,27,/home/wilk/.treehouse/HRobot-ac94f1/2/HRobot/agent-service/evidence/ag5_artifacts/policy_ag5-demo_v5.json
+6,batch-retrain,0,1.0,29,/home/wilk/.treehouse/HRobot-ac94f1/2/HRobot/agent-service/evidence/ag5_artifacts/policy_ag5-demo_v6.json

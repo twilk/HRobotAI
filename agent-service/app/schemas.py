@@ -54,4 +54,9 @@ class ForecastRequest(BaseModel):
     tenantId: str = DEFAULT_TENANT
 
 
+class RetrainRequest(BaseModel):
+    tenantId: str = DEFAULT_TENANT
+    note: str | None = None
+
+
 HealRequest.model_rebuild()
