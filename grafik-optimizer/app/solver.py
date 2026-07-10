@@ -18,9 +18,16 @@ Hard constraints:
     gap is negative). For every employee eligible for both, ``x[e,d1] + x[e,d2] ≤ 1``.
   * **H3 availability** — baked into variable eligibility (above).
 
-Soft (objective, minimised): ``w_d·unmet + w_e·etatL1 + w_g·commute`` plus an internal H5 proxy.
+Soft (objective, minimised): ``w_d·unmet + w_e·etatL1 + w_g·commute + w_p·prefViolations`` plus an
+internal H5 proxy.
   * **etat L1** — ``Σ_e |workedMinutes(e) − etat·40·60|`` via two ``dev[e] ≥ ±(...)`` inequalities.
   * **commute** — ``Σ x[e,d]·commuteMinutes(e, d.locId)`` from :class:`MatrixWithHaversineFallback`.
+  * **preferences (w_p)** — SOFT employee preferences (spec: employee-preferences phase 2). Each
+    ``x[e,d]`` whose assignment would VIOLATE a preference of ``e`` contributes ``w_p·violations``
+    (``violations`` ∈ {0,1,2}: preferred-day-off hit + non-preferred shift start). Weight is
+    ``round(weights.p · _WEIGHT_SCALE)`` when ``weights.p`` is set, else 0 — an absent/None ``p``
+    OMITS the term entirely, so a preference-unaware caller gets a bit-identical schedule. This only
+    nudges the solver; coverage (H1) and H1–H4 stay hard, so a preference is NEVER guaranteed.
   * **H5 → soft proxy** — penalise, per employee, worked-days above ``7 − MIN_FREE_DAYS_PER_WEEK``.
     A 1-week horizon cannot model rolling 35h rest, so this is a nudge, not a hard rule.
   * **fairness-variance** is DEFERRED to M3; ``metrics.fairnessScore`` is emitted as a stable 0.0.
@@ -48,6 +55,7 @@ from .commute import MatrixWithHaversineFallback
 from .contract import (
     Assignment,
     DemandInput,
+    EmployeeInput,
     Metrics,
     ProblemInput,
     SolveResult,
@@ -97,6 +105,31 @@ def _conflict(a: tuple[int, int], b: tuple[int, int]) -> bool:
     """True when two absolute windows are closer than 11h apart (subsumes overlap → H2 ∪ H4)."""
     (a_start, a_end), (b_start, b_end) = a, b
     return (b_start - a_end < _DAILY_REST_MIN) and (a_start - b_end < _DAILY_REST_MIN)
+
+
+#: Weekday codes indexed by ``date.weekday()`` (Mon=0..Sun=6), matching ``preferredDaysOff`` codes.
+_WEEKDAY_CODES = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
+
+
+def _pref_violations(emp: EmployeeInput, d: DemandInput) -> int:
+    """Number of soft preferences (0, 1, or 2) that assigning ``emp`` to ``d`` would VIOLATE.
+
+    * preferredDaysOff — the demand's weekday code is in the employee's preferred-off set.
+    * preferredShiftStart — the set is non-empty AND the demand start time is not in it.
+
+    An employee with no preferences (or empty sub-lists) never violates → returns 0.
+    """
+    prefs = emp.preferences
+    if prefs is None:
+        return 0
+    count = 0
+    days_off = prefs.preferredDaysOff or ()
+    if days_off and _WEEKDAY_CODES[date.fromisoformat(d.date).weekday()] in days_off:
+        count += 1
+    starts = prefs.preferredShiftStart or ()
+    if starts and d.start not in starts:
+        count += 1
+    return count
 
 
 def solve(problem: ProblemInput) -> SolveResult:
@@ -236,6 +269,19 @@ def _solve_phase(
             if minutes:
                 obj_terms.append(w_g * round(minutes) * var)
 
+    # Objective — soft employee preferences (w_p). Each eligible assignment that would violate a
+    # preference of the employee contributes w_p·(violations). SOFT only: absent/None p ⇒ w_p == 0
+    # ⇒ term omitted ⇒ schedule identical to a preference-unaware run. Build order = x insertion
+    # order (demand then employee), same as commute, so the objective stays deterministic.
+    w_p = round(weights.p * _WEIGHT_SCALE) if weights.p is not None else 0
+    if w_p:
+        emp_by_id = {e.id: e for e in employees}
+        demand_by_id = {d.id: d for d in demands}
+        for (e_id, d_id), var in x.items():
+            violations = _pref_violations(emp_by_id[e_id], demand_by_id[d_id])
+            if violations:
+                obj_terms.append(w_p * violations * var)
+
     # Objective — H5 soft proxy: penalise worked-days beyond (7 - N) per employee.
     max_worked_days = _HORIZON_DAYS - MIN_FREE_DAYS_PER_WEEK
     h5_coef = round(H5_FREE_DAY_PENALTY_MIN * _WEIGHT_SCALE)
@@ -351,9 +397,27 @@ def _compute_metrics(
     for e in problem.employees:
         etat_deviation += abs(worked_hours.get(e.id, 0.0) - e.etat * 40.0)
 
+    # preferencesHonoredPct: fraction (0..1) of returned assignments that HONOR the assigned
+    # employee's preferences — an assignment honors iff it violates NEITHER preference (day not in
+    # preferredDaysOff AND preferredShiftStart empty-or-contains-start). An employee with no
+    # preferences honors vacuously. With 0 assignments there is nothing to dishonor → emit 1.0.
+    total_assignments = len(assignments)
+    if total_assignments == 0:
+        preferences_honored_pct = 1.0
+    else:
+        emp_by_id = {e.id: e for e in problem.employees}
+        demand_by_id = {d.id: d for d in problem.demands}
+        honored = sum(
+            1
+            for a in assignments
+            if _pref_violations(emp_by_id[a.employeeId], demand_by_id[a.demandId]) == 0
+        )
+        preferences_honored_pct = round(honored / total_assignments, 6)
+
     # fairnessScore: reserved placeholder — fairness-variance is DEFERRED to M3. Emit stable 0.0.
     return Metrics(
         commuteTotal=round(commute_total, 6),
         etatDeviation=round(etat_deviation, 6),
         fairnessScore=0.0,
+        preferencesHonoredPct=preferences_honored_pct,
     )
