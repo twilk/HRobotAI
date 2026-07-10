@@ -151,6 +151,84 @@ export function shortName(e: Employee | undefined, employeeId: string): string {
   return `${e.firstName}${initial}`
 }
 
+// --- Solve metrics derivations (pure; unit-tested in grafik.test.ts) -----------------------------
+//
+// The J3 metrics strip surfaces the aggregate figures a SolveResult already carries, plus two
+// values derived client-side from data already in the view. `fairnessScore` is deliberately NOT
+// surfaced — it is an M3 placeholder (always 0) and would mislead 4Mobility, so it is absent from
+// `deriveGrafikMetrics` output by design (asserted by the test).
+
+/** Duration of one shift in hours, from its `HH:mm` start/end. Never negative (clamps to 0). */
+export function shiftDurationHours(shift: Pick<Shift, 'start' | 'end'>): number {
+  const mins = hhmmToMinutes(shift.end) - hhmmToMinutes(shift.start)
+  return mins > 0 ? mins / 60 : 0
+}
+
+function hhmmToMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(':')
+  return Number(h) * 60 + Number(m)
+}
+
+/** Commute minutes → human-readable, Polish. 0 → "0 min", 45 → "45 min", 125 → "2 h 5 min". */
+export function formatCommuteMinutes(minutes: number): string {
+  const total = Math.round(minutes)
+  if (total < 60) return `${total} min`
+  const h = Math.floor(total / 60)
+  const m = total % 60
+  return m === 0 ? `${h} h` : `${h} h ${m} min`
+}
+
+/** Hours → "40 h" / "37,5 h" (Polish comma decimal; trailing ,0 dropped). */
+export function formatHours(hours: number): string {
+  const rounded = Math.round(hours * 10) / 10
+  const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1).replace('.', ',')
+  return `${text} h`
+}
+
+/** Display-ready aggregate metrics for the strip. Excludes fairnessScore by design. */
+export interface GrafikMetricsView {
+  /** metrics.commuteTotal in minutes, and its human label. */
+  commuteMinutes: number
+  commuteLabel: string
+  /** metrics.etatDeviation in hours (Σ|worked − target|), and its label. */
+  etatDeviationHours: number
+  etatDeviationLabel: string
+  /** Total scheduled hours summed from result.shifts, and its label. */
+  scheduledHours: number
+  scheduledHoursLabel: string
+  /** Coverage: filled ÷ required for the solved week (0 when no demands). */
+  filled: number
+  required: number
+  coverageRatio: number
+  coveragePercent: number
+  coverageLabel: string
+}
+
+/**
+ * Derive the metrics-strip view from a SolveResult plus the summed `requiredCount` of the solved
+ * week's demands (both already in the grafik view). Divide-by-zero guarded: no demands → 0%.
+ */
+export function deriveGrafikMetrics(result: SolveResult, requiredCountTotal: number): GrafikMetricsView {
+  const scheduledHours = result.shifts.reduce((sum, s) => sum + shiftDurationHours(s), 0)
+  const required = Math.max(0, requiredCountTotal)
+  const filled = result.assignmentsCreated
+  const coverageRatio = required > 0 ? filled / required : 0
+  const coveragePercent = Math.round(coverageRatio * 100)
+  return {
+    commuteMinutes: result.metrics.commuteTotal,
+    commuteLabel: formatCommuteMinutes(result.metrics.commuteTotal),
+    etatDeviationHours: result.metrics.etatDeviation,
+    etatDeviationLabel: formatHours(result.metrics.etatDeviation),
+    scheduledHours,
+    scheduledHoursLabel: formatHours(scheduledHours),
+    filled,
+    required,
+    coverageRatio,
+    coveragePercent,
+    coverageLabel: `${coveragePercent}% · ${filled}/${required}`,
+  }
+}
+
 // --- Browser client → local proxy routes (which forward to the real tenant-runtime) -------------
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {

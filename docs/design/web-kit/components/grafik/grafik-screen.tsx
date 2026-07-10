@@ -9,6 +9,7 @@ import { IconChevronLeft, IconChevronRight, IconWand, IconAlert } from './grafik
 import { ScheduleGrid, cellKey } from './schedule-grid'
 import { ShiftEditor, type LocationOption } from './shift-editor'
 import { SolveResultBanner } from './solve-result-banner'
+import { MetricsStrip } from './metrics-strip'
 import {
   formatWeekRange,
   grafikApi,
@@ -134,6 +135,16 @@ export function GrafikScreen() {
 
   const weekDemandCount = useMemo(
     () => demands.filter((d) => daySet.has(normalizeDate(d.date))).length,
+    [demands, daySet],
+  )
+
+  // Σ requiredCount over the solved week's demands → denominator of the coverage metric.
+  // A solve result always belongs to the currently-viewed week (goWeek clears it), so daySet matches.
+  const weekRequiredCount = useMemo(
+    () =>
+      demands
+        .filter((d) => daySet.has(normalizeDate(d.date)))
+        .reduce((sum, d) => sum + d.requiredCount, 0),
     [demands, daySet],
   )
 
@@ -265,12 +276,15 @@ export function GrafikScreen() {
       </div>
 
       {solveResult ? (
-        <SolveResultBanner
-          result={solveResult}
-          demandsById={demandsById}
-          locationLabel={locationLabel}
-          onDismiss={() => setSolveResult(null)}
-        />
+        <>
+          <SolveResultBanner
+            result={solveResult}
+            demandsById={demandsById}
+            locationLabel={locationLabel}
+            onDismiss={() => setSolveResult(null)}
+          />
+          <MetricsStrip result={solveResult} requiredCountTotal={weekRequiredCount} />
+        </>
       ) : null}
 
       {loadError ? (
