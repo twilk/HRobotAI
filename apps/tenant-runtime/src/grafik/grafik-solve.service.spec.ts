@@ -117,6 +117,39 @@ describe('GrafikService.solveGrafik (A4 vertical slice)', () => {
     expect(problem.solverConfig.seed).toBe(42)
   })
 
+  it('omits `preferences` for employees without any set preference (payload stays clean)', async () => {
+    optimizer.solve.mockResolvedValue(feasible)
+
+    await service.solveGrafik(asClient(client), HR, { weekStart: D1 })
+
+    const problem = optimizer.solve.mock.calls[0][0]
+    // Neither employee in the default fixture has preferences → `preferences` is undefined, so it
+    // drops out of the JSON payload the optimizer actually receives (clean wire shape).
+    expect(problem.employees[0].preferences).toBeUndefined()
+    expect(problem.employees[1].preferences).toBeUndefined()
+    expect(JSON.stringify(problem.employees[0])).not.toContain('preferences')
+  })
+
+  it('packs soft `preferences` (only non-empty sub-lists) + a preference weight `p` when set', async () => {
+    client.employee.findMany.mockResolvedValue([
+      // emp-1: both sub-lists set → both packed.
+      { id: 'emp-1', unitId: 'unit-A', qualifications: ['NURSE'], etat: 1, homeLat: 52.0, homeLng: 21.0, preferredDaysOff: ['SAT', 'SUN'], preferredShiftStart: ['08:00'] },
+      // emp-2: only days-off set (empty start list) → start sub-list omitted.
+      { id: 'emp-2', unitId: 'unit-A', qualifications: ['NURSE'], etat: 0.5, homeLat: null, homeLng: null, preferredDaysOff: ['MON'], preferredShiftStart: [] },
+    ])
+    optimizer.solve.mockResolvedValue(feasible)
+
+    await service.solveGrafik(asClient(client), HR, { weekStart: D1 })
+
+    const problem = optimizer.solve.mock.calls[0][0]
+    expect(problem.employees[0].preferences).toEqual({ preferredDaysOff: ['SAT', 'SUN'], preferredShiftStart: ['08:00'] })
+    expect(problem.employees[1].preferences).toEqual({ preferredDaysOff: ['MON'] })
+    expect(problem.employees[1].preferences).not.toHaveProperty('preferredShiftStart')
+    // Preference-objective weight travels alongside {d,e,g}.
+    expect(problem.weights).toMatchObject({ d: 1, e: 1, g: 1 })
+    expect(problem.weights.p).toBeGreaterThan(0)
+  })
+
   // --- leave packing (H3 data-gap closed) -----------------------------------------------------
 
   it('queries only APPROVED leave overlapping the solve week, for the in-scope employees, in one query', async () => {

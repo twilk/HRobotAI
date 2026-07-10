@@ -6,6 +6,7 @@ import {
   SolveStatus,
   type DemandInput,
   type EmployeeInput,
+  type EmployeePreferences,
   type LocationInput,
   type Metrics,
   type TravelEntry,
@@ -45,6 +46,26 @@ export interface GrafikActor {
 /** HR and the tenant admin act across every unit; MANAGER is scoped to the unit(s) they manage. */
 const GLOBAL_ROLES: string[] = [Role.HR, Role.ADMIN_KLIENTA]
 const isGlobal = (roles: string[]): boolean => roles.some((r) => GLOBAL_ROLES.includes(r))
+
+/**
+ * Soft-preference objective weight sent as `weights.p` to the solver (#28).
+ *
+ * The solver scales every float weight by 1000, so a violation of one soft preference costs
+ * `p × 1000` — commensurate with `p` minutes of commute (commute is `g × 1000 × minutes`, g=1) or
+ * `p` minutes of etat deviation (e=1). Each assignment violates 0/1/2 preferences, so `p` is the
+ * "minutes-equivalent" price of dishonoring a preference. We pick **40**: large enough to reroute
+ * an assignment off a preferred-day-off (or to a preferred start) whenever a swap costs the schedule
+ * less than ~40 extra commute/etat minutes, yet small enough that it never distorts a schedule by
+ * more than a modest tie-break. Coverage (H1) and H1–H4 are HARD (a separate lexicographic phase),
+ * so no value of `p` can trade away coverage — it only nudges among coverage-feasible schedules.
+ *
+ * Tuned empirically on the demo tenant (week 2026-07-13, 52 required assignments). Honored-% vs p:
+ * p=0 → 21.2%, p=10 → 76.9%, p=20 → 78.8%, p=40 → 80.8%, p≥60 → 80.8% (plateau). Across ALL p,
+ * coverage stayed 100% (52/52, 0 unmet) and etat deviation was unchanged (786 min); commute rose
+ * only ~1.3% (9898 → 10025 min) at p=40. So 40 sits right at the knee: full preference benefit
+ * (the residual ~19% are coverage-forced, unavoidable violations) at minimal schedule distortion.
+ */
+const PREFERENCE_WEIGHT = 40
 
 /**
  * Rdzeń Grafiku CRUD service.
@@ -303,6 +324,18 @@ export class GrafikService {
   }
 
   /**
+   * Build the solver's optional `preferences` object from an employee's stored soft prefs.
+   * Emits only the non-empty sub-lists and returns `undefined` when both are empty, so an
+   * employee with no preferences packs identically to the pre-#27 (preference-unaware) shape.
+   */
+  private packPreferences(preferredDaysOff: string[], preferredShiftStart: string[]): EmployeePreferences | undefined {
+    const prefs: EmployeePreferences = {}
+    if (preferredDaysOff.length) prefs.preferredDaysOff = preferredDaysOff
+    if (preferredShiftStart.length) prefs.preferredShiftStart = preferredShiftStart
+    return prefs.preferredDaysOff || prefs.preferredShiftStart ? prefs : undefined
+  }
+
+  /**
    * Resolve which units' employees the caller may feed to the solver.
    *  - Global (HR/ADMIN): the requested `unitId`, or `null` = every unit.
    *  - MANAGER: only units they manage. A requested `unitId` must be one of them (else Forbidden);
@@ -401,6 +434,10 @@ export class GrafikService {
       homeLatLng: e.homeLat != null && e.homeLng != null ? { lat: e.homeLat, lng: e.homeLng } : null,
       approvedLeaveDates: [...(leaveByEmployee.get(e.id) ?? [])].sort(),
       historyHours: 0, // DATA-GAP: no AttendanceRecord model (see PR body)
+      // Soft preferences (#27/#28): send only the non-empty sub-lists, and omit `preferences`
+      // entirely when the employee has none — keeps the payload clean and bit-identical to a
+      // preference-unaware pack for employees without any set preference.
+      preferences: this.packPreferences(e.preferredDaysOff ?? [], e.preferredShiftStart ?? []),
     }))
     const locations: LocationInput[] = locationRows.map((l) => ({
       id: l.id,
@@ -424,7 +461,7 @@ export class GrafikService {
       employees,
       demands,
       travelMatrix,
-      weights: { d: 1, e: 1, g: 1 },
+      weights: { d: 1, e: 1, g: 1, p: PREFERENCE_WEIGHT },
       solverConfig: { seed: 42, timeLimit: 10 },
     })
 

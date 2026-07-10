@@ -56,7 +56,14 @@ export interface SolveResult {
   status: SolveStatus
   assignmentsCreated: number
   unmet: Unmet[]
-  metrics: { commuteTotal: number; etatDeviation: number; fairnessScore: number }
+  metrics: {
+    commuteTotal: number
+    etatDeviation: number
+    fairnessScore: number
+    /** Fraction (0..1) of assignments honoring the employee's soft preferences (#28). Optional:
+     * absent on older results or when the solver ran without a preference weight. */
+    preferencesHonoredPct?: number
+  }
   shifts: Shift[]
 }
 
@@ -178,6 +185,11 @@ export function formatCommuteMinutes(minutes: number): string {
   return m === 0 ? `${h} h` : `${h} h ${m} min`
 }
 
+/** Fraction 0..1 → integer percent string, Polish. 0.83 → "83%". */
+export function formatPercent(fraction: number): string {
+  return `${Math.round(fraction * 100)}%`
+}
+
 /** Hours → "40 h" / "37,5 h" (Polish comma decimal; trailing ,0 dropped). */
 export function formatHours(hours: number): string {
   const rounded = Math.round(hours * 10) / 10
@@ -202,6 +214,11 @@ export interface GrafikMetricsView {
   coverageRatio: number
   coveragePercent: number
   coverageLabel: string
+  /** Fraction 0..1 of assignments honoring employee preferences, and its "%" label. `null` when
+   * the result carries no `preferencesHonoredPct` (older result / no preference weight) → the tile
+   * renders "—" and the chart hides it. */
+  preferencesHonoredPct: number | null
+  preferencesHonoredLabel: string
 }
 
 /**
@@ -214,6 +231,8 @@ export function deriveGrafikMetrics(result: SolveResult, requiredCountTotal: num
   const filled = result.assignmentsCreated
   const coverageRatio = required > 0 ? filled / required : 0
   const coveragePercent = Math.round(coverageRatio * 100)
+  const honored = result.metrics.preferencesHonoredPct
+  const preferencesHonoredPct = typeof honored === 'number' ? honored : null
   return {
     commuteMinutes: result.metrics.commuteTotal,
     commuteLabel: formatCommuteMinutes(result.metrics.commuteTotal),
@@ -226,6 +245,8 @@ export function deriveGrafikMetrics(result: SolveResult, requiredCountTotal: num
     coverageRatio,
     coveragePercent,
     coverageLabel: `${coveragePercent}% · ${filled}/${required}`,
+    preferencesHonoredPct,
+    preferencesHonoredLabel: preferencesHonoredPct === null ? '—' : formatPercent(preferencesHonoredPct),
   }
 }
 

@@ -199,6 +199,19 @@ describe('deriveGrafikMetrics', () => {
     expect(m.coverageLabel).toBe('0% · 5/0')
   })
 
+  it('surfaces preferencesHonoredPct as a percent label when present', () => {
+    const result = makeResult({ metrics: { commuteTotal: 0, etatDeviation: 0, fairnessScore: 0, preferencesHonoredPct: 0.833 } })
+    const m = deriveGrafikMetrics(result, 10)
+    expect(m.preferencesHonoredPct).toBeCloseTo(0.833)
+    expect(m.preferencesHonoredLabel).toBe('83%')
+  })
+
+  it('degrades to null / "—" when preferencesHonoredPct is absent (older result / no p)', () => {
+    const m = deriveGrafikMetrics(makeResult(), 10)
+    expect(m.preferencesHonoredPct).toBeNull()
+    expect(m.preferencesHonoredLabel).toBe('—')
+  })
+
   it('does NOT surface fairnessScore (M3 placeholder)', () => {
     const result = makeResult({ metrics: { commuteTotal: 10, etatDeviation: 2, fairnessScore: 99 } })
     const m = deriveGrafikMetrics(result, 5)
