@@ -58,6 +58,19 @@ class LocationInput(BaseModel):
     latLng: LatLng | None = None
 
 
+class EmployeePreferences(BaseModel):
+    """Soft scheduling preferences. Both fields are SOFT — optimized toward, never guaranteed.
+
+    ADDITIVE optional extension of the frozen contract; a preference-unaware peer that omits this
+    object stays valid. agent-service mirrors it for parity but does NOT read it (preference-unaware).
+    """
+
+    #: Weekday codes (``MON``..``SUN``) the employee would rather NOT be scheduled on (soft).
+    preferredDaysOff: list[str] | None = None
+    #: Preferred shift start times as ``HH:mm`` strings — those start times are preferred (soft).
+    preferredShiftStart: list[str] | None = None
+
+
 class EmployeeInput(BaseModel):
     id: str
     #: Roles this employee can cover (matched against demand.role).
@@ -70,6 +83,8 @@ class EmployeeInput(BaseModel):
     approvedLeaveDates: list[str]
     #: Hours already worked in the reference period (etat-deviation / fairness).
     historyHours: float
+    #: Soft scheduling preferences (optional; absent == no preferences).
+    preferences: EmployeePreferences | None = None
 
 
 class DemandInput(BaseModel):
@@ -98,6 +113,9 @@ class Weights(BaseModel):
     d: float
     e: float
     g: float
+    #: Preference-objective weight (soft employee preferences). OPTIONAL — an older caller sending
+    #: ``{d,e,g}`` still validates; a consumer treats a missing ``p`` as 0 (no preference optimization).
+    p: float | None = None
 
 
 class SolverConfig(BaseModel):
@@ -130,6 +148,9 @@ class Metrics(BaseModel):
     etatDeviation: float
     #: Reserved placeholder until fairness-variance (M3).
     fairnessScore: float
+    #: Fraction (0..1) of assignments honoring the assigned employee's preferences; solver fills it
+    #: later. OPTIONAL so an existing result without it still validates.
+    preferencesHonoredPct: float | None = None
 
 
 class Unmet(BaseModel):

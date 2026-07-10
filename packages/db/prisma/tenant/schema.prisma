@@ -122,6 +122,11 @@ model Employee {
   etat           Decimal            @default(1.0)
   /// Job qualifications the employee can cover (matched against ShiftDemand.requiredRole).
   qualifications String[]           @default([])
+  /// SOFT preference: weekday codes (MON..SUN) the employee would rather NOT work. Optimized by the
+  /// solver (preference soft-term), never hard-guaranteed. Additive; defaults to [] on existing rows.
+  preferredDaysOff    String[]      @default([]) @map("preferred_days_off")
+  /// SOFT preference: preferred shift start times as "HH:mm" strings. Optimized, never guaranteed.
+  preferredShiftStart String[]      @default([]) @map("preferred_shift_start")
   createdAt      DateTime           @default(now()) @map("created_at")
   updatedAt      DateTime           @updatedAt @map("updated_at")
   shifts         Shift[]
