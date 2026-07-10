@@ -60,6 +60,19 @@ export const LocationInputSchema = z.object({
 })
 export type LocationInput = z.infer<typeof LocationInputSchema>
 
+/**
+ * Soft scheduling preferences for an employee. Both fields are SOFT — the solver optimizes toward
+ * them but never hard-guarantees them. ADDITIVE optional extension of the frozen contract; a
+ * preference-unaware peer that omits this object stays valid.
+ */
+export const EmployeePreferencesSchema = z.object({
+  /** Weekday codes (`MON`..`SUN`) the employee would rather NOT be scheduled on (soft). */
+  preferredDaysOff: z.array(z.string()).optional(),
+  /** Preferred shift start times as `HH:mm` strings — shifts starting at these times are preferred (soft). */
+  preferredShiftStart: z.array(z.string()).optional(),
+})
+export type EmployeePreferences = z.infer<typeof EmployeePreferencesSchema>
+
 /** An employee available to the solver, with the inputs H1–H4 + etat-deviation need. */
 export const EmployeeInputSchema = z.object({
   id: z.string(),
@@ -73,6 +86,8 @@ export const EmployeeInputSchema = z.object({
   approvedLeaveDates: z.array(z.string()),
   /** Hours already worked in the reference period, feeding etat-deviation / fairness. */
   historyHours: z.number(),
+  /** Soft scheduling preferences (optional; a consumer treats absent as "no preferences"). */
+  preferences: EmployeePreferencesSchema.optional(),
 })
 export type EmployeeInput = z.infer<typeof EmployeeInputSchema>
 
@@ -106,6 +121,11 @@ export const WeightsSchema = z.object({
   d: z.number(),
   e: z.number(),
   g: z.number(),
+  /**
+   * Preference-objective weight (soft employee preferences). OPTIONAL so an older caller sending
+   * `{d,e,g}` still validates; a consumer treats a missing `p` as 0 (no preference optimization).
+   */
+  p: z.number().optional(),
 })
 export type Weights = z.infer<typeof WeightsSchema>
 
@@ -142,6 +162,11 @@ export const MetricsSchema = z.object({
   commuteTotal: z.number(),
   etatDeviation: z.number(),
   fairnessScore: z.number(),
+  /**
+   * Fraction (0..1) of assignments that honor the assigned employee's preferences; the solver
+   * populates it later. OPTIONAL so an existing result without it still validates.
+   */
+  preferencesHonoredPct: z.number().optional(),
 })
 export type Metrics = z.infer<typeof MetricsSchema>
 
