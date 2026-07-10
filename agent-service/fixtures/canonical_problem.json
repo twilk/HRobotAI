@@ -1,0 +1,1245 @@
+{
+  "horizon": {
+    "weekStart": "2026-07-13"
+  },
+  "locations": [
+    {
+      "id": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "latLng": {
+        "lat": 52.1657,
+        "lng": 20.9671
+      }
+    },
+    {
+      "id": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "latLng": {
+        "lat": 52.2297,
+        "lng": 21.0122
+      }
+    }
+  ],
+  "employees": [
+    {
+      "id": "cbd0b44f-9588-5195-bb0e-247a731ed5bd",
+      "qualifications": [
+        "KOORDYNATOR",
+        "KIEROWCA",
+        "SERWISANT",
+        "RECEPCJA"
+      ],
+      "etat": 1,
+      "homeLatLng": {
+        "lat": 52.1997,
+        "lng": 20.9922
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "aeac802d-3866-51d8-badd-2cb02e39cd61",
+      "qualifications": [
+        "KOORDYNATOR",
+        "KIEROWCA",
+        "SERWISANT"
+      ],
+      "etat": 1,
+      "homeLatLng": {
+        "lat": 50.0447,
+        "lng": 19.935
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "e09f8aa5-cf99-5f6e-9e04-12f53cc116b7",
+      "qualifications": [
+        "KOORDYNATOR",
+        "KIEROWCA"
+      ],
+      "etat": 0.75,
+      "homeLatLng": {
+        "lat": 54.342,
+        "lng": 18.6466
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "895ef831-836a-5c6e-a1a5-58394aa1b804",
+      "qualifications": [
+        "KIEROWCA",
+        "SERWISANT",
+        "RECEPCJA"
+      ],
+      "etat": 1,
+      "homeLatLng": {
+        "lat": 51.1079,
+        "lng": 17.0485
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "28038927-1365-5b53-b212-dd6ba34ad73c",
+      "qualifications": [
+        "SERWISANT",
+        "RECEPCJA"
+      ],
+      "etat": 0.5,
+      "homeLatLng": {
+        "lat": 52.4164,
+        "lng": 16.9452
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "db316b4b-1386-5a1b-970f-31748f98df73",
+      "qualifications": [
+        "KIEROWCA"
+      ],
+      "etat": 1,
+      "homeLatLng": {
+        "lat": 50.2849,
+        "lng": 19.0038
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "839275ec-cf4b-5217-82db-cddcdd450d3f",
+      "qualifications": [
+        "KIEROWCA",
+        "SERWISANT"
+      ],
+      "etat": 0.8,
+      "homeLatLng": {
+        "lat": 51.7892,
+        "lng": 19.446
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "ccbb5b7b-6231-534f-b20a-b43bbb134c5d",
+      "qualifications": [
+        "KIEROWCA",
+        "SERWISANT"
+      ],
+      "etat": 0.5,
+      "homeLatLng": {
+        "lat": 53.3985,
+        "lng": 14.5528
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "575f19c4-d442-52a0-be86-8c942541b0ef",
+      "qualifications": [
+        "KIEROWCA",
+        "RECEPCJA"
+      ],
+      "etat": 1,
+      "homeLatLng": {
+        "lat": 51.2265,
+        "lng": 22.5784
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "b6eab783-2059-5167-9cb6-465324e02449",
+      "qualifications": [
+        "SERWISANT"
+      ],
+      "etat": 1,
+      "homeLatLng": {
+        "lat": 50.0313,
+        "lng": 22.019
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "9b7092a4-db46-59c5-912f-12791378c167",
+      "qualifications": [
+        "KIEROWCA",
+        "SERWISANT",
+        "RECEPCJA"
+      ],
+      "etat": 0.75,
+      "homeLatLng": {
+        "lat": 52.2297,
+        "lng": 20.9922
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "f33971fc-cda1-5752-bef1-480560488176",
+      "qualifications": [
+        "KIEROWCA"
+      ],
+      "etat": 1,
+      "homeLatLng": {
+        "lat": 50.0747,
+        "lng": 19.935
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "25fcc4fc-786a-520e-ba4e-a00cbc8c36f3",
+      "qualifications": [
+        "KIEROWCA",
+        "SERWISANT",
+        "RECEPCJA"
+      ],
+      "etat": 0.5,
+      "homeLatLng": {
+        "lat": 54.372,
+        "lng": 18.6466
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "e3c01ef6-c72f-5205-806c-f6ce87649b58",
+      "qualifications": [
+        "KIEROWCA",
+        "SERWISANT"
+      ],
+      "etat": 1,
+      "homeLatLng": {
+        "lat": 51.1379,
+        "lng": 17.0485
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "5f3fb097-303b-5f0b-8b16-5379ba522f18",
+      "qualifications": [
+        "KIEROWCA"
+      ],
+      "etat": 0.8,
+      "homeLatLng": {
+        "lat": 52.3764,
+        "lng": 16.9452
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "fae739f2-9c22-581a-ae93-c4928310aae9",
+      "qualifications": [
+        "KIEROWCA",
+        "SERWISANT"
+      ],
+      "etat": 0.5,
+      "homeLatLng": {
+        "lat": 50.2449,
+        "lng": 19.0038
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "20f69d1b-f0f5-5a71-a9ea-89c369ba4318",
+      "qualifications": [
+        "KIEROWCA",
+        "SERWISANT",
+        "RECEPCJA"
+      ],
+      "etat": 1,
+      "homeLatLng": {
+        "lat": 51.7492,
+        "lng": 19.446
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "6b72adac-8c6f-5a7b-b79f-670a9b26346d",
+      "qualifications": [
+        "KIEROWCA",
+        "RECEPCJA"
+      ],
+      "etat": 1,
+      "homeLatLng": {
+        "lat": 53.4285,
+        "lng": 14.5528
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "89b34e6b-0483-50d1-8ccf-b840c6991628",
+      "qualifications": [
+        "KIEROWCA",
+        "SERWISANT"
+      ],
+      "etat": 0.75,
+      "homeLatLng": {
+        "lat": 51.2565,
+        "lng": 22.5784
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "35ca9fb6-9a11-560e-96d0-1becc96af216",
+      "qualifications": [
+        "SERWISANT"
+      ],
+      "etat": 1,
+      "homeLatLng": {
+        "lat": 50.0613,
+        "lng": 22.019
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "8567441e-7773-51f2-8eee-7eb90ab3813e",
+      "qualifications": [
+        "KIEROWCA",
+        "RECEPCJA"
+      ],
+      "etat": 0.5,
+      "homeLatLng": {
+        "lat": 52.2597,
+        "lng": 20.9922
+      },
+      "approvedLeaveDates": [
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-15"
+      ],
+      "historyHours": 0
+    },
+    {
+      "id": "7d67bc2d-bb02-5f3c-9fbc-d25dfe985972",
+      "qualifications": [
+        "KIEROWCA",
+        "SERWISANT"
+      ],
+      "etat": 1,
+      "homeLatLng": {
+        "lat": 50.0347,
+        "lng": 19.935
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "d8167eb0-bb1b-58d3-89a4-ebc65f3d3793",
+      "qualifications": [
+        "KIEROWCA",
+        "SERWISANT"
+      ],
+      "etat": 0.8,
+      "homeLatLng": {
+        "lat": 54.332,
+        "lng": 18.6466
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "832856ab-f031-5b33-963a-cc036de8657f",
+      "qualifications": [
+        "KIEROWCA"
+      ],
+      "etat": 0.5,
+      "homeLatLng": {
+        "lat": 51.0979,
+        "lng": 17.0485
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "9f4218eb-a8b0-51ee-9f6f-e5d74ae33798",
+      "qualifications": [
+        "SERWISANT",
+        "RECEPCJA"
+      ],
+      "etat": 1,
+      "homeLatLng": {
+        "lat": 52.4064,
+        "lng": 16.9452
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "87673412-31fa-53d0-ba21-2d91529f8822",
+      "qualifications": [
+        "KIEROWCA",
+        "SERWISANT"
+      ],
+      "etat": 1,
+      "homeLatLng": {
+        "lat": 50.2749,
+        "lng": 19.0038
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "1ce0bb15-b00f-5b3f-a891-89a5aa818e2d",
+      "qualifications": [
+        "KIEROWCA"
+      ],
+      "etat": 0.75,
+      "homeLatLng": {
+        "lat": 51.7792,
+        "lng": 19.446
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "d7a608e1-121b-5632-a974-17a317e5f416",
+      "qualifications": [
+        "KIEROWCA",
+        "SERWISANT"
+      ],
+      "etat": 1,
+      "homeLatLng": {
+        "lat": 53.4585,
+        "lng": 14.5528
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "9a87723e-8e07-5829-9156-088c2deaa5cd",
+      "qualifications": [
+        "KIEROWCA",
+        "SERWISANT",
+        "RECEPCJA"
+      ],
+      "etat": 0.5,
+      "homeLatLng": {
+        "lat": 51.2165,
+        "lng": 22.5784
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "916e8fd2-1cf3-55af-b37e-a0eb60fb69ec",
+      "qualifications": [
+        "KIEROWCA"
+      ],
+      "etat": 1,
+      "homeLatLng": {
+        "lat": 50.0213,
+        "lng": 22.019
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "859357bd-66b3-5e90-81db-bd2e07c4419a",
+      "qualifications": [
+        "KIEROWCA",
+        "SERWISANT"
+      ],
+      "etat": 0.8,
+      "homeLatLng": {
+        "lat": 52.2197,
+        "lng": 20.9922
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "426bea46-0ff9-522e-bdeb-d35d385235bd",
+      "qualifications": [
+        "KIEROWCA",
+        "SERWISANT",
+        "RECEPCJA"
+      ],
+      "etat": 0.5,
+      "homeLatLng": {
+        "lat": 50.0647,
+        "lng": 19.935
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "953f2ff9-baa1-5f4a-b48c-c34de2ce26fe",
+      "qualifications": [
+        "KIEROWCA",
+        "RECEPCJA"
+      ],
+      "etat": 1,
+      "homeLatLng": {
+        "lat": 54.362,
+        "lng": 18.6466
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "b523a2ae-c582-5af0-96e9-2793a5d5fa6f",
+      "qualifications": [
+        "KIEROWCA",
+        "SERWISANT"
+      ],
+      "etat": 1,
+      "homeLatLng": {
+        "lat": 51.1279,
+        "lng": 17.0485
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "21c8aee7-c282-5b22-a0ec-8c8a5315d61d",
+      "qualifications": [
+        "SERWISANT"
+      ],
+      "etat": 0.75,
+      "homeLatLng": {
+        "lat": 52.4364,
+        "lng": 16.9452
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    },
+    {
+      "id": "2c818541-7146-5712-b6b6-91cd1d2a67d3",
+      "qualifications": [
+        "KIEROWCA"
+      ],
+      "etat": 1,
+      "homeLatLng": {
+        "lat": 50.2349,
+        "lng": 19.0038
+      },
+      "approvedLeaveDates": [],
+      "historyHours": 0
+    }
+  ],
+  "demands": [
+    {
+      "id": "aae0e6b6-d72f-5a17-97c3-a9384fd42769",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-13",
+      "start": "06:00",
+      "end": "14:00",
+      "role": "KIEROWCA",
+      "count": 2
+    },
+    {
+      "id": "4ecbe661-337d-5eee-b582-ad23bf62ed84",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-13",
+      "start": "06:00",
+      "end": "14:00",
+      "role": "RECEPCJA",
+      "count": 1
+    },
+    {
+      "id": "50ad114f-18c9-5f02-8ca9-76c9e3c47a90",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-13",
+      "start": "14:00",
+      "end": "22:00",
+      "role": "KIEROWCA",
+      "count": 2
+    },
+    {
+      "id": "556a721a-a217-55f0-9979-77b7e15d68ab",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-13",
+      "start": "14:00",
+      "end": "22:00",
+      "role": "KOORDYNATOR",
+      "count": 1
+    },
+    {
+      "id": "fdc0469e-146f-56d5-b1c6-b5b12eb16347",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-14",
+      "start": "06:00",
+      "end": "14:00",
+      "role": "KIEROWCA",
+      "count": 2
+    },
+    {
+      "id": "619838bd-adc0-5a6d-bf8a-3ab5d7b629d0",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-14",
+      "start": "06:00",
+      "end": "14:00",
+      "role": "RECEPCJA",
+      "count": 1
+    },
+    {
+      "id": "ac77e660-730f-5a42-b5f9-c69f97fadd05",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-14",
+      "start": "14:00",
+      "end": "22:00",
+      "role": "KIEROWCA",
+      "count": 2
+    },
+    {
+      "id": "9e8addb0-5b25-5909-a485-b9a8956ffd0c",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-14",
+      "start": "14:00",
+      "end": "22:00",
+      "role": "KOORDYNATOR",
+      "count": 1
+    },
+    {
+      "id": "29274ae2-41a9-5216-985f-6e3f2835754f",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-15",
+      "start": "06:00",
+      "end": "14:00",
+      "role": "KIEROWCA",
+      "count": 2
+    },
+    {
+      "id": "e781e6b5-fb90-5434-8011-b1e15d0d7001",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-15",
+      "start": "06:00",
+      "end": "14:00",
+      "role": "RECEPCJA",
+      "count": 1
+    },
+    {
+      "id": "0eda4f38-7e8f-5f8f-bae0-0b647ad30a23",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-15",
+      "start": "14:00",
+      "end": "22:00",
+      "role": "KIEROWCA",
+      "count": 2
+    },
+    {
+      "id": "790b74ff-f65d-54c8-bfd4-38c95d3e5d16",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-15",
+      "start": "14:00",
+      "end": "22:00",
+      "role": "KOORDYNATOR",
+      "count": 1
+    },
+    {
+      "id": "f7525dbc-b9b2-579c-98e8-f2aeae452fd5",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-16",
+      "start": "06:00",
+      "end": "14:00",
+      "role": "KIEROWCA",
+      "count": 2
+    },
+    {
+      "id": "aa191c95-b911-5853-b566-50edc7052f4b",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-16",
+      "start": "06:00",
+      "end": "14:00",
+      "role": "RECEPCJA",
+      "count": 1
+    },
+    {
+      "id": "31685af7-ac1a-580b-a1d7-306307118e08",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-16",
+      "start": "14:00",
+      "end": "22:00",
+      "role": "KIEROWCA",
+      "count": 2
+    },
+    {
+      "id": "e068240b-5d4b-5070-80fc-cdb42777f0c6",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-16",
+      "start": "14:00",
+      "end": "22:00",
+      "role": "KOORDYNATOR",
+      "count": 1
+    },
+    {
+      "id": "047c4938-3fa7-58dc-85b5-fbcc1b2bf19a",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-17",
+      "start": "06:00",
+      "end": "14:00",
+      "role": "KIEROWCA",
+      "count": 2
+    },
+    {
+      "id": "e1b70ade-bdf4-5697-8df7-3a316e952eef",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-17",
+      "start": "06:00",
+      "end": "14:00",
+      "role": "RECEPCJA",
+      "count": 1
+    },
+    {
+      "id": "6ec2085c-6aad-5b6e-8aa4-75cd8c12ca5c",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-17",
+      "start": "14:00",
+      "end": "22:00",
+      "role": "KIEROWCA",
+      "count": 2
+    },
+    {
+      "id": "bc8d7082-265e-521e-b212-f6ffebfe328e",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-17",
+      "start": "14:00",
+      "end": "22:00",
+      "role": "KOORDYNATOR",
+      "count": 1
+    },
+    {
+      "id": "741d063f-b74b-5c45-8616-4bd76fe4cb78",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-18",
+      "start": "06:00",
+      "end": "14:00",
+      "role": "KIEROWCA",
+      "count": 2
+    },
+    {
+      "id": "5497d505-305a-5213-af67-a04f231d0f04",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-18",
+      "start": "06:00",
+      "end": "14:00",
+      "role": "RECEPCJA",
+      "count": 1
+    },
+    {
+      "id": "89ea4bef-3013-5809-8d35-bf487a781a4d",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-18",
+      "start": "14:00",
+      "end": "22:00",
+      "role": "KIEROWCA",
+      "count": 2
+    },
+    {
+      "id": "9590fee7-829b-5a47-9590-f28780625686",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-18",
+      "start": "14:00",
+      "end": "22:00",
+      "role": "KOORDYNATOR",
+      "count": 1
+    },
+    {
+      "id": "0bece10c-59d6-5b51-b08a-2de1749bd774",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-19",
+      "start": "06:00",
+      "end": "14:00",
+      "role": "KIEROWCA",
+      "count": 2
+    },
+    {
+      "id": "b2fb9eea-e751-51d5-b13f-21c91a4e6659",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-19",
+      "start": "06:00",
+      "end": "14:00",
+      "role": "RECEPCJA",
+      "count": 1
+    },
+    {
+      "id": "e1729aad-37f1-5f79-a0f9-371b160d17ce",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-19",
+      "start": "14:00",
+      "end": "22:00",
+      "role": "KIEROWCA",
+      "count": 2
+    },
+    {
+      "id": "1f9ff429-63ba-57c5-ad43-d342f5e81af9",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "date": "2026-07-19",
+      "start": "14:00",
+      "end": "22:00",
+      "role": "KOORDYNATOR",
+      "count": 1
+    },
+    {
+      "id": "edd82e91-63fd-5444-b9c3-d7f781b5d7f2",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "date": "2026-07-13",
+      "start": "08:00",
+      "end": "16:00",
+      "role": "KIEROWCA",
+      "count": 1
+    },
+    {
+      "id": "2003b837-bd7b-539c-a784-ff680878e25d",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "date": "2026-07-13",
+      "start": "08:00",
+      "end": "16:00",
+      "role": "SERWISANT",
+      "count": 1
+    },
+    {
+      "id": "f3af7a6f-c314-5964-9717-31b5590d1402",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "date": "2026-07-14",
+      "start": "08:00",
+      "end": "16:00",
+      "role": "KIEROWCA",
+      "count": 1
+    },
+    {
+      "id": "0c6e3308-07cb-5e4a-a287-f27c03dd4f0e",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "date": "2026-07-14",
+      "start": "08:00",
+      "end": "16:00",
+      "role": "SERWISANT",
+      "count": 1
+    },
+    {
+      "id": "65c87522-7365-59a6-8d01-44fb1aac50c7",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "date": "2026-07-15",
+      "start": "08:00",
+      "end": "16:00",
+      "role": "KIEROWCA",
+      "count": 1
+    },
+    {
+      "id": "80ed53df-b451-50b1-acae-1e23344738f0",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "date": "2026-07-15",
+      "start": "08:00",
+      "end": "16:00",
+      "role": "SERWISANT",
+      "count": 1
+    },
+    {
+      "id": "084861de-81f8-5033-aee1-663f610bdf4c",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "date": "2026-07-16",
+      "start": "08:00",
+      "end": "16:00",
+      "role": "KIEROWCA",
+      "count": 1
+    },
+    {
+      "id": "a4f40568-a121-502b-ac9c-996d9218a492",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "date": "2026-07-16",
+      "start": "08:00",
+      "end": "16:00",
+      "role": "SERWISANT",
+      "count": 1
+    },
+    {
+      "id": "3a948034-6376-54cf-a715-3f7601c20faf",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "date": "2026-07-17",
+      "start": "08:00",
+      "end": "16:00",
+      "role": "KIEROWCA",
+      "count": 1
+    },
+    {
+      "id": "fc48cdd3-cad4-59af-9a7d-a6555c794910",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "date": "2026-07-17",
+      "start": "08:00",
+      "end": "16:00",
+      "role": "SERWISANT",
+      "count": 1
+    }
+  ],
+  "travelMatrix": [
+    {
+      "employeeId": "cbd0b44f-9588-5195-bb0e-247a731ed5bd",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 6.224844532946183
+    },
+    {
+      "employeeId": "cbd0b44f-9588-5195-bb0e-247a731ed5bd",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 5.405109627043413
+    },
+    {
+      "employeeId": "aeac802d-3866-51d8-badd-2cb02e39cd61",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 369.9006613391055
+    },
+    {
+      "employeeId": "aeac802d-3866-51d8-badd-2cb02e39cd61",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 381.46783062089503
+    },
+    {
+      "employeeId": "e09f8aa5-cf99-5f6e-9e04-12f53cc116b7",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 430.5045449909625
+    },
+    {
+      "employeeId": "e09f8aa5-cf99-5f6e-9e04-12f53cc116b7",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 423.93400059968513
+    },
+    {
+      "employeeId": "895ef831-836a-5c6e-a1a5-58394aa1b804",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 442.28143198105903
+    },
+    {
+      "employeeId": "895ef831-836a-5c6e-a1a5-58394aa1b804",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 450.62132809250454
+    },
+    {
+      "employeeId": "28038927-1365-5b53-b212-dd6ba34ad73c",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 412.3796546419422
+    },
+    {
+      "employeeId": "28038927-1365-5b53-b212-dd6ba34ad73c",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 415.7224336520967
+    },
+    {
+      "employeeId": "db316b4b-1386-5a1b-970f-31748f98df73",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 374.7565338194371
+    },
+    {
+      "employeeId": "db316b4b-1386-5a1b-970f-31748f98df73",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 386.1919442648793
+    },
+    {
+      "employeeId": "839275ec-cf4b-5217-82db-cddcdd450d3f",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 168.4177885006107
+    },
+    {
+      "employeeId": "839275ec-cf4b-5217-82db-cddcdd450d3f",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 176.7811136607457
+    },
+    {
+      "employeeId": "ccbb5b7b-6231-534f-b20a-b43bbb134c5d",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 678.7059207395339
+    },
+    {
+      "employeeId": "ccbb5b7b-6231-534f-b20a-b43bbb134c5d",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 679.44949300337
+    },
+    {
+      "employeeId": "575f19c4-d442-52a0-be86-8c942541b0ef",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 228.6577104502524
+    },
+    {
+      "employeeId": "575f19c4-d442-52a0-be86-8c942541b0ef",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 232.75269992275335
+    },
+    {
+      "employeeId": "b6eab783-2059-5167-9cb6-465324e02449",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 372.6506806969084
+    },
+    {
+      "employeeId": "b6eab783-2059-5167-9cb6-465324e02449",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 381.50902357918915
+    },
+    {
+      "employeeId": "9b7092a4-db46-59c5-912f-12791378c167",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 10.978805207216277
+    },
+    {
+      "employeeId": "9b7092a4-db46-59c5-912f-12791378c167",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 2.0431980452758753
+    },
+    {
+      "employeeId": "f33971fc-cda1-5752-bef1-480560488176",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 365.1079677129355
+    },
+    {
+      "employeeId": "f33971fc-cda1-5752-bef1-480560488176",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 376.6796483032444
+    },
+    {
+      "employeeId": "25fcc4fc-786a-520e-ba4e-a00cbc8c36f3",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 434.6873513926717
+    },
+    {
+      "employeeId": "25fcc4fc-786a-520e-ba4e-a00cbc8c36f3",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 428.0545132622461
+    },
+    {
+      "employeeId": "e3c01ef6-c72f-5205-806c-f6ce87649b58",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 440.18736544887446
+    },
+    {
+      "employeeId": "e3c01ef6-c72f-5205-806c-f6ce87649b58",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 448.44447301866677
+    },
+    {
+      "employeeId": "5f3fb097-303b-5f0b-8b16-5379ba522f18",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 411.9417833765403
+    },
+    {
+      "employeeId": "5f3fb097-303b-5f0b-8b16-5379ba522f18",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 415.4634652091292
+    },
+    {
+      "employeeId": "fae739f2-9c22-581a-ae93-c4928310aae9",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 380.40567455026303
+    },
+    {
+      "employeeId": "fae739f2-9c22-581a-ae93-c4928310aae9",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 391.8600346990324
+    },
+    {
+      "employeeId": "20f69d1b-f0f5-5a71-a9ea-89c369ba4318",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 171.08092661903052
+    },
+    {
+      "employeeId": "20f69d1b-f0f5-5a71-a9ea-89c369ba4318",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 179.72036610969033
+    },
+    {
+      "employeeId": "6b72adac-8c6f-5a7b-b79f-670a9b26346d",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 680.0228029867351
+    },
+    {
+      "employeeId": "6b72adac-8c6f-5a7b-b79f-670a9b26346d",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 680.6836850521651
+    },
+    {
+      "employeeId": "89b34e6b-0483-50d1-8ccf-b840c6991628",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 225.21883353351143
+    },
+    {
+      "employeeId": "89b34e6b-0483-50d1-8ccf-b840c6991628",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 229.14447047904034
+    },
+    {
+      "employeeId": "35ca9fb6-9a11-560e-96d0-1becc96af216",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 367.86302740146186
+    },
+    {
+      "employeeId": "35ca9fb6-9a11-560e-96d0-1becc96af216",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 376.6930248630292
+    },
+    {
+      "employeeId": "8567441e-7773-51f2-8eee-7eb90ab3813e",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 15.886947451381738
+    },
+    {
+      "employeeId": "8567441e-7773-51f2-8eee-7eb90ab3813e",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 5.404587689418146
+    },
+    {
+      "employeeId": "7d67bc2d-bb02-5f3c-9fbc-d25dfe985972",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 371.49946219404154
+    },
+    {
+      "employeeId": "7d67bc2d-bb02-5f3c-9fbc-d25dfe985972",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 383.06511540200364
+    },
+    {
+      "employeeId": "d8167eb0-bb1b-58d3-89a4-ebc65f3d3793",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 429.1141791890004
+    },
+    {
+      "employeeId": "d8167eb0-bb1b-58d3-89a4-ebc65f3d3793",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 422.5647317896237
+    },
+    {
+      "employeeId": "832856ab-f031-5b33-963a-cc036de8657f",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 442.98980713331986
+    },
+    {
+      "employeeId": "832856ab-f031-5b33-963a-cc036de8657f",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 451.35693326642706
+    },
+    {
+      "employeeId": "9f4218eb-a8b0-51ee-9f6f-e5d74ae33798",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 412.2601146571867
+    },
+    {
+      "employeeId": "9f4218eb-a8b0-51ee-9f6f-e5d74ae33798",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 415.64767346320957
+    },
+    {
+      "employeeId": "87673412-31fa-53d0-ba21-2d91529f8822",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 376.16568072675636
+    },
+    {
+      "employeeId": "87673412-31fa-53d0-ba21-2d91529f8822",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 387.60597316371815
+    },
+    {
+      "employeeId": "1ce0bb15-b00f-5b3f-a891-89a5aa818e2d",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 169.06282649654744
+    },
+    {
+      "employeeId": "1ce0bb15-b00f-5b3f-a891-89a5aa818e2d",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 177.49698301198623
+    },
+    {
+      "employeeId": "d7a608e1-121b-5632-a974-17a317e5f416",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 681.3738292899269
+    },
+    {
+      "employeeId": "d7a608e1-121b-5632-a974-17a317e5f416",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 681.9523008973566
+    },
+    {
+      "employeeId": "9a87723e-8e07-5829-9156-088c2deaa5cd",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 229.8167759656942
+    },
+    {
+      "employeeId": "9a87723e-8e07-5829-9156-088c2deaa5cd",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 233.96685623999167
+    },
+    {
+      "employeeId": "916e8fd2-1cf3-55af-b37e-a0eb60fb69ec",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 374.2478210118169
+    },
+    {
+      "employeeId": "916e8fd2-1cf3-55af-b37e-a0eb60fb69ec",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 383.11542545332094
+    },
+    {
+      "employeeId": "859357bd-66b3-5e90-81db-bd2e07c4419a",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 9.365276230248943
+    },
+    {
+      "employeeId": "859357bd-66b3-5e90-81db-bd2e07c4419a",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 2.6377203559522964
+    },
+    {
+      "employeeId": "426bea46-0ff9-522e-bdeb-d35d385235bd",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 366.704906017918
+    },
+    {
+      "employeeId": "426bea46-0ff9-522e-bdeb-d35d385235bd",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 378.2750893233163
+    },
+    {
+      "employeeId": "953f2ff9-baa1-5f4a-b48c-c34de2ce26fe",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 433.2911499185568
+    },
+    {
+      "employeeId": "953f2ff9-baa1-5f4a-b48c-c34de2ce26fe",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 426.6789117712888
+    },
+    {
+      "employeeId": "b523a2ae-c582-5af0-96e9-2793a5d5fa6f",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 440.880186460687
+    },
+    {
+      "employeeId": "b523a2ae-c582-5af0-96e9-2793a5d5fa6f",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 449.1650736850554
+    },
+    {
+      "employeeId": "21c8aee7-c282-5b22-a0ec-8c8a5315d61d",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 412.6388444255097
+    },
+    {
+      "employeeId": "21c8aee7-c282-5b22-a0ec-8c8a5315d61d",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 415.8919690587519
+    },
+    {
+      "employeeId": "2c818541-7146-5712-b6b6-91cd1d2a67d3",
+      "locId": "14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "minutes": 381.8231127490495
+    },
+    {
+      "employeeId": "2c818541-7146-5712-b6b6-91cd1d2a67d3",
+      "locId": "c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "minutes": 393.28197486277344
+    }
+  ],
+  "weights": {
+    "d": 1,
+    "e": 1,
+    "g": 1
+  },
+  "solverConfig": {
+    "seed": 42,
+    "timeLimit": 10
+  }
+}

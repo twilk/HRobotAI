@@ -99,6 +99,7 @@ class GrafikSchedulingEnv(gym.Env):
         reward_config: RewardConfig | None = None,
         use_optimizer: bool = False,
         optimizer_client: OptimizerClient | None = None,
+        manager_accepted: set[tuple[str, str]] | None = None,
     ) -> None:
         super().__init__()
         if len(problem.employees) > max_employees:
@@ -111,6 +112,11 @@ class GrafikSchedulingEnv(gym.Env):
         self.reward_config = reward_config or RewardConfig()
         self.use_optimizer = use_optimizer
         self._optimizer_client = optimizer_client
+        # Activates the weight-0 manager-acceptance reward SEAM (RewardConfig.manager_acceptance):
+        # the set of (employeeId, demandId) pairs a manager kept. Empty + weight 0 (defaults) ⇒ no
+        # effect, so M2-C1 behaviour is unchanged; M2-C2 feedback supplies this to reward the agent
+        # for reproducing the manager's real corrections — the online-reward source of the loop.
+        self._manager_accepted = manager_accepted or set()
 
         # Static index maps derived once from the problem.
         self._emp_index = {e.id: i for i, e in enumerate(problem.employees)}
@@ -194,7 +200,11 @@ class GrafikSchedulingEnv(gym.Env):
         # Clean assignment — record it.
         self._state.assignments.append((emp.id, demand.id))
         self._state.booked.setdefault(emp.id, []).append(window)
-        return rc.feasible, "feasible"
+        reward = rc.feasible
+        # Manager-acceptance seam: reward reproducing a slot the manager kept (weight 0 by default).
+        if rc.manager_acceptance and (emp.id, demand.id) in self._manager_accepted:
+            reward += rc.manager_acceptance
+        return reward, "feasible"
 
     def _terminal_optimizer_reward(self) -> float:
         """Terminal shaping from the live solver: reward coverage the solver proves achievable.

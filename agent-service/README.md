@@ -1,106 +1,132 @@
-# agent-service — self-learning scheduling agent (M2-C1, phase B)
+# agent-service — self-learning scheduling agent (M2-C1 phase B + **M2-C2**)
 
-> **Framing — read this first.** This is the **first demonstrable increment** of a self-learning
-> scheduling agent: a cold-start **behavior-cloning** entry point plus a working **Gymnasium/RL
-> loop** layered on the FROZEN grafik contract and the live CP-SAT optimizer. It is **not** a
-> finished production RL brain, and it does not act autonomously on real schedules. No overclaiming:
-> what ships here is a *skeleton that builds, runs, and trains on a tiny sample* — the learning
-> policy and the serving endpoints come in later increments (M2-C2 / M2-C3).
+> **Honest framing — read this first.** This is the **demonstrable M2 increment** of a self-learning
+> scheduling loop: cold-start **behaviour cloning** + **feedback-driven adaptation** on synthetic
+> data, layered on the FROZEN grafik contract and the live CP-SAT optimizer. It is **NOT** the
+> finished long-horizon production RL brain, and makes **no claim** of production autonomy or a
+> "4Mobility-ready" model. Full on-policy RL on live data, unsupervised autonomy, multi-branch
+> transfer, and advanced forecasting are the **staged path after M2** (spec §8). What ships is a
+> *working loop you can measure* — not a finished product. See
+> `docs/superpowers/specs/2026-07-09-m2-p2-agent-ai-grafik-manager-design.md`.
 
-This is a **distinct image** from `grafik-optimizer` on purpose. The heavy RL stack
-(`torch`/`stable-baselines3`/`imitation`) lives here; the CP-SAT optimizer image stays lean and is
-owned by another team. The two services communicate only over the FROZEN `POST /solve` contract.
+This is a **distinct image** from `grafik-optimizer` on purpose: the heavy RL stack
+(`torch`/`stable-baselines3`/`imitation`) lives here; the CP-SAT image stays lean and is owned by
+another team. The two services communicate only over the FROZEN `POST /solve` contract.
 
-## What's in scope for M2-C1 phase B (this task)
+## Increment history
 
-| Area | Delivered here |
-| --- | --- |
-| Image | `python:3.12-slim` + pinned RL/ML deps (`requirements.txt`). CPU-only torch. |
-| Contract | Own pydantic mirror (`app/contract.py`) + **parity test** vs the frozen optimizer contract. |
-| Gym env | `app/env.py` — `gymnasium.Env` over a `ProblemInput`; tabular obs; assign-employee-to-slot action; feasibility reward with a **live-optimizer seam**. |
-| API scaffold | `app/main.py` — `GET /health`; `/agent/*` mounted as a documented **501 seam**. |
-| Cold-start BC | `app/train_bc.py` — behavior cloning via `imitation` over a configurable dataset. |
-| Sample data | `data/coldstart_sample.jsonl` — tiny synthetic smoke sample (RODO: no PII). |
+- **M2-C1 phase B** (merged, PR #20): the SB3 skeleton — `python:3.12-slim` image, own pydantic
+  contract mirror + parity test, `GrafikSchedulingEnv` (Gymnasium) with weight-0 reward seams, the
+  `OptimizerClient` seam, the BC (`imitation`) cold-start entry point, and the `/agent/*` 501 seams.
+- **M2-C2** (this increment): fills those 501 seams with working handlers, adds the tenant-isolated
+  feedback store and the online-learning loop, wires the env's manager-acceptance seam, and ships
+  the **AG2 edit-distance-drop demo**. Built *on top of* phase B — the contract mirror, env, parity
+  test, and optimizer client are reused, not rebuilt.
 
-## Deferred (do NOT expect it here)
+## Why an agent and not just the solver
 
-- **M2-C2 (serving):** real `/agent/propose|feedback|heal|explain|forecast` handlers, the
-  propose→`/solve`→repair **self-heal** loop, policy loading. The router seam
-  (`app/agent_router.py`) fixes the surface now and returns `501` until then.
-- **M2-C3 (RL):** training an actual policy with the reward loop; manager-acceptance / soft-goal
-  reward terms (present as **weight-0 seams** in `RewardConfig`).
-- **The real cold-start dataset:** produced by the parallel task that owns `agent/`. This task
-  ships only a tiny synthetic sample; point `train_bc.py` at the real dataset with `--dataset`.
+The CP-SAT solver (#1) has **fixed weights** and solves the problem *as defined*. It cannot learn
+that a specific manager/branch has preferences its weights don't encode. This agent learns those
+preferences from the manager's **corrections** — that adaptation is the whole point (spec §16), and
+it is exactly what the AG2 demo measures.
 
-## Layout
+## What M2-C2 adds
+
+| Capability | M2-C2 endpoint / mechanism |
+|---|---|
+| **Self-learning** | `POST /agent/feedback` logs manager corrections as reward and re-fits the policy; edit-distance to the manager-accepted schedule **drops monotonically** (AG2). |
+| **Reasoning** | `GET /agent/explain` — per-assignment rationale + alternatives considered (AG4). |
+| **Self-developing** | Policy is **versioned**; `GET /agent/policy` shows `v1→v2→…` with a rising acceptance metric (AG5). |
+| **Self-healing** | `POST /agent/heal` validates a proposal and repairs it **through the live solver** (`OptimizerClient`) (AG3). |
+| Demand forecast | `POST /agent/forecast` — a simple, honest **weekly-seasonal** model (not a time-series ML stack). |
+
+### The learning policy (and its honest limits)
+
+The M2-C2 serving policy (`app/policy.py`) is a dependency-light numpy **imitation** learner:
+behavioural cloning of the solver teacher, plus an **online affinity update** keyed by
+`(employee, slot-signature)` where `slot-signature = (role, locId, date, shiftStart)` — a learned
+*preference rule*, not memorisation of a demand id. The spec's risk table explicitly sanctions this
+minimal viable path ("BC przez imitation … degradacja do samego BC+forecaster", §112).
+
+This sits **alongside** the phase-B RL scaffold, it does not replace it. `GrafikSchedulingEnv` keeps
+its `RewardConfig`; M2-C2 **wires its weight-0 `manager_acceptance` seam** (previously declared but
+unused) so a feasible assignment that reproduces a manager-kept slot earns reward — the env-side
+counterpart of the online feedback signal, and the hook the staged SB3/RL path will train against.
+
+## The AG2 money shot
+
+`app/demo_ag2.py` runs a fixed synthetic scenario (the canonical cold-start problem: 36 employees,
+38 demands). A scripted manager prefers *"hours to full-timers first"* — a preference the fixed-weight
+solver cannot encode. Each round: propose → manager corrects the most-mismatched slots (`MOVE` edits)
+→ `/agent/feedback` → re-fit → re-propose.
+
+**Metric.** `edit_distance = |proposed △ manager_accepted|` — the symmetric difference of
+`(employeeId, demandId)` pairs (a reassignment counts as 2). `normalized = edit_distance / (2·|A|)`.
+
+Representative run (`python -m app.demo_ag2`):
 
 ```
-agent-service/
-├── Dockerfile                 # distinct RL image (python:3.12-slim + torch/SB3/imitation)
-├── requirements.txt           # single source of dep truth (pinned)
-├── .dockerignore              # excludes **/CLAUDE.md (WSL symlink gotcha) + host artifacts
-├── pyproject.toml             # pytest pythonpath config
-├── app/
-│   ├── contract.py            # OWN pydantic mirror of the FROZEN ProblemInput/SolveResult
-│   ├── env.py                 # GrafikSchedulingEnv (gymnasium.Env) + RewardConfig
-│   ├── optimizer_client.py    # seam to live optimizer POST /solve (OPTIMIZER_URL)
-│   ├── main.py                # FastAPI: GET /health + /agent/* router seam
-│   ├── agent_router.py        # /agent/* → 501 (implemented in M2-C2)
-│   ├── train_bc.py            # cold-start behavior cloning entry point
-│   ├── rollout.py             # runnable random-action rollout (env smoke)
-│   └── sample.py              # tiny synthetic ProblemInput fixture
-├── data/
-│   ├── coldstart_sample.jsonl # tiny synthetic BC dataset
-│   └── README.md              # dataset format (lines up with the parallel task)
-└── tests/
-    ├── test_contract_parity.py  # mirror == frozen optimizer contract, field-for-field
-    ├── test_env.py              # random rollout + reward reflects hard constraints
-    └── test_health.py           # /health + /agent seam returns 501
+ v1 round 0:  50
+ v2 round 1:  44
+ v3 round 2:  28
+ v4 round 3:  18
+ v5 round 4:   4
+ v6 round 5:   0   → converged to the manager-accepted schedule
 ```
+
+The drop is **real**: `python -m app.demo_ag2 --no-feedback` disables learning and the curve stays
+**flat at 50** — the improvement comes only from feedback the policy incorporated. Artifacts land in
+`evidence/` (`ag2_result.json`, `ag2_editdistance.csv`, `ag2_chart.svg`) for the M2 evidence pack.
+
+## API (spec §5)
+
+```
+POST /agent/propose   { problemInputId | problem, tenantId? }     → { proposalId, assignments[], rationale[], policyVersion, feasibility }
+POST /agent/feedback  { proposalId, edits[], accepted, tenantId? } → { ok, rewardLogged, policyVersion }
+POST /agent/heal      { infeasibleProposal:{ problem|problemInputId, assignments[] } } → { repairedAssignments[], whatWasWrong[], solverStatus, unmet[] }
+GET  /agent/explain   ?proposalId=&demandId=&tenantId=            → { rationale, alternativesConsidered[] }
+POST /agent/forecast  { locationId, horizon }                     → { predictedDemand[] }
+GET  /agent/policy    ?tenantId=                                  → { version, trainedAt, acceptanceMetric, trainingRuns[], feedbackCount }
+```
+
+Edit types: `MOVE {demandId, fromEmployeeId, toEmployeeId}`, `SWAP {demandId, employeeId, otherDemandId, otherEmployeeId}`,
+`REMOVE {demandId, employeeId}`, `ACCEPT {demandId, employeeId}`, `REJECT {demandId, employeeId?}`.
+
+## Feedback store & tenant isolation (AG6)
+
+Feedback + policy persist in a **tenant-keyed SQLite** store owned inside `agent-service/`
+(`app/store.py`, `AGENT_DB_PATH`-configurable); every read is filtered by `tenantId`, so one
+tenant's feedback and policy are never visible to another. **Staged path:** spec §6 puts
+`AgentFeedback` in the tenant **Prisma schema** — that production home is **deferred** to a
+separately-owned change (it edits `packages/db/prisma/**`, out of scope here). This store is a
+drop-in for a Prisma-backed repository later; the router only talks to the `AgentStore` interface.
 
 ## Environment variables
 
 | Var | Default | Purpose |
 | --- | --- | --- |
-| `OPTIMIZER_URL` | `http://localhost:8001` | Base URL of the live grafik-optimizer (`POST /solve`) the env's feasibility seam calls. From inside a container, use `http://host.docker.internal:8001` or the compose service name. |
-| `OPTIMIZER_CONTRACT_PATH` | `../grafik-optimizer/app/contract.py` | Where the parity test reads the frozen optimizer contract (mount/copy it in for in-container runs). |
-| BC dataset path | `data/coldstart_sample.jsonl` | Configured via `--dataset` on `train_bc.py` (not an env var). |
+| `OPTIMIZER_URL` | `http://localhost:8001` | Live optimizer base URL. Inside the `hrobot_default` compose net use `http://optimizer:8000`. |
+| `OPTIMIZER_CONTRACT_PATH` | `../grafik-optimizer/app/contract.py` | Where the parity test reads the frozen contract (copy/mount it in for in-container runs). |
+| `AGENT_DB_PATH` | `/data/agent.db` | Tenant-isolated feedback/policy SQLite file. |
 
 ## Build & run with `docker.exe`
 
-> On this machine, use **`docker.exe`** (the Windows binary on PATH) — it talks to the same Docker
-> Desktop daemon running the HRobot stack. `.dockerignore` excludes `**/CLAUDE.md` because
-> `docker.exe` chokes on this repo's WSL symlinks.
-
 ```bash
 # Build (context is ./agent-service)
-docker.exe build -t agent-service:smoke ./agent-service
+docker.exe build -t agent-service:m2c2 ./agent-service
 
-# Run the API scaffold
-docker.exe run -d --name agent-smoke -p 8009:8000 agent-service:smoke
-curl http://localhost:8009/health          # -> {"status":"ok"}
-```
+# Serve (join the compose net so /agent/heal reaches the live solver alias `optimizer`)
+docker.exe run -d --name agent-smoke --network hrobot_default \
+  -e OPTIMIZER_URL=http://optimizer:8000 -p 8010:8000 agent-service:m2c2
+curl http://localhost:8010/health           # -> {"status":"ok"}
 
-### Gym rollout & BC training (via `docker exec`)
+# AG2 learning-loop demo (writes evidence/)
+docker.exe exec agent-smoke python -m app.demo_ag2
 
-```bash
-# Random-action rollout, fully offline
-docker.exe exec agent-smoke python -m app.rollout --seed 0
-
-# Rollout with the LIVE optimizer seam adjudicating a terminal feasibility reward
-docker.exe exec -e OPTIMIZER_URL=http://host.docker.internal:8001 \
-  agent-smoke python -m app.rollout --seed 3 --use-optimizer
-
-# Cold-start behavior cloning on the tiny sample
+# Cold-start BC (phase-B entry point, imitation lib)
 docker.exe exec agent-smoke python -m app.train_bc --dataset data/coldstart_sample.jsonl --epochs 1
-```
 
-### Tests (parity + env + health)
-
-The parity test reads the frozen optimizer contract, which is **outside** this build context, so
-copy it in and point the test at it:
-
-```bash
+# Tests — the parity test needs the frozen contract, which is OUTSIDE the build context, so copy it in:
 docker.exe exec agent-smoke mkdir -p /ref
 docker.exe cp ./grafik-optimizer/app/contract.py agent-smoke:/ref/contract.py
 docker.exe exec -e OPTIMIZER_CONTRACT_PATH=/ref/contract.py agent-smoke python -m pytest -q
@@ -108,68 +134,8 @@ docker.exe exec -e OPTIMIZER_CONTRACT_PATH=/ref/contract.py agent-smoke python -
 
 ## Consuming the FROZEN contract (mirror + parity)
 
-`ProblemInput`/`SolveResult` is **FROZEN**; its canonical source is
-`packages/shared/src/grafik/contract.ts` (Zod), mirrored in `grafik-optimizer/app/contract.py`
-(pydantic). agent-service keeps its **own** mirror at `app/contract.py` and a **parity test**
-(`tests/test_contract_parity.py`) that loads the optimizer's mirror by path and asserts field-for-
-field + enum equality — the same schema-parity idiom the repo uses elsewhere (root `CLAUDE.md`
-"Prisma enums"). We never edit or import across the boundary; the test holds the line.
-
-## Smoke evidence (captured on this task)
-
-Built and run via `docker.exe` (Docker Desktop Server 29.4.1), image `agent-service:smoke`:
-
-```
-===== 1. RUN + HEALTH =====
-GET /health -> 200 {"status":"ok"}
-
-===== 2. PYTEST (parity + env + health), frozen contract copied in =====
-.........                                                                [100%]
-9 passed in 3.01s
-
-===== 3. GYM RANDOM ROLLOUT (offline) =====
-  step 0: action=28 reward=-1.00 kind=invalid_padding
-  step 1: action=21 reward=-1.00 kind=invalid_padding
-rollout complete: 2 steps, total_reward=-2.00
-
-===== 4. BC TRAIN on tiny sample =====
-loaded 2 cold-start sample(s) from data/coldstart_sample.jsonl
-built 4 expert transition(s); action_dim=33
-BC training complete: 1 epoch(s) over 4 transition(s)
-```
-
-Live optimizer seam — same seed, offline vs online (the `-2` delta is the solver's terminal
-adjudication of two coverable demands the random agent left unmet):
-
-```
---- seed 3 OFFLINE ---  total_reward=-2.00
---- seed 3 ONLINE  ---  total_reward=-4.00   (step 1: -1.00 base + -2.00 optimizer)
-```
-
-## Intended future `docker-compose.yml` `agent`-slot wiring — DOC ONLY
-
-> **This task does NOT edit `docker-compose.yml`.** Wiring the reserved `agent` slot's build/command
-> is a cross-team change signed off separately (firstmate routes it). The block below documents the
-> *intended* wiring so that change is a copy-paste. The reserved slot today still points its build
-> context at `./grafik-optimizer`; the intended change repoints it at **this** `./agent-service`
-> image and gives it a command.
-
-```yaml
-  # RL agent — self-learning scheduling service. Built from ./agent-service (its OWN image, NOT the
-  # lean CP-SAT optimizer image). Gated behind the "agent" profile so it never starts via `up -d`.
-  agent:
-    profiles: ["agent"]
-    build:
-      context: ./agent-service        # was ./grafik-optimizer — repoint to this image
-      dockerfile: Dockerfile
-    environment:
-      PYTHONUNBUFFERED: "1"
-      # In-network the env seam reaches the optimizer by service name, not localhost:
-      OPTIMIZER_URL: "http://optimizer:8000"
-    depends_on:
-      - optimizer
-    # M2-C1 phase B: serve the health/API scaffold. M2-C2 swaps this for the agent serving loop.
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-    # ports:   # expose only once /agent/* endpoints land (M2-C2)
-    #   - "8002:8000"
-```
+`ProblemInput`/`SolveResult` is **FROZEN**; canonical source `packages/shared/src/grafik/contract.ts`
+(Zod), mirrored in `grafik-optimizer/app/contract.py` (pydantic). agent-service keeps its **own**
+mirror at `app/contract.py` and a **parity test** (`tests/test_contract_parity.py`) that loads the
+optimizer's mirror by path and asserts field-for-field + enum equality. We never edit or import
+across the boundary; the test holds the line.
