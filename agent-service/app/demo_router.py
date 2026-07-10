@@ -111,6 +111,7 @@ _DEMO_HTML = """<!doctype html>
   .sub { color:var(--muted); font-size:13px; margin-top:2px; }
   button { background:var(--blue); color:#fff; border:0; border-radius:8px; padding:11px 20px; font-size:15px; font-weight:600; cursor:pointer; }
   button:disabled { opacity:.5; cursor:default; }
+  button.secondary { background:#fff; color:var(--blue); border:1px solid var(--blue); margin-left:8px; }
   .bar-wrap { height:14px; background:#eef2f7; border-radius:8px; overflow:hidden; margin-top:10px; }
   .bar { height:100%; background:linear-gradient(90deg,#60a5fa,#2563eb); width:100%; transition:width .5s ease; }
   table { width:100%; border-collapse:collapse; margin-top:8px; font-size:13px; }
@@ -152,9 +153,15 @@ _DEMO_HTML = """<!doctype html>
     </div>
   </div>
 
-  <div class="status" id="status">Ready. Click <b>Run live demo</b> to drive the learning loop.</div>
-  <p><button id="run">Run live demo</button>
+  <div class="status" id="status">Ready. Click <b>Reset demo agent to cold-start &amp; replay</b> to watch a
+     fresh, untrained agent learn the manager's schedule from scratch.</div>
+  <p><button id="reset">Reset demo agent to cold-start &amp; replay</button>
+     <button id="run" class="secondary">Replay (keep current training)</button>
      <span id="feas"></span></p>
+  <p class="note">“Reset &amp; replay” wipes <i>this demo tenant's</i> learned state and starts the agent from its
+     day-1 cold-start baseline, so you always see the full climb from an untrained agent
+     (edit-distance&nbsp;50&nbsp;→&nbsp;0, agreement&nbsp;52%&nbsp;→&nbsp;100%). It is a demo affordance to replay the
+     learning loop — not a production reset.</p>
 
   <table id="tbl" hidden>
     <thead><tr><th>Round</th><th>Stage</th><th>Policy&nbsp;v</th><th>Edit-distance</th><th>Agreement</th><th>Manager corrections fed</th><th>Feasibility</th></tr></thead>
@@ -193,11 +200,24 @@ function addRow(cells, latest) {
   tb.appendChild(tr);
 }
 
-async function runDemo() {
+async function runDemo(opts) {
+  opts = opts || {};
   $("run").disabled = true;
+  $("reset").disabled = true;
   $("tbl").hidden = false;
   $("tbl").querySelector("tbody").innerHTML = "";
   firstDist = null;
+  $("dist").textContent = "—"; $("acc").textContent = "—"; $("ver").textContent = "—";
+  $("bar").style.width = "100%";
+
+  // Reset & replay: return THIS demo tenant to its untrained cold-start policy first, so every run
+  // shows the full climb from a fresh agent (deterministic 50 -> 0 / 52% -> 100%).
+  if (opts.reset) {
+    $("status").innerHTML = "Resetting the demo agent to a <b>fresh, untrained cold-start</b> policy…";
+    const rs = await post("/agent/reset", {tenantId: TENANT});
+    $("status").innerHTML = "Agent reset to cold-start (policy <b>v" + rs.policyVersion
+      + "</b>, feedback cleared). Starting the learning loop from scratch…";
+  }
 
   // Live-optimizer proof: heal a deliberately-broken proposal through the real solver.
   $("status").innerHTML = "Contacting the <b>live CP-SAT optimizer</b> via /agent/heal…";
@@ -232,8 +252,14 @@ async function runDemo() {
             (rt.metrics.feedbackApplied ?? rt.metrics.feedbackRows), "self-development"], false);
   }
   $("run").disabled = false;
+  $("reset").disabled = false;
 }
-$("run").addEventListener("click", () => runDemo().catch(e => $("status").textContent = "Error: " + e.message));
+const guard = (fn) => fn().catch(e => {
+  $("status").textContent = "Error: " + e.message;
+  $("run").disabled = false; $("reset").disabled = false;
+});
+$("reset").addEventListener("click", () => guard(() => runDemo({reset: true})));
+$("run").addEventListener("click", () => guard(() => runDemo()));
 </script>
 </body>
 </html>

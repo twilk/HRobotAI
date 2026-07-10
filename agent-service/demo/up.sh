@@ -26,7 +26,10 @@ echo "==> Removing any previous ${NAME}"
 docker.exe rm -f "${NAME}" >/dev/null 2>&1 || true
 
 echo "==> Running ${NAME} on host port ${HOST_PORT}, network ${NET}, OPTIMIZER_URL=${OPTIMIZER_URL}"
+# --restart unless-stopped: durable keep-alive so the UAT demo survives a Docker daemon / host
+# restart (it comes back up automatically unless we explicitly `docker stop`/down.sh it).
 docker.exe run -d --name "${NAME}" --network "${NET}" -p "${HOST_PORT}:8000" \
+  --restart unless-stopped \
   -e OPTIMIZER_URL="${OPTIMIZER_URL}" "${IMAGE}" >/dev/null
 
 echo "==> Waiting for GET http://localhost:${HOST_PORT}/health"

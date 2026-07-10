@@ -257,6 +257,30 @@ class AgentService:
         self._load_policy(tenant_id)
         return RetrainPipeline(self.store).retrain(tenant_id, note=note)
 
+    # --- tenant-scoped reset to cold-start (demo affordance) ------------------------------------
+
+    def reset(self, tenant_id: str) -> dict:
+        """Return **one tenant** to its day-1, untrained cold-start policy.
+
+        This is the server side of the demo's *"Reset demo agent to cold-start & replay"*: it clears
+        the tenant's accumulated feedback, its policy-version history and its learned policy state
+        (tenant-scoped — never a blanket wipe), then re-derives the **exact same cold-start BC
+        baseline** first use would build — imitation of the solver teacher on the canonical problem,
+        recorded as policy ``v1``. No parallel policy path: it deletes state and replays the existing
+        :meth:`_load_policy` cold start. Deterministic and idempotent, so a fresh ``propose`` for the
+        demo scenario is back at the day-1 gap (~edit-distance 50 / agreement ~52%) every time.
+        """
+        deleted = self.store.reset_tenant(tenant_id)
+        # policy_state was just cleared, so this cold-starts a fresh v1 (and records the version row).
+        state = self._load_policy(tenant_id)
+        return {
+            "ok": True,
+            "tenantId": tenant_id,
+            "policyVersion": state.version,
+            "feedbackCount": self.store.count_feedback(tenant_id),
+            "cleared": deleted,
+        }
+
     # --- policy read (AG5) ----------------------------------------------------------------------
 
     def policy_info(self, tenant_id: str) -> dict:
