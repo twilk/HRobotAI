@@ -25,6 +25,11 @@ COPY pyproject.toml ./
 COPY app ./app
 COPY tests ./tests
 COPY data ./data
+COPY fixtures ./fixtures
+
+# Tenant-isolated feedback store (M2-C2) lives here; overridable via AGENT_DB_PATH.
+RUN mkdir -p /data
+ENV AGENT_DB_PATH=/data/agent.db
 
 EXPOSE 8000
 

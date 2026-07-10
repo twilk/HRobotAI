@@ -1,0 +1,218 @@
+{
+  "status": "OPTIMAL",
+  "assignments": [
+    {
+      "employeeId": "839275ec-cf4b-5217-82db-cddcdd450d3f",
+      "demandId": "047c4938-3fa7-58dc-85b5-fbcc1b2bf19a"
+    },
+    {
+      "employeeId": "f33971fc-cda1-5752-bef1-480560488176",
+      "demandId": "047c4938-3fa7-58dc-85b5-fbcc1b2bf19a"
+    },
+    {
+      "employeeId": "8567441e-7773-51f2-8eee-7eb90ab3813e",
+      "demandId": "084861de-81f8-5033-aee1-663f610bdf4c"
+    },
+    {
+      "employeeId": "89b34e6b-0483-50d1-8ccf-b840c6991628",
+      "demandId": "0bece10c-59d6-5b51-b08a-2de1749bd774"
+    },
+    {
+      "employeeId": "f33971fc-cda1-5752-bef1-480560488176",
+      "demandId": "0bece10c-59d6-5b51-b08a-2de1749bd774"
+    },
+    {
+      "employeeId": "859357bd-66b3-5e90-81db-bd2e07c4419a",
+      "demandId": "0c6e3308-07cb-5e4a-a287-f27c03dd4f0e"
+    },
+    {
+      "employeeId": "575f19c4-d442-52a0-be86-8c942541b0ef",
+      "demandId": "0eda4f38-7e8f-5f8f-bae0-0b647ad30a23"
+    },
+    {
+      "employeeId": "f33971fc-cda1-5752-bef1-480560488176",
+      "demandId": "0eda4f38-7e8f-5f8f-bae0-0b647ad30a23"
+    },
+    {
+      "employeeId": "cbd0b44f-9588-5195-bb0e-247a731ed5bd",
+      "demandId": "1f9ff429-63ba-57c5-ad43-d342f5e81af9"
+    },
+    {
+      "employeeId": "859357bd-66b3-5e90-81db-bd2e07c4419a",
+      "demandId": "2003b837-bd7b-539c-a784-ff680878e25d"
+    },
+    {
+      "employeeId": "20f69d1b-f0f5-5a71-a9ea-89c369ba4318",
+      "demandId": "29274ae2-41a9-5216-985f-6e3f2835754f"
+    },
+    {
+      "employeeId": "cbd0b44f-9588-5195-bb0e-247a731ed5bd",
+      "demandId": "29274ae2-41a9-5216-985f-6e3f2835754f"
+    },
+    {
+      "employeeId": "575f19c4-d442-52a0-be86-8c942541b0ef",
+      "demandId": "31685af7-ac1a-580b-a1d7-306307118e08"
+    },
+    {
+      "employeeId": "7d67bc2d-bb02-5f3c-9fbc-d25dfe985972",
+      "demandId": "31685af7-ac1a-580b-a1d7-306307118e08"
+    },
+    {
+      "employeeId": "8567441e-7773-51f2-8eee-7eb90ab3813e",
+      "demandId": "3a948034-6376-54cf-a715-3f7601c20faf"
+    },
+    {
+      "employeeId": "20f69d1b-f0f5-5a71-a9ea-89c369ba4318",
+      "demandId": "4ecbe661-337d-5eee-b582-ad23bf62ed84"
+    },
+    {
+      "employeeId": "575f19c4-d442-52a0-be86-8c942541b0ef",
+      "demandId": "50ad114f-18c9-5f02-8ca9-76c9e3c47a90"
+    },
+    {
+      "employeeId": "7d67bc2d-bb02-5f3c-9fbc-d25dfe985972",
+      "demandId": "50ad114f-18c9-5f02-8ca9-76c9e3c47a90"
+    },
+    {
+      "employeeId": "9a87723e-8e07-5829-9156-088c2deaa5cd",
+      "demandId": "5497d505-305a-5213-af67-a04f231d0f04"
+    },
+    {
+      "employeeId": "aeac802d-3866-51d8-badd-2cb02e39cd61",
+      "demandId": "556a721a-a217-55f0-9979-77b7e15d68ab"
+    },
+    {
+      "employeeId": "20f69d1b-f0f5-5a71-a9ea-89c369ba4318",
+      "demandId": "619838bd-adc0-5a6d-bf8a-3ab5d7b629d0"
+    },
+    {
+      "employeeId": "859357bd-66b3-5e90-81db-bd2e07c4419a",
+      "demandId": "65c87522-7365-59a6-8d01-44fb1aac50c7"
+    },
+    {
+      "employeeId": "1ce0bb15-b00f-5b3f-a891-89a5aa818e2d",
+      "demandId": "6ec2085c-6aad-5b6e-8aa4-75cd8c12ca5c"
+    },
+    {
+      "employeeId": "575f19c4-d442-52a0-be86-8c942541b0ef",
+      "demandId": "6ec2085c-6aad-5b6e-8aa4-75cd8c12ca5c"
+    },
+    {
+      "employeeId": "426bea46-0ff9-522e-bdeb-d35d385235bd",
+      "demandId": "741d063f-b74b-5c45-8616-4bd76fe4cb78"
+    },
+    {
+      "employeeId": "f33971fc-cda1-5752-bef1-480560488176",
+      "demandId": "741d063f-b74b-5c45-8616-4bd76fe4cb78"
+    },
+    {
+      "employeeId": "aeac802d-3866-51d8-badd-2cb02e39cd61",
+      "demandId": "790b74ff-f65d-54c8-bfd4-38c95d3e5d16"
+    },
+    {
+      "employeeId": "9b7092a4-db46-59c5-912f-12791378c167",
+      "demandId": "80ed53df-b451-50b1-acae-1e23344738f0"
+    },
+    {
+      "employeeId": "20f69d1b-f0f5-5a71-a9ea-89c369ba4318",
+      "demandId": "89ea4bef-3013-5809-8d35-bf487a781a4d"
+    },
+    {
+      "employeeId": "839275ec-cf4b-5217-82db-cddcdd450d3f",
+      "demandId": "89ea4bef-3013-5809-8d35-bf487a781a4d"
+    },
+    {
+      "employeeId": "cbd0b44f-9588-5195-bb0e-247a731ed5bd",
+      "demandId": "9590fee7-829b-5a47-9590-f28780625686"
+    },
+    {
+      "employeeId": "aeac802d-3866-51d8-badd-2cb02e39cd61",
+      "demandId": "9e8addb0-5b25-5909-a485-b9a8956ffd0c"
+    },
+    {
+      "employeeId": "859357bd-66b3-5e90-81db-bd2e07c4419a",
+      "demandId": "a4f40568-a121-502b-ac9c-996d9218a492"
+    },
+    {
+      "employeeId": "426bea46-0ff9-522e-bdeb-d35d385235bd",
+      "demandId": "aa191c95-b911-5853-b566-50edc7052f4b"
+    },
+    {
+      "employeeId": "839275ec-cf4b-5217-82db-cddcdd450d3f",
+      "demandId": "aae0e6b6-d72f-5a17-97c3-a9384fd42769"
+    },
+    {
+      "employeeId": "cbd0b44f-9588-5195-bb0e-247a731ed5bd",
+      "demandId": "aae0e6b6-d72f-5a17-97c3-a9384fd42769"
+    },
+    {
+      "employeeId": "89b34e6b-0483-50d1-8ccf-b840c6991628",
+      "demandId": "ac77e660-730f-5a42-b5f9-c69f97fadd05"
+    },
+    {
+      "employeeId": "f33971fc-cda1-5752-bef1-480560488176",
+      "demandId": "ac77e660-730f-5a42-b5f9-c69f97fadd05"
+    },
+    {
+      "employeeId": "575f19c4-d442-52a0-be86-8c942541b0ef",
+      "demandId": "b2fb9eea-e751-51d5-b13f-21c91a4e6659"
+    },
+    {
+      "employeeId": "aeac802d-3866-51d8-badd-2cb02e39cd61",
+      "demandId": "bc8d7082-265e-521e-b212-f6ffebfe328e"
+    },
+    {
+      "employeeId": "aeac802d-3866-51d8-badd-2cb02e39cd61",
+      "demandId": "e068240b-5d4b-5070-80fc-cdb42777f0c6"
+    },
+    {
+      "employeeId": "20f69d1b-f0f5-5a71-a9ea-89c369ba4318",
+      "demandId": "e1729aad-37f1-5f79-a0f9-371b160d17ce"
+    },
+    {
+      "employeeId": "7d67bc2d-bb02-5f3c-9fbc-d25dfe985972",
+      "demandId": "e1729aad-37f1-5f79-a0f9-371b160d17ce"
+    },
+    {
+      "employeeId": "cbd0b44f-9588-5195-bb0e-247a731ed5bd",
+      "demandId": "e1b70ade-bdf4-5697-8df7-3a316e952eef"
+    },
+    {
+      "employeeId": "9a87723e-8e07-5829-9156-088c2deaa5cd",
+      "demandId": "e781e6b5-fb90-5434-8011-b1e15d0d7001"
+    },
+    {
+      "employeeId": "9b7092a4-db46-59c5-912f-12791378c167",
+      "demandId": "edd82e91-63fd-5444-b9c3-d7f781b5d7f2"
+    },
+    {
+      "employeeId": "9b7092a4-db46-59c5-912f-12791378c167",
+      "demandId": "f3af7a6f-c314-5964-9717-31b5590d1402"
+    },
+    {
+      "employeeId": "1ce0bb15-b00f-5b3f-a891-89a5aa818e2d",
+      "demandId": "f7525dbc-b9b2-579c-98e8-f2aeae452fd5"
+    },
+    {
+      "employeeId": "89b34e6b-0483-50d1-8ccf-b840c6991628",
+      "demandId": "f7525dbc-b9b2-579c-98e8-f2aeae452fd5"
+    },
+    {
+      "employeeId": "9b7092a4-db46-59c5-912f-12791378c167",
+      "demandId": "fc48cdd3-cad4-59af-9a7d-a6555c794910"
+    },
+    {
+      "employeeId": "1ce0bb15-b00f-5b3f-a891-89a5aa818e2d",
+      "demandId": "fdc0469e-146f-56d5-b1c6-b5b12eb16347"
+    },
+    {
+      "employeeId": "839275ec-cf4b-5217-82db-cddcdd450d3f",
+      "demandId": "fdc0469e-146f-56d5-b1c6-b5b12eb16347"
+    }
+  ],
+  "metrics": {
+    "commuteTotal": 9898.451287,
+    "etatDeviation": 786,
+    "fairnessScore": 0
+  }
+}

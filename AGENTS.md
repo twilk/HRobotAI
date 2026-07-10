@@ -61,6 +61,8 @@ symlinks (every `CLAUDE.md` → `AGENTS.md`), so each build context's `.dockerig
 `**/CLAUDE.md`. Both services consume the FROZEN grafik contract via an own pydantic mirror +
 parity test (same schema-parity idiom as *Prisma enums* above) — see each service's `README.md`.
 Note the TS `agent/` dir (cold-start dataset gen, above) is a different thing from `agent-service/`.
+`agent-service`'s M2-C2 feedback/policy persist in a tenant-keyed SQLite store owned in-service
+(`AGENT_DB_PATH`); the Prisma `AgentFeedback` home (spec §6) is deferred to a separate change.
 
 ## Maintaining this file
 

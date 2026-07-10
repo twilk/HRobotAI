@@ -1,0 +1,63 @@
+{
+  "scenario": "canonical-feasible (36 employees, 38 demands, 52 assignments)",
+  "managerPreference": "give hours to full-timers first (etat-priority) \u2014 not encoded by the fixed-weight solver",
+  "metric": "edit_distance = |proposed \u25b3 manager_accepted| (symmetric difference of (employee,demand) pairs)",
+  "rounds": 6,
+  "correctionBudgetPerRound": 6,
+  "useFeedback": true,
+  "acceptedAssignments": 52,
+  "history": [
+    {
+      "round": 0,
+      "policyVersion": 1,
+      "editDistance": 50,
+      "normalizedEditDistance": 0.4808,
+      "acceptanceMetric": 0.5192,
+      "feasible": true
+    },
+    {
+      "round": 1,
+      "policyVersion": 2,
+      "editDistance": 44,
+      "normalizedEditDistance": 0.4231,
+      "acceptanceMetric": 0.5769,
+      "feasible": true
+    },
+    {
+      "round": 2,
+      "policyVersion": 3,
+      "editDistance": 28,
+      "normalizedEditDistance": 0.2692,
+      "acceptanceMetric": 0.7308,
+      "feasible": true
+    },
+    {
+      "round": 3,
+      "policyVersion": 4,
+      "editDistance": 18,
+      "normalizedEditDistance": 0.1731,
+      "acceptanceMetric": 0.8269,
+      "feasible": true
+    },
+    {
+      "round": 4,
+      "policyVersion": 5,
+      "editDistance": 4,
+      "normalizedEditDistance": 0.0385,
+      "acceptanceMetric": 0.9615,
+      "feasible": true
+    },
+    {
+      "round": 5,
+      "policyVersion": 6,
+      "editDistance": 0,
+      "normalizedEditDistance": 0.0,
+      "acceptanceMetric": 1.0,
+      "feasible": true
+    }
+  ],
+  "firstEditDistance": 50,
+  "lastEditDistance": 0,
+  "monotoneNonIncreasing": true,
+  "measurableDrop": true
+}
