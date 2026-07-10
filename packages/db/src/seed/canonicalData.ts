@@ -1,5 +1,5 @@
 import { EmploymentType } from '@hrobot/shared'
-import { pick, stableId } from './determinism.js'
+import { md5Bytes, pick, stableId } from './determinism.js'
 import { generateSyntheticPesel, type SyntheticPesel } from './pesel.js'
 
 /**
@@ -73,6 +73,13 @@ export interface SeedEmployee {
   homeAddress: string
   homeLat: number
   homeLng: number
+  /**
+   * SOFT synthetic preferences derived from `md5(id)` (see {@link derivePreferences}). Weekday codes
+   * (`MON`..`SUN`) the employee would rather NOT work. May be empty; never affects feasibility.
+   */
+  preferredDaysOff: string[]
+  /** SOFT preferred shift start times as `HH:mm`, drawn from the seed's template starts. May be empty. */
+  preferredShiftStart: string[]
 }
 
 export interface SeedLeave {
@@ -263,7 +270,41 @@ function isoDatePlusDays(baseIso: string, days: number): string {
   return d.toISOString().slice(0, 10)
 }
 
-function buildEmployees(units: SeedUnit[]): SeedEmployee[] {
+/** Distinct shift-template start times (`HH:mm`, sorted) — the DOMAIN `preferredShiftStart` draws from. */
+export function templateStartTimes(templates: SeedTemplate[]): string[] {
+  const starts = new Set<string>()
+  for (const t of templates) for (const w of t.okna) starts.add(w.start)
+  return [...starts].sort()
+}
+
+/**
+ * Derive one employee's SOFT synthetic preferences from `md5(<stable employee id>)`. Deterministic and
+ * idempotent — the same id always yields the same preferences, so re-seeding is a no-op and Tor C/UAT
+ * see a byte-identical set. Preferences are SOFT: {@link weekCoverage} ignores them, so this NEVER
+ * changes which week is feasible vs infeasible.
+ *
+ *   - `preferredDaysOff`: 0–2 distinct weekday codes. `hash[0] % 3` sets the count, so ~1/3 of
+ *     employees get none (a realistic "no strong preference" cohort) while the distribution stays fixed.
+ *   - `preferredShiftStart`: 0–1 start time. `hash[3]` even → one value drawn from `templateStarts`
+ *     (always a real template start, so it is a schedulable time), else none.
+ */
+export function derivePreferences(
+  employeeId: string,
+  templateStarts: readonly string[],
+): { preferredDaysOff: string[]; preferredShiftStart: string[] } {
+  const h = md5Bytes(employeeId)
+  const count = h[0]! % 3 // 0, 1, or 2 preferred days off
+  const preferredDaysOff: string[] = []
+  for (let k = 0; k < count; k++) {
+    const code = DOW[h[1 + k]! % DOW.length]!
+    if (!preferredDaysOff.includes(code)) preferredDaysOff.push(code) // keep distinct
+  }
+  const wantsStart = h[3]! % 2 === 0 && templateStarts.length > 0
+  const preferredShiftStart = wantsStart ? [templateStarts[h[4]! % templateStarts.length]!] : []
+  return { preferredDaysOff, preferredShiftStart }
+}
+
+function buildEmployees(units: SeedUnit[], templateStarts: readonly string[]): SeedEmployee[] {
   const regions = units.filter((u) => u.parentId !== null)
   const out: SeedEmployee[] = []
   for (let i = 0; i < EMPLOYEE_COUNT; i++) {
@@ -280,8 +321,11 @@ function buildEmployees(units: SeedUnit[]): SeedEmployee[] {
     const houseNo = (i % 90) + 1
     // Natural key for the id/PESEL: index is enough since names/quals are index-derived.
     const naturalKey = `emp-${i}`
+    const id = stableId('employee', naturalKey)
+    // SOFT preferences hash off the STABLE id (not the index), so they travel with identity.
+    const { preferredDaysOff, preferredShiftStart } = derivePreferences(id, templateStarts)
     out.push({
-      id: stableId('employee', naturalKey),
+      id,
       firstName,
       lastName,
       pesel: generateSyntheticPesel(i, sex),
@@ -294,6 +338,8 @@ function buildEmployees(units: SeedUnit[]): SeedEmployee[] {
       homeAddress: `${street} ${houseNo}, ${city.postal} ${city.name}`,
       homeLat: Number((city.lat + latJitter).toFixed(6)),
       homeLng: Number((city.lng + lngJitter).toFixed(6)),
+      preferredDaysOff,
+      preferredShiftStart,
     })
   }
   return out
@@ -473,8 +519,9 @@ function buildLeaves(employees: SeedEmployee[]): SeedLeave[] {
 export function buildCanonicalSeed(): CanonicalSeed {
   const units = buildUnits()
   const locations = buildLocations()
-  const employees = buildEmployees(units)
   const templates = buildTemplates()
+  // Templates first: SOFT employee preferences draw their preferredShiftStart from the template starts.
+  const employees = buildEmployees(units, templateStartTimes(templates))
   const demands = buildDemands(locations, templates)
   const leaves = buildLeaves(employees)
   return { units, locations, employees, leaves, templates, demands }
@@ -566,6 +613,27 @@ export function assertCanonicalInvariants(seed: CanonicalSeed): void {
   // Unique PESELs.
   const pesels = seed.employees.map((e) => e.pesel.value)
   if (new Set(pesels).size !== pesels.length) throw new Error('canonical seed: duplicate PESEL')
+
+  // SOFT preferences stay inside their value domains (valid weekday codes + real template starts).
+  const validDays = new Set<string>(DOW)
+  const validStarts = new Set(templateStartTimes(seed.templates))
+  for (const e of seed.employees) {
+    if (e.preferredDaysOff.length > 2) {
+      throw new Error(`canonical seed: employee ${e.id} has >2 preferredDaysOff`)
+    }
+    if (new Set(e.preferredDaysOff).size !== e.preferredDaysOff.length) {
+      throw new Error(`canonical seed: employee ${e.id} has duplicate preferredDaysOff`)
+    }
+    for (const d of e.preferredDaysOff) {
+      if (!validDays.has(d)) throw new Error(`canonical seed: invalid preferredDaysOff code ${d}`)
+    }
+    if (e.preferredShiftStart.length > 1) {
+      throw new Error(`canonical seed: employee ${e.id} has >1 preferredShiftStart`)
+    }
+    for (const s of e.preferredShiftStart) {
+      if (!validStarts.has(s)) throw new Error(`canonical seed: preferredShiftStart ${s} is not a template start`)
+    }
+  }
 
   // The headline property: one feasible week, one infeasible week.
   const feasible = weekCoverage(seed, CANONICAL_WEEKS.feasible.weekStart)
