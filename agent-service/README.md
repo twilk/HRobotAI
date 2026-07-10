@@ -189,6 +189,50 @@ docker.exe cp ./grafik-optimizer/app/contract.py agent-smoke:/ref/contract.py
 docker.exe exec -e OPTIMIZER_CONTRACT_PATH=/ref/contract.py agent-smoke python -m pytest -q
 ```
 
+## J4 live demo (UAT in front of 4Mobility)
+
+Makes the self-learning loop **live-demoable** — brings the agent up alongside the running stack and
+drives it, through the **live** optimizer, so a stakeholder *watches* the agent learn instead of
+reading committed metrics. Everything is the fixed synthetic scenario (RODO-safe). Scripts live in
+`demo/` (host-side; not shipped into the image).
+
+**1 — bring it up (standalone, joined to the live stack net — NOT via compose):**
+
+```bash
+bash agent-service/demo/up.sh        # builds agent-service:demo, runs it on host :8010,
+                                     # joined to `hrobot_default`, OPTIMIZER_URL=http://optimizer:8000
+curl http://localhost:8010/health    # -> {"status":"ok"}
+bash agent-service/demo/down.sh      # stop + remove
+```
+
+`up.sh` does **not** edit `docker-compose.yml` (owned by another team). The reserved compose `agent`
+slot is the alternative "in-stack" wiring — that needs an **sm-grafik-core PR** to `docker-compose.yml`
+and is a **documented follow-up**, out of scope here.
+
+**2 — run the scripted demo (drives the running agent → live optimizer):**
+
+```bash
+python3 agent-service/demo/j4_live_demo.py --base http://localhost:8010
+```
+
+Pure-stdlib (`urllib`) client — runs on any host `python3`, no install. It walks the audience through:
+`heal` (proves the **live** solver answers) → `propose` (schedule **+ per-assignment rationale**) →
+`feedback` (scripted manager corrections) → `retrain` (batch self-development, new versioned policy +
+artifact) → re-propose, printing the **edit-distance drop `50 → 0`** live. A fresh per-run tenant means
+every run shows the full curve. Representative run captured in `demo/evidence/j4_live_demo_run.txt`.
+
+**Bonus — a self-served visual page** (optional stretch, genuinely working — not a mock):
+
+```
+http://localhost:8010/agent/demo
+```
+
+Same-origin vanilla-JS page (served by `app/demo_router.py`, no CDN/CORS) that runs the same loop with
+a live table + the edit-distance number falling to 0. Screenshot: `demo/evidence/j4_demo_page.png`.
+
+The scripted manager stays **server-side and reused** (`/agent/demo/corrections` calls the committed
+`demo_ag2` helpers) so the client is thin. Guarded by `tests/test_demo_router.py`.
+
 ## Consuming the FROZEN contract (mirror + parity)
 
 `ProblemInput`/`SolveResult` is **FROZEN**; canonical source `packages/shared/src/grafik/contract.ts`

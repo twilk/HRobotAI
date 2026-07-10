@@ -17,3 +17,7 @@ venv/
 # Docs/build outputs that don't belong in the image.
 README.md
 data/README.md
+
+# Host-side J4 live-demo driver + its evidence. The demo page HTML lives IN the image
+# (app/demo_router.py); these scripts run on the host, so keep them out of the build context.
+demo/

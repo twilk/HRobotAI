@@ -67,6 +67,9 @@ separate change. M2-C3 adds the **formal batch retrain** (`app/retrain.py`, `pyt
 `POST /agent/retrain`) — a from-scratch re-fit over the full accumulated feedback log, distinct from
 `policy.py`'s online nudge, that writes versioned artifacts to `AGENT_ARTIFACTS_DIR` (gitignored).
 See `agent-service/README.md` for the online-vs-batch table and the AG5/AG2 evidence.
+The **J4 live demo** (bring the agent up standalone on host `:8010` joined to `hrobot_default`, then
+drive the learning loop live against the real optimizer) lives in `agent-service/demo/` — see the
+README's "J4 live demo" section; the in-stack compose `agent`-slot wiring stays a follow-up.
 
 ## Maintaining this file
 
