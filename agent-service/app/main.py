@@ -13,9 +13,14 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from .agent_router import router as agent_router
+from .demo_router import router as demo_router
 
 app = FastAPI(title="agent-service", version="0.1.0")
 app.include_router(agent_router)
+# J4 live-demo helpers (scripted-manager corrections endpoint + a same-origin visual page). Additive
+# and demo-only — reuses the committed AG2 scripted manager; no new learning capability. See
+# demo_router / agent-service/demo/.
+app.include_router(demo_router)
 
 
 @app.get("/health")

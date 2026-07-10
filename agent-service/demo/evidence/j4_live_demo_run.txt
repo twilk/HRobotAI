@@ -1,0 +1,91 @@
+
+════════════════════════════════════════════════════════════════
+ J4 · Self-learning scheduling agent — LIVE demo
+════════════════════════════════════════════════════════════════
+ Agent under test : http://localhost:8010
+ Optimizer        : live CP-SAT (real solver, in-stack)
+ Scenario         : 36 employees, 38 demands — SYNTHETIC (RODO-safe)
+ Health           : {'status': 'ok'}
+
+════════════════════════════════════════════════════════════════
+ STEP 0 · Feasibility guardian = the LIVE optimizer
+════════════════════════════════════════════════════════════════
+ We hand the agent a deliberately EMPTY (infeasible) roster and ask it to repair it
+ through the real solver:  POST /agent/heal
+
+   → live solver status : OPTIMAL
+   → repaired assignments: 52
+   → unmet demands       : 0
+   ✓ The agent is validating feasibility against the REAL CP-SAT optimizer, not a mock.
+
+════════════════════════════════════════════════════════════════
+ STEP 1-4 · The learning loop (propose → correct → retrain → re-propose)
+════════════════════════════════════════════════════════════════
+ The manager's rule: "give hours to full-timers first" — a preference the fixed-weight
+ solver CANNOT encode. Watch the agent LEARN it from corrections.
+ edit-distance = how many assignment changes still separate the agent's roster from the
+ manager's ideal (0 = identical).
+
+────────────────────────────────────────────────────────────────
+ ROUND 1  ·  propose
+   policy v1  ·  feasible ✓  ·  edit-distance 50  ·  agreement 52%
+   why the agent chose these assignments (sample):
+     • cbd0b44f… → demand 4ecbe661… : qualified for role RECEPCJA; commute 6 min
+     • 859357bd… → demand aae0e6b6… : qualified for role KIEROWCA; commute 9 min
+     • 9b7092a4… → demand aae0e6b6… : qualified for role KIEROWCA; commute 11 min
+   manager corrects 8 assignments (MOVE hours toward full-timers)
+   → POST /agent/feedback  (logged 8 corrections)
+   → POST /agent/retrain   → policy v3 (batch self-development), 8 corrections folded in, artifact policy_j4-live-194412_v3.json
+────────────────────────────────────────────────────────────────
+ ROUND 2  ·  propose
+   policy v3  ·  feasible ✓  ·  edit-distance 44  ·  agreement 58%
+   why the agent chose these assignments (sample):
+     • cbd0b44f… → demand 4ecbe661… : qualified for role RECEPCJA; commute 6 min
+     • 20f69d1b… → demand aae0e6b6… : qualified for role KIEROWCA; commute 171 min; manager-learned preference (affinity +3.00)
+     • 859357bd… → demand aae0e6b6… : qualified for role KIEROWCA; commute 9 min
+   manager corrects 7 assignments (MOVE hours toward full-timers)
+   → POST /agent/feedback  (logged 7 corrections)
+   → POST /agent/retrain   → policy v5 (batch self-development), 15 corrections folded in, artifact policy_j4-live-194412_v5.json
+────────────────────────────────────────────────────────────────
+ ROUND 3  ·  propose
+   policy v5  ·  feasible ✓  ·  edit-distance 28  ·  agreement 73%
+   manager corrects 6 assignments (MOVE hours toward full-timers)
+   → POST /agent/feedback  (logged 6 corrections)
+   → POST /agent/retrain   → policy v7 (batch self-development), 21 corrections folded in, artifact policy_j4-live-194412_v7.json
+────────────────────────────────────────────────────────────────
+ ROUND 4  ·  propose
+   policy v7  ·  feasible ✓  ·  edit-distance 18  ·  agreement 83%
+   manager corrects 6 assignments (MOVE hours toward full-timers)
+   → POST /agent/feedback  (logged 6 corrections)
+   → POST /agent/retrain   → policy v9 (batch self-development), 27 corrections folded in, artifact policy_j4-live-194412_v9.json
+────────────────────────────────────────────────────────────────
+ ROUND 5  ·  propose
+   policy v9  ·  feasible ✓  ·  edit-distance 4  ·  agreement 96%
+   manager corrects 2 assignments (MOVE hours toward full-timers)
+   → POST /agent/feedback  (logged 2 corrections)
+   → POST /agent/retrain   → policy v11 (batch self-development), 29 corrections folded in, artifact policy_j4-live-194412_v11.json
+────────────────────────────────────────────────────────────────
+ ROUND 6  ·  propose
+   policy v11  ·  feasible ✓  ·  edit-distance 0  ·  agreement 100%
+
+   ✓ CONVERGED — the agent now reproduces the manager's schedule exactly.
+
+════════════════════════════════════════════════════════════════
+ RESULT · The agent learned, live
+════════════════════════════════════════════════════════════════
+ edit-distance per round (bar shrinks as the agent learns the manager's preference):
+
+   round 1  v1   dist  50  ██████████████████████████████████████████████████
+   round 2  v3   dist  44  ████████████████████████████████████████████      
+   round 3  v5   dist  28  ████████████████████████████                      
+   round 4  v7   dist  18  ██████████████████                                
+   round 5  v9   dist   4  ████                                              
+   round 6  v11  dist   0                                                      ← converged
+
+   edit-distance : 50 → 0
+   agreement     : 52% → 100%
+   policy versions produced : 11 (5 formal batch retrains, each with a saved artifact)
+   feedback corrections logged: 29
+
+ ✓ J4 PROVEN LIVE: the agent learned a preference the solver cannot encode,
+   the edit-distance dropped monotonically, and every roster was checked against the LIVE optimizer.
