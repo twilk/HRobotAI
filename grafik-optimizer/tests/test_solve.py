@@ -55,7 +55,15 @@ def test_solve_accepts_valid_problem_and_returns_schema_valid_result() -> None:
     # Trivially feasible → the sole qualified, available employee covers the sole demand.
     assert body["status"] == "OPTIMAL"
     assert body["assignments"] == [{"employeeId": "emp-1", "demandId": "dem-1"}]
-    assert set(body["metrics"]) == {"commuteTotal", "etatDeviation", "fairnessScore"}
+    # preferencesHonoredPct is now populated (employee-preferences phase 2): emp-1 has no
+    # preferences → the sole assignment honors vacuously → 1.0.
+    assert set(body["metrics"]) == {
+        "commuteTotal",
+        "etatDeviation",
+        "fairnessScore",
+        "preferencesHonoredPct",
+    }
+    assert body["metrics"]["preferencesHonoredPct"] == 1.0
     assert body["unmet"] == []
 
 
