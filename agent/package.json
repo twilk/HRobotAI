@@ -1,0 +1,28 @@
+{
+  "name": "@hrobot/agent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Self-learning scheduling agent — M2-C1 phase A: cold-start imitation dataset generator (Node).",
+  "scripts": {
+    "coldstart:generate": "tsx src/generate.ts",
+    "build": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint src",
+    "test": "jest --config jest.config.cjs"
+  },
+  "dependencies": {
+    "@hrobot/db": "workspace:*",
+    "@hrobot/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@hrobot/config": "workspace:*",
+    "@types/jest": "^29.5.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.13.0",
+    "typescript-eslint": "^8.10.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "milestone": "M2-C1 phase A (cold-start imitation dataset)",
+  "source": "packages/db/src/seed/canonicalData.ts (frozen canonical synthetic seed)",
+  "optimizer": {
+    "defaultUrl": "http://localhost:8001",
+    "envVar": "OPTIMIZER_URL",
+    "endpoint": "POST /solve"
+  },
+  "solver": {
+    "seed": 42,
+    "weights": {
+      "d": 1,
+      "e": 1,
+      "g": 1
+    },
+    "note": "ProblemInput.solverConfig.seed is fixed for reproducibility"
+  },
+  "pairCount": 6,
+  "statusDistribution": {
+    "OPTIMAL": 4,
+    "INFEASIBLE": 2
+  },
+  "pairs": [
+    {
+      "id": "feasible__full",
+      "status": "OPTIMAL",
+      "week": "feasible",
+      "scope": "full",
+      "demands": 38,
+      "employees": 36,
+      "assignments": 52,
+      "unmet": 0
+    },
+    {
+      "id": "feasible__14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "status": "OPTIMAL",
+      "week": "feasible",
+      "scope": "Lotnisko Chopina — Warszawa",
+      "demands": 28,
+      "employees": 36,
+      "assignments": 42,
+      "unmet": 0
+    },
+    {
+      "id": "feasible__c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "status": "OPTIMAL",
+      "week": "feasible",
+      "scope": "Stacja Mobilności — Warszawa Centrum",
+      "demands": 10,
+      "employees": 36,
+      "assignments": 10,
+      "unmet": 0
+    },
+    {
+      "id": "infeasible__full",
+      "status": "INFEASIBLE",
+      "week": "infeasible",
+      "scope": "full",
+      "demands": 39,
+      "employees": 36,
+      "assignments": 52,
+      "unmet": 1
+    },
+    {
+      "id": "infeasible__14bcfad7-661a-5d4f-8de5-95264c817ed3",
+      "status": "INFEASIBLE",
+      "week": "infeasible",
+      "scope": "Lotnisko Chopina — Warszawa",
+      "demands": 29,
+      "employees": 36,
+      "assignments": 42,
+      "unmet": 1
+    },
+    {
+      "id": "infeasible__c16ac581-6158-57e9-9843-19c47fc95aa8",
+      "status": "OPTIMAL",
+      "week": "infeasible",
+      "scope": "Stacja Mobilności — Warszawa Centrum",
+      "demands": 10,
+      "employees": 36,
+      "assignments": 10,
+      "unmet": 0
+    }
+  ]
+}

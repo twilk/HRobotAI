@@ -23,6 +23,11 @@ Workspace packages must be built before an app type-checks/builds: a bare `nest 
 `apps/*` fails with `Cannot find module '@hrobot/db'`. Use turbo so deps build first:
 `npx turbo run build --filter=@hrobot/<pkg>` (it also runs `db:generate`). Same for lint/test order.
 
+The top-level `agent/` dir (`@hrobot/agent`, added to `pnpm-workspace.yaml`) is a pnpm-workspace
+member but typecheck-only: no `dist`, `build` is `tsc --noEmit`, code runs via `tsx`. It holds the
+M2-C1 phase-A cold-start dataset generator — see `agent/README.md`. The eventual Python/SB3 agent
+service is a separate runtime and does NOT live here.
+
 `docs/design/web-kit` (the Next.js tenant reference app, port 5601) is NOT a pnpm-workspace member —
 turbo won't build it. Install + build it standalone from that dir: `npm install && npm run build`
 (build runs type-check). Its data is static/mock proof-of-stack (e.g. `lib/swaps.ts` stands in for the
