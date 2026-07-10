@@ -230,6 +230,17 @@ http://localhost:8010/agent/demo
 Same-origin vanilla-JS page (served by `app/demo_router.py`, no CDN/CORS) that runs the same loop with
 a live table + the edit-distance number falling to 0. Screenshot: `demo/evidence/j4_demo_page.png`.
 
+**Reset & replay (always shows the full climb from a FRESH agent).** The page's primary button —
+*"Reset demo agent to cold-start & replay"* — first calls `POST /agent/reset` then drives the loop, so
+UAT always sees the whole climb (**edit-distance `50 → 0`** AND **agreement `52% → 100%`**) from an
+untrained agent, deterministically every run. `POST /agent/reset` (body `{"tenantId": …}`) is
+**tenant-scoped** (never a blanket wipe): it clears that tenant's `agent_feedback`, `policy_versions`
+and `policy_state` (via `AgentStore.reset_tenant`) and re-derives the day-1 cold-start BC baseline
+through the *existing* `AgentService._load_policy` cold start — no parallel policy. It is deterministic
+and idempotent. Honest framing: a **demo affordance** to replay the M2 learning loop, not production
+reset semantics. Guarded by `tests/test_reset.py`. Evidence: `demo/evidence/reset_replay_run.txt`,
+`demo/evidence/j4_reset_replay_page.png`.
+
 The scripted manager stays **server-side and reused** (`/agent/demo/corrections` calls the committed
 `demo_ag2` helpers) so the client is thin. Guarded by `tests/test_demo_router.py`.
 

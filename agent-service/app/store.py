@@ -225,6 +225,33 @@ class AgentStore:
             )
         return vid
 
+    # --- tenant-scoped reset ---------------------------------------------------------------------
+
+    def reset_tenant(self, tenant_id: str) -> dict:
+        """Delete **only this tenant's** learned state so its policy can be cold-started afresh.
+
+        Clears ``agent_feedback``, ``policy_versions`` and ``policy_state`` (plus the tenant's cached
+        ``proposals``, which reference the now-gone feedback) — every statement is filtered by
+        ``tenantId``, so another tenant's data is never touched (**AG6**). Idempotent: resetting a
+        tenant with no rows is a no-op that returns zero counts. Returns the deleted-row counts so the
+        caller (``POST /agent/reset``) can report what it cleared.
+        """
+        with self._tx() as c:
+            c.execute("DELETE FROM agent_feedback WHERE tenantId=?", (tenant_id,))
+            feedback_deleted = c.rowcount
+            c.execute("DELETE FROM policy_versions WHERE tenantId=?", (tenant_id,))
+            versions_deleted = c.rowcount
+            c.execute("DELETE FROM policy_state WHERE tenantId=?", (tenant_id,))
+            policy_deleted = c.rowcount
+            c.execute("DELETE FROM proposals WHERE tenantId=?", (tenant_id,))
+            proposals_deleted = c.rowcount
+        return {
+            "feedbackDeleted": feedback_deleted,
+            "policyVersionsDeleted": versions_deleted,
+            "policyStateDeleted": policy_deleted,
+            "proposalsDeleted": proposals_deleted,
+        }
+
     def policy_versions(self, tenant_id: str) -> list[dict]:
         rows = self._conn.execute(
             "SELECT id, version, trainedAt, acceptanceMetric, metrics, artefactPath, note"

@@ -13,7 +13,14 @@ from fastapi import APIRouter, HTTPException, Query
 
 from .fixtures import resolve_problem
 from .forecast import forecast_demand
-from .schemas import FeedbackRequest, ForecastRequest, HealRequest, ProposeRequest, RetrainRequest
+from .schemas import (
+    FeedbackRequest,
+    ForecastRequest,
+    HealRequest,
+    ProposeRequest,
+    ResetRequest,
+    RetrainRequest,
+)
 from .service import AgentService, DEFAULT_TENANT
 from .store import AgentStore
 
@@ -83,6 +90,16 @@ def retrain(req: RetrainRequest):
     producing a new versioned policy with a persisted training artifact. Distinct from the online
     nudge that ``/agent/feedback`` applies per-correction — see :mod:`app.retrain`."""
     return _service.retrain(req.tenantId, note=req.note)
+
+
+@router.post("/reset")
+def reset(req: ResetRequest):
+    """Reset a single tenant to its untrained cold-start policy (demo affordance).
+
+    Clears the tenant's feedback + policy-version history + learned policy state and re-derives the
+    day-1 cold-start BC baseline, so a fresh ``propose`` is back at ~edit-distance 50 / ~52% agreement.
+    Tenant-scoped (never a blanket wipe), deterministic, idempotent — see :meth:`AgentService.reset`."""
+    return _service.reset(req.tenantId)
 
 
 @router.get("/policy")

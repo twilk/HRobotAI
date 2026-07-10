@@ -59,4 +59,9 @@ class RetrainRequest(BaseModel):
     note: str | None = None
 
 
+class ResetRequest(BaseModel):
+    # Tenant-scoped reset to the cold-start baseline — never a blanket wipe.
+    tenantId: str = DEFAULT_TENANT
+
+
 HealRequest.model_rebuild()
