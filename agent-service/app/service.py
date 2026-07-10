@@ -150,7 +150,15 @@ class AgentService:
             accepted_schedule = self._infer_accepted_schedule(proposal, effective_edits)
             metric = acceptance_metric(new_assignments, accepted_schedule) if accepted_schedule else None
             self._save_policy(tenant_id, state)
-            self.store.record_policy_version(tenant_id, state.version, metric, note="feedback re-fit")
+            # Online-nudge versions carry no saved artifact — that is the formal *batch* retrain's job
+            # (app.retrain / POST /agent/retrain). The metrics blob records which path wrote the row.
+            self.store.record_policy_version(
+                tenant_id,
+                state.version,
+                metric,
+                note="online feedback nudge",
+                metrics={"acceptanceMetric": metric, "trainMethod": "online-nudge", "updates": updates},
+            )
         else:
             self._save_policy(tenant_id, state)
 
@@ -234,6 +242,21 @@ class AgentService:
                     alternatives.append(alt)
         return {"rationale": rationale, "alternativesConsidered": alternatives}
 
+    # --- formal batch retrain (M2-C3) -----------------------------------------------------------
+
+    def retrain(self, tenant_id: str, note: str | None = None) -> dict:
+        """Trigger the formal batch retrain: re-fit from the full accumulated log, new version+artifact.
+
+        Distinct from the per-``feedback`` online nudge above — see :mod:`app.retrain`. No synthetic
+        acceptance eval is run here (real acceptance needs held-out manager labels), so the recorded
+        ``acceptanceMetric`` is null; the metrics blob still captures the training provenance.
+        """
+        from .retrain import RetrainPipeline  # local import avoids a service<->retrain import cycle
+
+        # Ensure a cold-start v1 exists so retrain versions continue the tenant's history.
+        self._load_policy(tenant_id)
+        return RetrainPipeline(self.store).retrain(tenant_id, note=note)
+
     # --- policy read (AG5) ----------------------------------------------------------------------
 
     def policy_info(self, tenant_id: str) -> dict:
@@ -242,11 +265,15 @@ class AgentService:
         latest_metric = next(
             (v["acceptanceMetric"] for v in reversed(versions) if v["acceptanceMetric"] is not None), None
         )
+        latest_artefact = next(
+            (v["artefactPath"] for v in reversed(versions) if v.get("artefactPath")), None
+        )
         trained_at = versions[-1]["trainedAt"] if versions else None
         return {
             "version": state.version,
             "trainedAt": trained_at,
             "acceptanceMetric": latest_metric,
+            "latestArtefactPath": latest_artefact,
             "trainingRuns": versions,
             "feedbackCount": self.store.count_feedback(tenant_id),
         }

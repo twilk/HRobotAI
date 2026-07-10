@@ -62,7 +62,11 @@ symlinks (every `CLAUDE.md` → `AGENTS.md`), so each build context's `.dockerig
 parity test (same schema-parity idiom as *Prisma enums* above) — see each service's `README.md`.
 Note the TS `agent/` dir (cold-start dataset gen, above) is a different thing from `agent-service/`.
 `agent-service`'s M2-C2 feedback/policy persist in a tenant-keyed SQLite store owned in-service
-(`AGENT_DB_PATH`); the Prisma `AgentFeedback` home (spec §6) is deferred to a separate change.
+(`AGENT_DB_PATH`); the Prisma `AgentFeedback`/`AgentPolicyVersion` home (spec §6) is deferred to a
+separate change. M2-C3 adds the **formal batch retrain** (`app/retrain.py`, `python -m app.retrain`,
+`POST /agent/retrain`) — a from-scratch re-fit over the full accumulated feedback log, distinct from
+`policy.py`'s online nudge, that writes versioned artifacts to `AGENT_ARTIFACTS_DIR` (gitignored).
+See `agent-service/README.md` for the online-vs-batch table and the AG5/AG2 evidence.
 
 ## Maintaining this file
 

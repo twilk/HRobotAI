@@ -15,7 +15,11 @@ Tables
   rewardSignal, tenantId, createdAt.
 * ``proposals`` — the proposal a feedback/explain call refers back to (problem + assignments).
 * ``policy_state`` — the learned per-tenant policy (JSON), one row per (tenantId).
-* ``policy_versions`` — audit trail of policy versions + acceptance metric (AG5).
+* ``policy_versions`` — the spec §6 ``AgentPolicyVersion`` audit trail: id, version, trainedAt,
+  ``metrics`` (JSON), ``artefactPath`` (the saved training artifact). ``acceptanceMetric``/``note``
+  are kept as denormalised convenience columns for the pre-M2-C3 readers. Each formal retrain
+  (``app.retrain``) writes one row with a persisted artifact; the online feedback nudge also records
+  a row so the version history is continuous (AG5).
 """
 
 from __future__ import annotations
@@ -100,11 +104,19 @@ class AgentStore:
                     version INTEGER NOT NULL,
                     trainedAt TEXT NOT NULL,
                     acceptanceMetric REAL,
+                    metrics TEXT,
+                    artefactPath TEXT,
                     note TEXT
                 );
                 CREATE INDEX IF NOT EXISTS ix_versions_tenant ON policy_versions(tenantId);
                 """
             )
+            # Forward-migrate a pre-M2-C3 policy_versions table (added: metrics, artefactPath).
+            existing = {r["name"] for r in c.execute("PRAGMA table_info(policy_versions)").fetchall()}
+            if "metrics" not in existing:
+                c.execute("ALTER TABLE policy_versions ADD COLUMN metrics TEXT")
+            if "artefactPath" not in existing:
+                c.execute("ALTER TABLE policy_versions ADD COLUMN artefactPath TEXT")
 
     # --- proposals -------------------------------------------------------------------------------
 
@@ -179,18 +191,49 @@ class AgentStore:
             )
 
     def record_policy_version(
-        self, tenant_id: str, version: int, acceptance_metric: float | None, note: str | None = None
-    ) -> None:
+        self,
+        tenant_id: str,
+        version: int,
+        acceptance_metric: float | None,
+        note: str | None = None,
+        metrics: dict | None = None,
+        artefact_path: str | None = None,
+    ) -> str:
+        """Append an ``AgentPolicyVersion`` audit row (spec §6) and return its id.
+
+        ``metrics`` is the full JSON metrics blob (acceptance + training provenance) written by the
+        formal retrain; ``acceptanceMetric`` stays populated as a scalar convenience column so the
+        pre-M2-C3 ``policy_info`` reader keeps working. ``artefactPath`` is where the trained policy
+        artifact was saved.
+        """
+        vid = new_id()
         with self._tx() as c:
             c.execute(
-                "INSERT INTO policy_versions (id, tenantId, version, trainedAt, acceptanceMetric, note)"
-                " VALUES (?,?,?,?,?,?)",
-                (new_id(), tenant_id, version, _now_iso(), acceptance_metric, note),
+                "INSERT INTO policy_versions"
+                " (id, tenantId, version, trainedAt, acceptanceMetric, metrics, artefactPath, note)"
+                " VALUES (?,?,?,?,?,?,?,?)",
+                (
+                    vid,
+                    tenant_id,
+                    version,
+                    _now_iso(),
+                    acceptance_metric,
+                    json.dumps(metrics) if metrics is not None else None,
+                    artefact_path,
+                    note,
+                ),
             )
+        return vid
 
     def policy_versions(self, tenant_id: str) -> list[dict]:
         rows = self._conn.execute(
-            "SELECT version, trainedAt, acceptanceMetric, note FROM policy_versions WHERE tenantId=? ORDER BY trainedAt",
+            "SELECT id, version, trainedAt, acceptanceMetric, metrics, artefactPath, note"
+            " FROM policy_versions WHERE tenantId=? ORDER BY trainedAt, version",
             (tenant_id,),
         ).fetchall()
-        return [dict(r) for r in rows]
+        out: list[dict] = []
+        for r in rows:
+            d = dict(r)
+            d["metrics"] = json.loads(d["metrics"]) if d.get("metrics") else None
+            out.append(d)
+        return out
