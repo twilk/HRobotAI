@@ -42,6 +42,17 @@ export function stableId(...parts: Array<string | number>): string {
   return bytesToUuid(bytes)
 }
 
+/**
+ * Deterministic MD5 digest (16 bytes) of a stable key. The canonical seed derives SOFT synthetic
+ * employee preferences from `md5(<stable employee id>)`, so preferences are a pure function of
+ * identity — same id ⇒ same preferences on every run, which keeps the frozen dataset idempotent.
+ * MD5 is used purely as a fast, well-distributed hash for synthetic-data spread here, never as a
+ * security primitive.
+ */
+export function md5Bytes(key: string): Buffer {
+  return createHash('md5').update(key, 'utf8').digest()
+}
+
 /** Seeded 32-bit PRNG (mulberry32). Deterministic: same seed → same sequence of [0,1) floats. */
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0

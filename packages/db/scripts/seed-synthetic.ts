@@ -172,6 +172,10 @@ function employeeWriteData(
     homeLng: e.homeLng,
     etat: e.etat,
     qualifications: e.qualifications,
+    // SOFT synthetic preferences (md5(id)-derived; see canonicalData.derivePreferences). Idempotent:
+    // the same rows re-write the same arrays on every seed run.
+    preferredDaysOff: e.preferredDaysOff,
+    preferredShiftStart: e.preferredShiftStart,
   }
 }
 
