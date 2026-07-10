@@ -24,12 +24,17 @@ The grafik module talks to the real tenant-runtime (NestJS) API — no mock data
 - Browser client `lib/grafik.ts` → same-origin Next route handlers under `app/api/grafik/[...path]`
   and `app/api/employees` → `lib/tenant-runtime.ts` proxy → `${TENANT_RUNTIME_URL}/…`.
 - The proxy is server→server (no CORS) and forwards a Keycloak bearer token resolved in priority
-  order: `Authorization` header → `hrobot_token` cookie → `TENANT_RUNTIME_DEV_TOKEN` env. See
-  `.env.example`. tenant-runtime derives the tenant from the JWT issuer, so a valid token is all the
-  backend needs.
+  order: `Authorization` header → `hrobot_token` cookie → **minted Keycloak token** → legacy
+  `TENANT_RUNTIME_DEV_TOKEN` env → 401. See `.env.example`. tenant-runtime derives the tenant from
+  the JWT issuer, so a valid token is all the backend needs.
+- The minted token comes from `lib/keycloak-token.ts` — a server-only direct-grant (password) flow
+  gated on the four `KEYCLOAK_*` env vars; it caches the JWT in module scope and auto-refreshes it
+  before the ~300s expiry (or on a backend 401). Unset any var → provider is a no-op and the proxy
+  falls through. Never hardcode creds in the repo; keep them in a gitignored `.env.local`.
 - web-kit has **no login flow** yet (`components/auth/login-form.tsx` is a mock `router.push`), so a
-  full live round-trip needs a real JWT + the compose stack. Wiring logic is covered by
-  `lib/tenant-runtime.test.ts` + `lib/grafik.test.ts`.
+  full live round-trip uses either the minted Keycloak token or a real JWT, plus the compose stack.
+  Wiring logic is covered by `lib/tenant-runtime.test.ts` + `lib/keycloak-token.test.ts` +
+  `lib/grafik.test.ts`.
 
 Reuse this proxy pattern (`proxyToTenantRuntime`) for any future real backend calls from web-kit.
 
