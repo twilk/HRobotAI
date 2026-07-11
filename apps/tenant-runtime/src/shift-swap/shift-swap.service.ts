@@ -13,6 +13,7 @@ import {
   SwapRequestNotFoundError,
   SwapNotFeasibleError,
   InvalidSwapTargetError,
+  SwapConcurrentModificationError,
   nextState,
 } from './swap-state-machine.js'
 import type { CreateSwapRequestDto } from './dto/shift-swap.dto.js'
@@ -192,8 +193,11 @@ export class ShiftSwapService {
       where: { id: { in: partyIds } },
       select: { unitId: true },
     })
-    if (!units.some((u) => managedUnits.includes(u.unitId))) {
-      throw new ForbiddenException('MANAGER may only decide swaps in a unit they manage')
+    // The manager must manage EVERY affected unit — approving mutates a shift/employee in each party's
+    // unit, so managing only one side would let them touch a unit they do not manage (cross-unit hole).
+    const affectedUnits = units.map((u) => u.unitId)
+    if (!affectedUnits.every((u) => managedUnits.includes(u))) {
+      throw new ForbiddenException('MANAGER may only decide swaps where they manage every affected unit')
     }
     return request
   }
@@ -317,10 +321,15 @@ export class ShiftSwapService {
         })
       }
 
-      const updated = await tx.shiftSwapRequest.update({
-        where: { id },
+      // Optimistic lock: only transition if the row is STILL in PENDING_MANAGER. A concurrent
+      // cancel/reject that already moved it matches zero rows → we abort and the whole transaction
+      // (including the shift reassignments above) rolls back.
+      const swapUpd = await tx.shiftSwapRequest.updateMany({
+        where: { id, state: SwapState.PENDING_MANAGER },
         data: { state: approvedState, decidedByManagerId: input.decidedByManagerId },
       })
+      if (swapUpd.count === 0) throw new SwapConcurrentModificationError(id)
+      const updated = await tx.shiftSwapRequest.findUniqueOrThrow({ where: { id } })
 
       await tx.auditLog.create({
         data: {
@@ -355,10 +364,15 @@ export class ShiftSwapService {
   ): Promise<SwapRequestRow> {
     const request = await this.load(client, id)
     const to = nextState(request.state, action)
-    return client.shiftSwapRequest.update({
-      where: { id },
+    // Optimistic lock: guard on the state we validated the transition against. If a concurrent action
+    // already moved the row out of that state, updateMany matches zero rows and we abort rather than
+    // clobber the newer state.
+    const upd = await client.shiftSwapRequest.updateMany({
+      where: { id, state: request.state },
       data: { state: to, ...extraData },
     })
+    if (upd.count === 0) throw new SwapConcurrentModificationError(id)
+    return client.shiftSwapRequest.findUniqueOrThrow({ where: { id } })
   }
 
   private async load(client: TenantClient, id: string): Promise<SwapRequestRow> {

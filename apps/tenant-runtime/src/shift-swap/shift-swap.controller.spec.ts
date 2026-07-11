@@ -1,11 +1,15 @@
-import { ForbiddenException } from '@nestjs/common'
+import { ConflictException, ForbiddenException } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import type { TenantClient } from '@hrobot/db'
 import { Role } from '@hrobot/shared'
 import { ShiftSwapController } from './shift-swap.controller.js'
 import { ShiftSwapService } from './shift-swap.service.js'
 import { AllowAllSwapFeasibilityValidator } from './swap-feasibility-validator.js'
-import { SwapState, SwapRequestNotFoundError } from './swap-state-machine.js'
+import {
+  SwapState,
+  SwapRequestNotFoundError,
+  SwapConcurrentModificationError,
+} from './swap-state-machine.js'
 import { ROLES_KEY } from '../tenant-runtime/rbac/roles.decorator.js'
 import type { JwtPayload } from '../tenant-runtime/keycloak/keycloak-jwt.strategy.js'
 
@@ -103,6 +107,26 @@ function makeClient(store: Store): TenantClient {
       },
       findUnique: async ({ where }: { where: { id: string } }) =>
         store.swaps.find((s) => s.id === where.id) ?? null,
+      findUniqueOrThrow: async ({ where }: { where: { id: string } }) => {
+        const row = store.swaps.find((s) => s.id === where.id)
+        if (!row) throw new Error(`ShiftSwapRequest not found: ${where.id}`)
+        return row
+      },
+      // State-guarded optimistic-lock write (B4): only match when the current state equals where.state.
+      updateMany: async ({
+        where,
+        data,
+      }: {
+        where: { id: string; state?: string }
+        data: Partial<SwapRow>
+      }) => {
+        const row = store.swaps.find(
+          (s) => s.id === where.id && (where.state === undefined || s.state === where.state),
+        )
+        if (!row) return { count: 0 }
+        Object.assign(row, data)
+        return { count: 1 }
+      },
       update: async ({ where, data }: { where: { id: string }; data: Partial<SwapRow> }) => {
         const row = store.swaps.find((s) => s.id === where.id)!
         Object.assign(row, data)
@@ -229,6 +253,23 @@ describe('ShiftSwapController — endpoint paths', () => {
       await expect(ctl.managerDecision(client, otherMgr, '1.1.1.1', created.id, { approve: true })).rejects.toBeInstanceOf(ForbiddenException)
     })
 
+    // B3: a manager who manages only ONE affected unit may NOT decide a cross-unit swap — approving
+    // would mutate a shift/employee in the unit they do not manage. Requires EVERY affected unit.
+    it('a MANAGER of only one side cannot decide a cross-unit swap', async () => {
+      const { store, client } = seedTenant()
+      // A second worker in a DIFFERENT unit (U2), holding their own shift.
+      store.employees.push({ id: 'emp-C', unitId: 'U2', keycloakSub: 'kc-C', qualifications: ['NURSE'], etat: 1 })
+      store.shifts.push({ id: 'SC', employeeId: 'emp-C', lokalizacjaId: 'loc-2', date: new Date('2026-07-15'), start: '08:00', end: '16:00', role: 'NURSE' })
+      const ctl = makeController()
+
+      // Requester emp-A (U1) ↔ target emp-C (U2). MANAGER manages U1 only.
+      const created = (await ctl.create(client, WORKER_A, { requesterShiftId: 'SA', targetShiftId: 'SC' })) as SwapRow
+      expect(created.targetEmployeeId).toBe('emp-C')
+      await expect(
+        ctl.managerDecision(client, MANAGER, '1.1.1.1', created.id, { approve: true }),
+      ).rejects.toBeInstanceOf(ForbiddenException)
+    })
+
     it('cross-tenant: a request from tenant A is invisible to tenant B’s client', async () => {
       const a = seedTenant()
       const b = seedTenant()
@@ -319,6 +360,33 @@ describe('ShiftSwapController — endpoint paths', () => {
       for (const m of ['create', 'submit', 'peerDecision', 'list'] as const) {
         expect(rolesFor(m)).toContain(Role.PRACOWNIK)
       }
+    })
+  })
+
+  // B4: the service's optimistic-lock signal must reach the client as HTTP 409 Conflict, not a 500.
+  describe('B4 — concurrent modification maps to HTTP 409', () => {
+    it('managerDecision surfaces SwapConcurrentModificationError as ConflictException', async () => {
+      const service = {
+        assertManager: jest.fn().mockResolvedValue({ id: 'req-1' }),
+        managerDecision: jest.fn().mockRejectedValue(new SwapConcurrentModificationError('req-1')),
+      } as unknown as ShiftSwapService
+      const ctl = new ShiftSwapController(service)
+
+      await expect(
+        ctl.managerDecision({} as unknown as TenantClient, MANAGER, '1.1.1.1', 'req-1', { approve: true }),
+      ).rejects.toBeInstanceOf(ConflictException)
+    })
+
+    it('a non-approve transition (cancel) also maps the conflict to ConflictException', async () => {
+      const service = {
+        assertRequester: jest.fn().mockResolvedValue({ id: 'req-1' }),
+        cancel: jest.fn().mockRejectedValue(new SwapConcurrentModificationError('req-1')),
+      } as unknown as ShiftSwapService
+      const ctl = new ShiftSwapController(service)
+
+      await expect(
+        ctl.cancel({} as unknown as TenantClient, WORKER_A, 'req-1'),
+      ).rejects.toBeInstanceOf(ConflictException)
     })
   })
 })

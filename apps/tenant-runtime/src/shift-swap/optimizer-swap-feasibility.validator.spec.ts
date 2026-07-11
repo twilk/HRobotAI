@@ -21,17 +21,36 @@ const EMPLOYEES: Record<string, { id: string; qualifications: string[]; etat: nu
 }
 const SHIFTS: Record<string, typeof REQ_SHIFT> = { 'shift-req': REQ_SHIFT, 'shift-tgt': TGT_SHIFT }
 
-/** Minimal in-memory client covering exactly the reads the validator makes. */
-function makeClient(extraShifts: Array<typeof REQ_SHIFT> = []): TenantClient {
+type LeaveRow = { employeeId: string; startDate: Date; endDate: Date }
+
+/**
+ * Minimal in-memory client covering exactly the reads the validator makes. `shift.findMany` honours
+ * the `date` window so the widened ±1-day probe (B2) is observable, and `leaveRequest.findMany`
+ * returns the configured APPROVED-leave rows for the queried employee (B1).
+ */
+function makeClient(extraShifts: Array<typeof REQ_SHIFT> = [], leaveRows: LeaveRow[] = []): TenantClient {
   return {
     shift: {
       findUnique: jest.fn(({ where }: { where: { id: string } }) => SHIFTS[where.id] ?? null),
-      findMany: jest.fn(({ where }: { where: { employeeId: string } }) =>
-        extraShifts.filter((s) => s.employeeId === where.employeeId),
+      findMany: jest.fn(
+        ({ where }: { where: { employeeId: string; date: { gte: Date; lt: Date } } }) =>
+          extraShifts.filter(
+            (s) =>
+              s.employeeId === where.employeeId &&
+              s.date >= where.date.gte &&
+              s.date < where.date.lt,
+          ),
       ),
     },
     employee: {
       findUnique: jest.fn(({ where }: { where: { id: string } }) => EMPLOYEES[where.id] ?? null),
+    },
+    leaveRequest: {
+      findMany: jest.fn(({ where }: { where: { employeeId: string } }) =>
+        leaveRows
+          .filter((lv) => lv.employeeId === where.employeeId)
+          .map((lv) => ({ startDate: lv.startDate, endDate: lv.endDate })),
+      ),
     },
   } as unknown as TenantClient
 }
@@ -116,6 +135,33 @@ describe('OptimizerSwapFeasibilityValidator (SW2)', () => {
     expect(optimizer.solve).toHaveBeenCalledTimes(1)
   })
 
+  // B1 (H3): the receiving employee's APPROVED leave for the probe week is threaded into the packed
+  // problem as `approvedLeaveDates`, so a swap can never place them onto an approved-leave day.
+  it('threads the receiving employee’s APPROVED leave into approvedLeaveDates (B1 / H3)', async () => {
+    optimizer.solve.mockResolvedValue(okResult())
+    // emp-tgt is on approved leave the very day they would receive the requester's Monday shift.
+    const leave = [{ employeeId: 'emp-tgt', startDate: new Date('2026-07-13'), endDate: new Date('2026-07-13') }]
+    await validator.validate(makeInput(makeClient([], leave)))
+
+    const problem = optimizer.solve.mock.calls[0]![0]
+    expect(problem.employees[0]!.id).toBe('emp-tgt')
+    expect(problem.employees[0]!.approvedLeaveDates).toContain('2026-07-13')
+  })
+
+  // B2 (H4): the ±1-day widened window pulls in the neighbouring Sunday shift that shares a week
+  // boundary with the incoming Monday shift, so the pairwise 11h-rest constraint can bind across it.
+  it('includes the neighbouring Sunday shift so week-boundary 11h rest is checked (B2)', async () => {
+    // emp-tgt already works Sun 15:00–23:00 (2026-07-12); the incoming shift is Mon 08:00 (<11h rest).
+    const sundayShift = { ...REQ_SHIFT, id: 'shift-sun', employeeId: 'emp-tgt', date: new Date('2026-07-12'), start: '15:00', end: '23:00' }
+    optimizer.solve.mockResolvedValue(okResult())
+    await validator.validate(makeInput(makeClient([sundayShift])))
+
+    const problem = optimizer.solve.mock.calls[0]![0]
+    const demandIds = problem.demands.map((d) => d.id)
+    expect(demandIds).toContain('shift-sun') // boundary neighbour now packed (was excluded pre-B2)
+    expect(demandIds).toContain('shift-req') // alongside the incoming shift
+  })
+
   // SW2 end-to-end: an INFEASIBLE optimizer verdict blocks the real service's approve path — the
   // request never reaches APPROVED and NO Shift row is mutated (no transaction runs).
   it('blocks approval through the service and leaves shifts untouched', async () => {
@@ -140,6 +186,7 @@ describe('OptimizerSwapFeasibilityValidator (SW2)', () => {
         update: shiftUpdate,
       },
       employee: { findUnique: jest.fn(({ where }: { where: { id: string } }) => EMPLOYEES[where.id] ?? null) },
+      leaveRequest: { findMany: jest.fn(async () => []) },
       $transaction: txn,
     } as unknown as TenantClient
 
