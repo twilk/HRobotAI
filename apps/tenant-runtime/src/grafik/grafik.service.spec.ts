@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { ForbiddenException, NotFoundException } from '@nestjs/common'
+import { ForbiddenException, Logger, NotFoundException } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
-import { Role } from '@hrobot/shared'
+import { Role, SolveStatus } from '@hrobot/shared'
 import { GrafikService, GrafikActor } from './grafik.service.js'
 import { AuditService } from '../tenant-runtime/audit/audit.service.js'
 import { OPTIMIZER_CLIENT, type OptimizerClient } from './optimizer.client.js'
@@ -32,6 +32,7 @@ function makeClient() {
       delete: jest.fn(),
     },
     employee: { findUnique: jest.fn(), findMany: jest.fn() },
+    leaveRequest: { findMany: jest.fn() },
     lokalizacja: { findMany: jest.fn() },
     userRole: { findMany: jest.fn() },
     $transaction: jest.fn(),
@@ -243,6 +244,98 @@ describe('GrafikService', () => {
       expect(tenantA.shift.create).toHaveBeenCalledTimes(1)
       expect(tenantB.shift.create).not.toHaveBeenCalled()
       expect(tenantB.employee.findUnique).not.toHaveBeenCalled()
+    })
+  })
+
+  // --- Solve packing (M2-A4 correctness) --------------------------------------------------------
+
+  describe('solveGrafik packing', () => {
+    const ZERO_METRICS = { commuteTotal: 0, etatDeviation: 0, preferenceViolations: 0, fairnessScore: 0 }
+
+    /** Wire `$transaction` to a tx exposing shift.deleteMany/create, and return those spies. */
+    function wireTransaction(c: MockClient) {
+      const txDeleteMany = jest.fn().mockResolvedValue({ count: 0 })
+      const txCreate = jest.fn().mockImplementation(async (arg: { data: unknown }) => arg.data)
+      c.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+        fn({ shift: { deleteMany: txDeleteMany, create: txCreate } }),
+      )
+      return { txDeleteMany, txCreate }
+    }
+
+    it('empty-demand solve does not delete out-of-scope AUTO shifts (A1 data-loss guard)', async () => {
+      // ADMIN (global, no unit) solves a week with ZERO demands and ZERO in-scope employees.
+      client.shiftDemand.findMany.mockResolvedValue([])
+      client.employee.findMany.mockResolvedValue([])
+      client.lokalizacja.findMany.mockResolvedValue([])
+      optimizer.solve.mockResolvedValue({ status: SolveStatus.OPTIMAL, assignments: [], unmet: [], metrics: ZERO_METRICS })
+      const { txDeleteMany } = wireTransaction(client)
+
+      await service.solveGrafik(asClient(client), ADMIN, { weekStart: '2026-07-13' })
+
+      // The delete must be scoped to an EMPTY location list → matches nothing → deletes nothing.
+      const whereArg = txDeleteMany.mock.calls[0]?.[0]?.where
+      expect(whereArg.lokalizacjaId).toEqual({ in: [] })
+    })
+
+    it('packs existing MANUAL shifts as pinned demands (A2)', async () => {
+      // MANAGER of unit-A. Employee E qualified KIEROWCA has a MANUAL 08:00–16:00 shift at L1 that
+      // overlaps a 12:00–20:00 KIEROWCA demand at L1 the same day.
+      client.userRole.findMany.mockResolvedValue([{ unitId: 'unit-A' }])
+      client.employee.findMany.mockResolvedValue([
+        { id: 'E', qualifications: ['KIEROWCA'], etat: 1, homeLat: null, homeLng: null, preferredDaysOff: [], preferredShiftStart: [] },
+      ])
+      client.leaveRequest.findMany.mockResolvedValue([])
+      client.shiftDemand.findMany.mockResolvedValue([
+        { id: 'dem-1', lokalizacjaId: 'L1', date: new Date('2026-07-13'), start: '12:00', end: '20:00', requiredRole: 'KIEROWCA', requiredCount: 1 },
+      ])
+      client.shift.findMany.mockResolvedValue([
+        { id: 'ms-1', employeeId: 'E', lokalizacjaId: 'L1', date: new Date('2026-07-13'), start: '08:00', end: '16:00' },
+      ])
+      client.lokalizacja.findMany.mockResolvedValue([{ id: 'L1', lat: null, lng: null }])
+      optimizer.solve.mockResolvedValue({
+        status: SolveStatus.OPTIMAL,
+        assignments: [{ employeeId: 'E', demandId: 'dem-1' }],
+        unmet: [],
+        metrics: ZERO_METRICS,
+      })
+      wireTransaction(client)
+
+      await service.solveGrafik(asClient(client), MANAGER, { weekStart: '2026-07-13' })
+
+      const problem = optimizer.solve.mock.calls[0][0]
+      const pinned = problem.demands.find((d: { role: string }) => d.role.startsWith('__pinned__'))
+      expect(pinned).toBeDefined()
+      expect(pinned).toMatchObject({ locId: 'L1', date: '2026-07-13', start: '08:00', end: '16:00', count: 1 })
+      const e = problem.employees.find((x: { id: string }) => x.id === 'E')
+      expect(e.qualifications).toContain(pinned.role)
+    })
+
+    it('skips optimizer assignments for employees outside the packed set (A3 trust boundary)', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+      // HR (global) packs only employee E, but the optimizer returns a shift for GHOST.
+      client.employee.findMany.mockResolvedValue([
+        { id: 'E', qualifications: ['KIEROWCA'], etat: 1, homeLat: null, homeLng: null, preferredDaysOff: [], preferredShiftStart: [] },
+      ])
+      client.leaveRequest.findMany.mockResolvedValue([])
+      client.shiftDemand.findMany.mockResolvedValue([
+        { id: 'dem-1', lokalizacjaId: 'L1', date: new Date('2026-07-13'), start: '12:00', end: '20:00', requiredRole: 'KIEROWCA', requiredCount: 1 },
+      ])
+      client.shift.findMany.mockResolvedValue([])
+      client.lokalizacja.findMany.mockResolvedValue([{ id: 'L1', lat: null, lng: null }])
+      optimizer.solve.mockResolvedValue({
+        status: SolveStatus.OPTIMAL,
+        assignments: [{ employeeId: 'GHOST', demandId: 'dem-1' }],
+        unmet: [],
+        metrics: ZERO_METRICS,
+      })
+      const { txCreate } = wireTransaction(client)
+
+      const result = await service.solveGrafik(asClient(client), HR, { weekStart: '2026-07-13' })
+
+      expect(txCreate).not.toHaveBeenCalled()
+      expect(result.assignmentsCreated).toBe(0)
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('GHOST'))
+      warn.mockRestore()
     })
   })
 })
