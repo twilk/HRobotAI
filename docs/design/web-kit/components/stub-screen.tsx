@@ -3,7 +3,7 @@ import { AppShell } from '@/components/layout/app-shell'
 import { EmptyState } from '@/components/ui/empty-state'
 import type { Role } from '@/lib/nav'
 
-const tenant = { name: 'ACME Sp. z o.o.', slug: 'acme.hrobot.ai' }
+const tenant = { name: '4Mobility sp. z o.o.', slug: '4mobility.hrobot.ai' }
 const user = { name: 'Jan Kowalski', role: 'Admin klienta', initials: 'JK' }
 const roles: Role[] = ['ADMIN_KLIENTA']
 

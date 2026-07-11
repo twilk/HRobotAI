@@ -16,7 +16,7 @@ export function LoginForm() {
   return (
     <form onSubmit={onSubmit}>
       <Field label="Email lub login" htmlFor="login">
-        <Input id="login" name="login" defaultValue="jan.kowalski@acme.pl" autoComplete="username" />
+        <Input id="login" name="login" defaultValue="jan.kowalski@4mobility.pl" autoComplete="username" />
       </Field>
       <div className="relative">
         <a href="#" className="absolute right-0 top-0 text-xs text-accent-ink font-medium">

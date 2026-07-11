@@ -8,7 +8,7 @@ import type { Role } from '@/lib/nav'
  * Server Component shell; {@link SwapWorkspace} hydrates for the polling + actions.
  */
 export default function ZamianyPage() {
-  const tenant = { name: 'ACME Sp. z o.o.', slug: 'acme.hrobot.ai' }
+  const tenant = { name: '4Mobility sp. z o.o.', slug: '4mobility.hrobot.ai' }
   const user = { name: 'Jan Kowalski', role: 'Admin klienta', initials: 'JK' }
   const roles: Role[] = ['ADMIN_KLIENTA']
 

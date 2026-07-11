@@ -8,16 +8,16 @@ import type { Role } from '@/lib/nav'
 // Proof-of-stack: in the real app this is `await fetch('/api/employees')` through the
 // authenticated tenant runtime (returns last-4 of PESEL only, never plaintext).
 const EMPLOYEES: Employee[] = [
-  { id: '1', firstName: 'Anna', lastName: 'Nowak', email: 'anna.nowak@acme.pl', position: 'Kierownik zmiany', unit: 'Produkcja', contract: 'UoP', peselLast4: '4821', status: 'active' },
-  { id: '2', firstName: 'Piotr', lastName: 'Wiśniewski', email: 'piotr.wisniewski@acme.pl', position: 'Operator maszyn', unit: 'Produkcja', contract: 'UoP', peselLast4: '1093', status: 'active' },
-  { id: '3', firstName: 'Katarzyna', lastName: 'Wójcik', email: 'k.wojcik@acme.pl', position: 'Specjalista HR', unit: 'Kadry', contract: 'UoP', peselLast4: '7754', status: 'active' },
-  { id: '4', firstName: 'Tomasz', lastName: 'Kamiński', email: 't.kaminski@acme.pl', position: 'Magazynier', unit: 'Logistyka', contract: 'Zlecenie', peselLast4: '2310', status: 'active' },
-  { id: '5', firstName: 'Magdalena', lastName: 'Lewandowska', email: 'm.lewandowska@acme.pl', position: 'Księgowa', unit: 'Finanse', contract: 'UoP', peselLast4: '6642', status: 'leave' },
-  { id: '6', firstName: 'Marek', lastName: 'Zieliński', email: 'm.zielinski@acme.pl', position: 'Kierowca', unit: 'Logistyka', contract: 'B2B', peselLast4: '9087', status: 'active' },
+  { id: '1', firstName: 'Anna', lastName: 'Nowak', email: 'anna.nowak@4mobility.pl', position: 'Kierownik zmiany', unit: 'Produkcja', contract: 'UoP', peselLast4: '4821', status: 'active' },
+  { id: '2', firstName: 'Piotr', lastName: 'Wiśniewski', email: 'piotr.wisniewski@4mobility.pl', position: 'Operator maszyn', unit: 'Produkcja', contract: 'UoP', peselLast4: '1093', status: 'active' },
+  { id: '3', firstName: 'Katarzyna', lastName: 'Wójcik', email: 'k.wojcik@4mobility.pl', position: 'Specjalista HR', unit: 'Kadry', contract: 'UoP', peselLast4: '7754', status: 'active' },
+  { id: '4', firstName: 'Tomasz', lastName: 'Kamiński', email: 't.kaminski@4mobility.pl', position: 'Magazynier', unit: 'Logistyka', contract: 'Zlecenie', peselLast4: '2310', status: 'active' },
+  { id: '5', firstName: 'Magdalena', lastName: 'Lewandowska', email: 'm.lewandowska@4mobility.pl', position: 'Księgowa', unit: 'Finanse', contract: 'UoP', peselLast4: '6642', status: 'leave' },
+  { id: '6', firstName: 'Marek', lastName: 'Zieliński', email: 'm.zielinski@4mobility.pl', position: 'Kierowca', unit: 'Logistyka', contract: 'B2B', peselLast4: '9087', status: 'active' },
 ]
 
 export default async function PracownicyPage() {
-  const tenant = { name: 'ACME Sp. z o.o.', slug: 'acme.hrobot.ai' }
+  const tenant = { name: '4Mobility sp. z o.o.', slug: '4mobility.hrobot.ai' }
   const user = { name: 'Jan Kowalski', role: 'Admin klienta', initials: 'JK' }
   const roles: Role[] = ['ADMIN_KLIENTA']
   const employees = EMPLOYEES

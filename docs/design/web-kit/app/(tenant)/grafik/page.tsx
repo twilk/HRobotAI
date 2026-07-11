@@ -7,7 +7,7 @@ import type { Role } from '@/lib/nav'
 // "Generuj grafik" (POST /grafik/solve, A4) and manual shift CRUD (A3). Identity is placeholder
 // until web-kit gets a Keycloak/Auth.js session (see PR body) — same pattern as the other pages.
 export default function GrafikPage() {
-  const tenant = { name: 'ACME Sp. z o.o.', slug: 'acme.hrobot.ai' }
+  const tenant = { name: '4Mobility sp. z o.o.', slug: '4mobility.hrobot.ai' }
   const user = { name: 'Jan Kowalski', role: 'Admin klienta', initials: 'JK' }
   const roles: Role[] = ['ADMIN_KLIENTA']
 

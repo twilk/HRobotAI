@@ -12,7 +12,7 @@ import type { Role } from '@/lib/nav'
 // Fetch independent data with Promise.all to avoid request waterfalls.
 
 export default async function DashboardPage() {
-  const tenant = { name: 'ACME Sp. z o.o.', slug: 'acme.hrobot.ai' }
+  const tenant = { name: '4Mobility sp. z o.o.', slug: '4mobility.hrobot.ai' }
   const user = { name: 'Jan Kowalski', role: 'Admin klienta', initials: 'JK' }
   const roles: Role[] = ['ADMIN_KLIENTA']
 
@@ -27,7 +27,7 @@ export default async function DashboardPage() {
     <AppShell activeHref="/dashboard" title="Dashboard" tenant={tenant} user={user} roles={roles}>
       <div className="max-w-[1120px] mx-auto">
         <h1 className="font-display font-extrabold text-3xl tracking-tighter2 text-navy leading-tight">
-          Witaj w HRobot, <span className="text-accent-ink">ACME</span>
+          Witaj w HRobot, <span className="text-accent-ink">4Mobility</span>
         </h1>
         <p className="text-muted text-[15px] mt-2 max-w-[52ch]">
           Zacznij od kilku kroków, aby skonfigurować swój zespół. HRobot zajmie się resztą, w tle, zgodnie z RODO.

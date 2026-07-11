@@ -19,7 +19,7 @@ export default async function ProvisioningStatusPage({
           </div>
           <h1 className="font-display font-extrabold text-xl tracking-tightish text-navy mt-3.5">Tworzymy Twoją przestrzeń roboczą</h1>
           <p className="text-muted text-[13px] mt-1">
-            Zaraz będzie gotowa pod adresem <span className="font-mono text-accent-ink">acme.hrobot.ai</span>
+            Zaraz będzie gotowa pod adresem <span className="font-mono text-accent-ink">4mobility.hrobot.ai</span>
           </p>
         </div>
 
