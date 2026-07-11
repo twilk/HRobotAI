@@ -4,13 +4,19 @@ Replaces the M2-C1 phase-B 501 seams with working handlers. Each is a thin adapt
 :class:`AgentService`; the learning, tenant-isolated persistence, and solver reconciliation live
 there. Shapes match spec §5 exactly and are additive to the frozen #1 contract. The prefix/tags stay
 as the phase-B seam fixed them, so this is a pure fill-in of the deferred handlers.
+
+**Auth (M2 tenant-isolation fix, AG6):** every handler depends on :func:`app.deps.require_tenant`,
+which authenticates the bearer token and yields the caller's tenant slug from the token issuer. The
+tenant is NEVER taken from the request body/query — a caller cannot act on another tenant by naming
+it.
 """
 
 from __future__ import annotations
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from .deps import require_tenant
 from .fixtures import resolve_problem
 from .forecast import forecast_demand
 from .schemas import (
@@ -21,7 +27,7 @@ from .schemas import (
     ResetRequest,
     RetrainRequest,
 )
-from .service import AgentService, DEFAULT_TENANT
+from .service import AgentService
 from .store import AgentStore
 
 router = APIRouter(prefix="/agent", tags=["agent"])
@@ -43,22 +49,22 @@ def _resolve(problem_input_id, problem):
 
 
 @router.post("/propose")
-def propose(req: ProposeRequest):
+def propose(req: ProposeRequest, tenant: str = Depends(require_tenant)):
     problem = _resolve(req.problemInputId, req.problem)
-    return _service.propose(req.tenantId, problem)
+    return _service.propose(tenant, problem)
 
 
 @router.post("/feedback")
-def feedback(req: FeedbackRequest):
+def feedback(req: FeedbackRequest, tenant: str = Depends(require_tenant)):
     edits = [e.model_dump() for e in req.edits]
-    result = _service.feedback(req.tenantId, req.proposalId, edits, req.accepted)
+    result = _service.feedback(tenant, req.proposalId, edits, req.accepted)
     if not result.get("ok"):
         raise HTTPException(status_code=404, detail=result.get("error", "feedback failed"))
     return result
 
 
 @router.post("/heal")
-def heal(req: HealRequest):
+def heal(req: HealRequest, tenant: str = Depends(require_tenant)):
     ip = req.infeasibleProposal
     problem = _resolve(ip.problemInputId, ip.problem)
     try:
@@ -71,37 +77,37 @@ def heal(req: HealRequest):
 def explain(
     proposalId: str = Query(...),
     demandId: str | None = Query(default=None),
-    tenantId: str = Query(default=DEFAULT_TENANT),
+    tenant: str = Depends(require_tenant),
 ):
-    result = _service.explain(tenantId, proposalId, demandId)
+    result = _service.explain(tenant, proposalId, demandId)
     if result is None:
         raise HTTPException(status_code=404, detail="unknown proposalId for tenant")
     return result
 
 
 @router.post("/forecast")
-def forecast(req: ForecastRequest):
+def forecast(req: ForecastRequest, tenant: str = Depends(require_tenant)):
     return {"predictedDemand": forecast_demand(req.locationId, req.horizon)}
 
 
 @router.post("/retrain")
-def retrain(req: RetrainRequest):
+def retrain(req: RetrainRequest, tenant: str = Depends(require_tenant)):
     """Trigger the formal batch retrain (M2-C3): re-fit from the full accumulated feedback log,
     producing a new versioned policy with a persisted training artifact. Distinct from the online
     nudge that ``/agent/feedback`` applies per-correction — see :mod:`app.retrain`."""
-    return _service.retrain(req.tenantId, note=req.note)
+    return _service.retrain(tenant, note=req.note)
 
 
 @router.post("/reset")
-def reset(req: ResetRequest):
+def reset(req: ResetRequest, tenant: str = Depends(require_tenant)):
     """Reset a single tenant to its untrained cold-start policy (demo affordance).
 
     Clears the tenant's feedback + policy-version history + learned policy state and re-derives the
     day-1 cold-start BC baseline, so a fresh ``propose`` is back at ~edit-distance 50 / ~52% agreement.
     Tenant-scoped (never a blanket wipe), deterministic, idempotent — see :meth:`AgentService.reset`."""
-    return _service.reset(req.tenantId)
+    return _service.reset(tenant)
 
 
 @router.get("/policy")
-def policy(tenantId: str = Query(default=DEFAULT_TENANT)):
-    return _service.policy_info(tenantId)
+def policy(tenant: str = Depends(require_tenant)):
+    return _service.policy_info(tenant)

@@ -1,8 +1,9 @@
 """Request/response models for the ``/agent/*`` API (spec §5 shapes).
 
 Additive to the frozen #1 contract — these wrap ``ProblemInput``/``Assignment`` without renaming any
-frozen field. ``tenantId`` is optional on the wire and defaults to the demo tenant; in production it
-comes from the authenticated session (tenant isolation, AG6).
+frozen field. **No ``tenantId`` field**: the tenant is derived from the authenticated bearer token
+(``app.deps.require_tenant``), never trusted from the request body/query — that is the M2
+tenant-isolation fix (AG6). A ``tenantId`` sent by a caller is ignored (extra fields are dropped).
 """
 
 from __future__ import annotations
@@ -10,13 +11,11 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from .contract import Assignment, ProblemInput
-from .service import DEFAULT_TENANT
 
 
 class ProposeRequest(BaseModel):
     problemInputId: str | None = None
     problem: ProblemInput | None = None
-    tenantId: str = DEFAULT_TENANT
 
 
 class Edit(BaseModel):
@@ -33,13 +32,11 @@ class FeedbackRequest(BaseModel):
     proposalId: str
     edits: list[Edit] = Field(default_factory=list)
     accepted: bool = False
-    tenantId: str = DEFAULT_TENANT
 
 
 class HealRequest(BaseModel):
     # An infeasible proposal = a problem plus the (possibly broken) assignments to repair.
     infeasibleProposal: "InfeasibleProposal"
-    tenantId: str = DEFAULT_TENANT
 
 
 class InfeasibleProposal(BaseModel):
@@ -51,17 +48,15 @@ class InfeasibleProposal(BaseModel):
 class ForecastRequest(BaseModel):
     locationId: str
     horizon: int = 7
-    tenantId: str = DEFAULT_TENANT
 
 
 class RetrainRequest(BaseModel):
-    tenantId: str = DEFAULT_TENANT
     note: str | None = None
 
 
 class ResetRequest(BaseModel):
-    # Tenant-scoped reset to the cold-start baseline — never a blanket wipe.
-    tenantId: str = DEFAULT_TENANT
+    # Tenant-scoped reset to the cold-start baseline — never a blanket wipe. Tenant comes from auth.
+    pass
 
 
 HealRequest.model_rebuild()
