@@ -1,0 +1,115 @@
+# Deploy the HRobot staging environment on the self-hosted Windows dev box.
+#
+# Fires after the `ci` workflow (.github/workflows/ci.yml — NAME reference only; that file lands via
+# PR #9) finishes. Turns a green `main` into an always-on, seeded staging stack behind a stable
+# Cloudflare URL (spec §5; acceptance ENV-1..ENV-3).
+#
+# SECURITY — a self-hosted runner must NEVER execute untrusted code. The deploy job runs ONLY when the
+# triggering CI run (a) succeeded, (b) was on `main`, and (c) came from THIS repo (not a fork). See the
+# `if:` gate below. Secrets live on the runner / in GitHub Actions secrets — never in this file.
+#
+# Prereqs before this can run live (documented in the PR + docs/infra/staging-runner.md):
+#   - ci.yml merged to main so the `workflow_run` trigger exists;
+#   - GitHub Actions billing restored so ci.yml can run;
+#   - the self-hosted runner registered with the `staging-dev-box` label;
+#   - runner .env + CLOUDFLARE_TUNNEL_TOKEN secret configured.
+name: deploy-staging
+
+on:
+  workflow_run:
+    workflows: ["ci"]
+    types: [completed]
+
+# Never run two staging deploys at once; a newer green main supersedes an in-flight deploy.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    # HARD deploy gate — all three must hold (spec §5 / §9 self-hosted runner security):
+    #   success + main + same-repo (not a fork). Encoded as job-level `if:` so the self-hosted runner
+    #   never even checks out on a disallowed trigger.
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success'
+          && github.event.workflow_run.head_branch == 'main'
+          && github.event.workflow_run.head_repository.full_name == 'twilk/HRobotAI' }}
+    runs-on: [self-hosted, staging-dev-box]
+    timeout-minutes: 30
+
+    env:
+      # Enable the compose `full` profile for every `docker compose` call (up/exec/ps/logs) without
+      # repeating the flag. Reuses the EXISTING docker-compose.yml as-is (governance: do not edit it).
+      COMPOSE_PROFILES: full
+      # cloudflared named-tunnel token — from a GitHub Actions secret, consumed only by edge-up.sh.
+      CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
+
+    defaults:
+      run:
+        # Git Bash on the Windows dev box (installed alongside git for the runner + checkout).
+        shell: bash
+
+    steps:
+      # 1. Checkout the exact green `main` that CI validated.
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      # 2. Build + (re)start the full stack: control-plane, tenant-runtime, optimizer + postgres,
+      #    redis, rabbitmq, keycloak. Idempotent; --build picks up the new revision.
+      - name: docker compose up (full profile, build)
+        run: docker compose up -d --build --remove-orphans
+
+      # Wait for Postgres + control-plane to accept connections before running migrations. compose
+      # `depends_on: service_healthy` gates container START; the app still needs a few seconds to boot.
+      - name: Wait for core services
+        run: |
+          echo "Waiting for postgres to be healthy..."
+          for i in $(seq 1 60); do
+            if docker compose ps postgres | grep -q "healthy"; then echo "postgres healthy"; break; fi
+            sleep 3
+          done
+          echo "Waiting for control-plane to answer /api/health/live..."
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/api/health/live >/dev/null 2>&1; then echo "control-plane live"; break; fi
+            sleep 3
+          done
+
+      # 3a. Control-plane migrations (Prisma deploy) — run INSIDE the container so the compose-internal
+      #     `postgres` DNS + secrets resolve (host can't reach the `postgres` hostname).
+      - name: Migrate control-plane
+        run: docker compose exec -T --workdir /app control-plane pnpm --filter @hrobot/db migrate:control:deploy
+
+      # 4a. Ensure a seedable tenant exists (real signup/provisioning path, idempotent).
+      - name: Ensure staging tenant
+        run: docker compose exec -T --workdir /app control-plane node infra/deploy/ensure-staging-tenant.mjs
+
+      # 3b. Tenant migrations fan-out — brings every ACTIVE tenant DB (incl. the staging tenant just
+      #     ensured) to the latest schema. Needs TENANT_DB_ENCRYPTION_KEY (inherited from the
+      #     container's env_file .env) to decrypt the stored tenant DB URLs.
+      - name: Migrate tenants (fan-out)
+        run: docker compose exec -T --workdir /app control-plane pnpm --filter @hrobot/db exec tsx scripts/migrate-all-tenants.ts
+
+      # 4b. Seed the frozen canonical synthetic dataset into the staging tenant (idempotent upsert).
+      #     The tenant DB URL is resolved + decrypted in-container and never crosses to the runner.
+      - name: Seed synthetic dataset
+        run: docker compose exec -T --workdir /app control-plane node infra/deploy/seed-staging.mjs
+
+      # 6. (Re)start the runner-side edge: web front + Cloudflare NAMED tunnel (stable URL). Neither is
+      #    a compose service (docker-compose.yml is owned by sm-grafik-core — not edited here).
+      - name: Start edge (web front + Cloudflare tunnel)
+        run: bash infra/deploy/edge-up.sh
+
+      # 5. Health-check every service; fail the deploy with a clear report if any is unhealthy.
+      - name: Health-check all services
+        run: node infra/deploy/health-check.mjs
+
+      # Always surface stack state for debugging a failed deploy.
+      - name: Stack status
+        if: always()
+        run: docker compose ps

@@ -1,0 +1,25 @@
+J4 Reset & Replay — live run against :8010 + live optimizer (hrobot-optimizer-1)
+================================================================================
+Tenant: j4-live-page (the demo page's tenant). Scenario: syn-canonical-feasible.
+
+POST /agent/reset {"tenantId":"j4-live-page"}
+ -> {"ok":true,"tenantId":"j4-live-page","policyVersion":1,"feedbackCount":0,
+     "cleared":{"feedbackDeleted":..,"policyVersionsDeleted":..,"policyStateDeleted":..,"proposalsDeleted":..}}
+
+Reset restores a TRAINED tenant (edit-distance 4) back to cold-start v1, then the
+replay loop [propose -> demo/corrections -> feedback -> retrain] climbs:
+
+  round | policy | edit-distance | agreement | feasible
+    1   |   v1   |      50       |   52%     | True
+    2   |   v3   |      44       |   58%     | True
+    3   |   v5   |      28       |   73%     | True
+    4   |   v7   |      18       |   83%     | True
+    5   |   v9   |       4       |   96%     | True
+    6   |   v11  |       0       |  100%     | True
+
+Live optimizer /agent/heal -> solverStatus OPTIMAL, 52 repaired, 0 unmet.
+
+Deterministic across runs (identical curve every time):
+  run A: [(50,52),(44,58),(28,73),(18,83),(4,96),(0,100)]
+  run B: [(50,52),(44,58),(28,73),(18,83),(4,96),(0,100)]
+  DETERMINISTIC: True

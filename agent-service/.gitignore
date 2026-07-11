@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+# Saved policies / training artifacts.
+*.zip
+models/
+# Runtime retrain artifacts (AGENT_DB_PATH-adjacent; M2-C3). The committed AG5 evidence copies live
+# under evidence/ag5_artifacts/ and are intentionally NOT ignored.
+artifacts/
+/data/

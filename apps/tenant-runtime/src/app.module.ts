@@ -13,6 +13,8 @@ import { OutboxModule } from './outbox/outbox.module.js'
 import { ProvisioningModule } from './provisioning/provisioning.module.js'
 import { EmployeesModule } from './employees/employees.module.js'
 import { OnboardingModule } from './onboarding/onboarding.module.js'
+import { GrafikModule } from './grafik/grafik.module.js'
+import { ShiftSwapModule } from './shift-swap/shift-swap.module.js'
 import { RedisService } from './common/redis/redis.service.js'
 
 @Module({
@@ -41,6 +43,8 @@ import { RedisService } from './common/redis/redis.service.js'
     ProvisioningModule,
     EmployeesModule,
     OnboardingModule,
+    GrafikModule,
+    ShiftSwapModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

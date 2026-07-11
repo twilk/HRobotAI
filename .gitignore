@@ -23,5 +23,7 @@ packages/db/generated/
 Thumbs.db
 *.log
 
+# Staging deploy runner-side state (web front + cloudflared pidfiles/logs — see infra/deploy/edge-up.sh)
+.staging-run/
+
 # Claude Code / gstack harness files (not project source)
-docs/superpowers/

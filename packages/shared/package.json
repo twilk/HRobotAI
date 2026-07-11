@@ -15,6 +15,9 @@
     "test:integration": "jest --testMatch '**/*.integration.spec.ts' --passWithNoTests",
     "db:generate": "echo \"no db in @hrobot/shared\""
   },
+  "dependencies": {
+    "zod": "^3.23.0"
+  },
   "devDependencies": {
     "@hrobot/config": "workspace:*",
     "@types/jest": "^29.5.0",

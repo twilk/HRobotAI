@@ -22,6 +22,40 @@ enum EmploymentType {
   B2B
 }
 
+/// Where a ShiftDemand came from: expanded from a ShiftTemplate, or entered by hand.
+enum DemandSource {
+  TEMPLATE
+  MANUAL
+}
+
+/// How a Shift was produced: by the grafik solver (auto), or placed/edited by a human.
+enum ShiftSource {
+  AUTO
+  MANUAL
+}
+
+/// Lifecycle of a shift-swap request (M2 #3). DRAFT → PENDING_PEER → PEER_AGREED →
+/// PENDING_MANAGER → APPROVED, with REJECTED/CANCELLED as terminal off-ramps.
+enum SwapState {
+  DRAFT
+  PENDING_PEER
+  PEER_AGREED
+  PENDING_MANAGER
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+/// Lifecycle of a leave request (urlop) (M2 leave support). APPROVED is the default: the seed and
+/// most callers create already-decided leave; PENDING/REJECTED/CANCELLED exist for a future
+/// request/approval flow. Only APPROVED leave feeds the grafik solver as an H3 hard constraint.
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 model User {
   id           String               @id
   email        String               @unique
@@ -76,10 +110,107 @@ model Employee {
   hiredAt        DateTime           @map("hired_at")
   unitId         String             @map("unit_id")
   unit           OrganizationalUnit @relation(fields: [unitId], references: [id])
+  /// ENCRYPTED (AES-256-GCM, AAD-bound) RODO PII — home address, used to derive homeLat/homeLng for
+  /// haversine commute. Encrypt via @hrobot/shared EncryptionService before persisting; never store
+  /// plaintext. Unlike `pesel` this is NOT looked up by value, so it needs no blind index.
+  homeAddress    String?            @map("home_address")
+  /// Home latitude for haversine commute (derived from homeAddress; not PII on its own).
+  homeLat        Float?             @map("home_lat")
+  /// Home longitude for haversine commute (derived from homeAddress; not PII on its own).
+  homeLng        Float?             @map("home_lng")
+  /// Contract fraction (etat). targetWeeklyHours = etat × 40. 1.0 = full-time.
+  etat           Decimal            @default(1.0)
+  /// Job qualifications the employee can cover (matched against ShiftDemand.requiredRole).
+  qualifications String[]           @default([])
+  /// SOFT preference: weekday codes (MON..SUN) the employee would rather NOT work. Optimized by the
+  /// solver (preference soft-term), never hard-guaranteed. Additive; defaults to [] on existing rows.
+  preferredDaysOff    String[]      @default([]) @map("preferred_days_off")
+  /// SOFT preference: preferred shift start times as "HH:mm" strings. Optimized, never guaranteed.
+  preferredShiftStart String[]      @default([]) @map("preferred_shift_start")
   createdAt      DateTime           @default(now()) @map("created_at")
   updatedAt      DateTime           @updatedAt @map("updated_at")
+  shifts         Shift[]
+  swapsRequested ShiftSwapRequest[] @relation("SwapRequester")
+  swapsTargeted  ShiftSwapRequest[] @relation("SwapTarget")
+  leaves         LeaveRequest[]
 
   @@map("employees")
+}
+
+/// A physical site shifts are scheduled at. Minimal FK target for ShiftDemand/Shift.lokalizacjaId;
+/// full facility attributes + web-kit seed reconciliation (facilityId string → UUID) land later (A5).
+model Lokalizacja {
+  id      String        @id @default(uuid())
+  name    String
+  /// Facility type; matches ShiftTemplate.lokalizacjaTyp (free-form, not an FK).
+  typ     String
+  /// Optional geolocation for haversine commute (nullable; may be geocoded later).
+  lat     Float?
+  lng     Float?
+  demands ShiftDemand[]
+  shifts  Shift[]
+
+  @@map("lokalizacje")
+}
+
+/// Reusable weekly staffing pattern for a location type. `okna` holds the demand windows as JSON
+/// (`[{ start, end, rola, liczba }]`); expanding a template produces ShiftDemand rows (source=TEMPLATE).
+model ShiftTemplate {
+  id             String   @id @default(uuid())
+  lokalizacjaTyp String   @map("lokalizacja_typ")
+  nazwa          String
+  /// Days of week the template applies to (e.g. ["MON","TUE"]).
+  dni            String[] @default([])
+  /// Demand windows: [{ start, end, rola, liczba }]. JSON keeps the skeleton simple; shape mirrors ShiftDemand.
+  okna           Json
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("shift_templates")
+}
+
+/// Concrete staffing need: N employees of a role at a location for a dated window. Solver input.
+model ShiftDemand {
+  id            String       @id @default(uuid())
+  lokalizacjaId String       @map("lokalizacja_id")
+  lokalizacja   Lokalizacja  @relation(fields: [lokalizacjaId], references: [id])
+  date          DateTime     @db.Date
+  /// Window start/end as "HH:mm" local time (kept as text to avoid tz ambiguity in the skeleton).
+  start         String
+  end           String
+  requiredRole  String       @map("required_role")
+  requiredCount Int          @map("required_count")
+  source        DemandSource @default(MANUAL)
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  shifts        Shift[]
+
+  @@map("shift_demands")
+}
+
+/// An assignment of one employee to one dated window at a location. Produced by the solver
+/// (source=AUTO) or by a human (source=MANUAL). `demandId` links back to the need it fills (nullable
+/// for manual shifts with no originating demand).
+model Shift {
+  id            String       @id @default(uuid())
+  employeeId    String       @map("employee_id")
+  employee      Employee     @relation(fields: [employeeId], references: [id])
+  lokalizacjaId String       @map("lokalizacja_id")
+  lokalizacja   Lokalizacja  @relation(fields: [lokalizacjaId], references: [id])
+  demandId      String?      @map("demand_id")
+  demand        ShiftDemand? @relation(fields: [demandId], references: [id])
+  date          DateTime     @db.Date
+  /// Window start/end as "HH:mm" local time (see ShiftDemand).
+  start         String
+  end           String
+  role          String
+  source        ShiftSource  @default(AUTO)
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  swapsAsRequesterShift ShiftSwapRequest[] @relation("SwapRequesterShift")
+  swapsAsTargetShift    ShiftSwapRequest[] @relation("SwapTargetShift")
+
+  @@map("shifts")
 }
 
 model AuditLog {
@@ -93,4 +224,49 @@ model AuditLog {
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("audit_log")
+}
+
+/// A worker-initiated shift-swap request (M2 #3). A 1:1 swap (both target fields set) or a
+/// "give away shift" (target fields null). Never mutates `Shift` until APPROVED; the state
+/// machine (apps/tenant-runtime src/shift-swap) drives transitions and performs the atomic
+/// employeeId swap + audit on approval.
+model ShiftSwapRequest {
+  id                  String    @id @default(uuid())
+  requesterEmployeeId String    @map("requester_employee_id")
+  requester           Employee  @relation("SwapRequester", fields: [requesterEmployeeId], references: [id])
+  requesterShiftId    String    @map("requester_shift_id")
+  requesterShift      Shift     @relation("SwapRequesterShift", fields: [requesterShiftId], references: [id])
+  /// Null for a "give away shift" request (no counterparty); set for a 1:1 swap.
+  targetEmployeeId    String?   @map("target_employee_id")
+  target              Employee? @relation("SwapTarget", fields: [targetEmployeeId], references: [id])
+  targetShiftId       String?   @map("target_shift_id")
+  targetShift         Shift?    @relation("SwapTargetShift", fields: [targetShiftId], references: [id])
+  state               SwapState @default(DRAFT)
+  reason              String?
+  /// Manager who took the approve/reject decision (set on the manager decision only).
+  decidedByManagerId  String?   @map("decided_by_manager_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@map("shift_swap_requests")
+}
+
+/// An employee's leave (urlop) over a closed date interval [startDate, endDate]. APPROVED rows that
+/// overlap a solve week feed the grafik solver as `approvedLeaveDates` — an H3 hard constraint (the
+/// employee cannot be scheduled on those dates). `type` is the leave kind as a free-form string
+/// (URLOP_WYPOCZYNKOWY etc.), intentionally not modelled as an enum. Additive; never mutates Shift.
+model LeaveRequest {
+  id         String      @id @default(uuid())
+  employeeId String      @map("employee_id")
+  employee   Employee    @relation(fields: [employeeId], references: [id])
+  startDate  DateTime    @map("start_date") @db.Date
+  endDate    DateTime    @map("end_date") @db.Date
+  status     LeaveStatus @default(APPROVED)
+  /// Leave kind (URLOP_WYPOCZYNKOWY, URLOP_NA_ZADANIE, …). Free-form string, not over-modelled.
+  type       String
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
+
+  @@index([employeeId, startDate, endDate])
+  @@map("leave_requests")
 }
