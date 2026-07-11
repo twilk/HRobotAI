@@ -68,27 +68,32 @@ qualifications String[] // dopasowanie do ShiftDemand.requiredRole
 
 **Zmienne decyzyjne:** `x[e, d] ∈ {0,1}` — pracownik `e` przypisany do slotu zapotrzebowania `d` (slot = konkretne okno w konkretnej lokalizacji i dniu). Slot niesie lokalizację, dzień, okno, wymaganą rolę.
 
-**Twarde ograniczenia (constraints):**
-| # | Ograniczenie | Formuła / źródło |
-|---|--------------|------------------|
-| H1 | Pokrycie | `Σ_e x[e,d] = d.requiredCount` dla każdego slotu `d`; tylko `e` z `d.requiredRole ∈ e.qualifications` |
-| H2 | Brak nakładania | dla nakładających się w czasie slotów `d1,d2`: `x[e,d1] + x[e,d2] ≤ 1` |
-| H3 | Dostępność | `x[e,d] = 0` gdy `d.date` w APPROVED LeaveRequest pracownika `e` |
-| H4 | Odpoczynek dobowy ≥ 11h | zakaz par slotów tego samego `e` z przerwą < 11h (art. 132 KP) |
-| H5 | Odpoczynek tygodniowy ≥ 35h | ≥ jedno 35-h okno wolne w tygodniu (art. 133 KP) |
-| H6 | Limity godzin | Σ godzin `e` ≤ max dobowy (8/12h) i tygodniowy wg etatu + limity nadgodzin |
+**Ograniczenia — zakres egzekwowania dostarczony w M2:**
+
+- **H1–H4 — TWARDE (hard).** Egzekwowane jako twarde ograniczenia CP-SAT; naruszenie = brak rozwiązania (`INFEASIBLE`).
+- **H5 — MIĘKKI PROXY (soft).** Odpoczynek tygodniowy 35h nie jest modelowany rolling-35h (horyzont 1-tyg. tego nie obejmuje); dostarczony jako miękki proxy „≥N dni wolnych/tydz.".
+- **H6 (limity godzin/nadgodziny) i fairness (wariancja rozkładu) — ODROCZONE do M3.** Nieobecne w solverze M2, udokumentowane jako etap.
+
+| # | Ograniczenie | Egzekwowanie (M2) | Formuła / źródło |
+|---|--------------|-------------------|------------------|
+| H1 | Pokrycie | **twarde** | `Σ_e x[e,d] = d.requiredCount` dla każdego slotu `d`; tylko `e` z `d.requiredRole ∈ e.qualifications` |
+| H2 | Brak nakładania | **twarde** | dla nakładających się w czasie slotów `d1,d2`: `x[e,d1] + x[e,d2] ≤ 1` |
+| H3 | Dostępność | **twarde** | `x[e,d] = 0` gdy `d.date` w APPROVED LeaveRequest pracownika `e` |
+| H4 | Odpoczynek dobowy ≥ 11h | **twarde** | zakaz par slotów tego samego `e` z przerwą < 11h (art. 132 KP) |
+| H5 | Odpoczynek tygodniowy ≥ 35h | **miękki proxy** | zamiast rolling-35h: miękki cel „≥N dni wolnych/tydz." (art. 133 KP) |
+| H6 | Limity godzin | **odroczone → M3** | Σ godzin `e` ≤ max dobowy (8/12h) i tygodniowy wg etatu + limity nadgodzin — nieimplementowane w M2 |
 
 **Miękkie cele (minimalizacja `w_d·Dojazdy + w_e·Etaty + w_g·Godziny`):**
 | Cel | Definicja |
 |-----|-----------|
 | Dojazdy | `Σ_{e,d} x[e,d] · travelCost(e.home → d.lokalizacja)` (czas/odległość z geokodu) |
 | Etaty | `Σ_e |workedHours(e) − e.targetWeeklyHours|` (odchyłka od etatu) |
-| Godziny | wariancja rozkładu godzin między pracownikami + kara za nierówny rozkład zmian nocnych/weekendowych; korekta o historię (AttendanceRecord) |
+| Godziny | wariancja rozkładu godzin między pracownikami + kara za nierówny rozkład zmian nocnych/weekendowych; korekta o historię (AttendanceRecord). **Uwaga: fairness (wariancja) ODROCZONA do M3** — w M2 `fairnessScore` raportowany jako 0.0; egzekwowana pozostaje odchyłka etatu (Etaty) |
 
 - **Wagi `w_d, w_e, w_g`** — konfigurowalne per tenant, sensowne domyślne (dostrajalne w UAT).
 - **Horyzont:** 1 tydzień (Pon-Nd) × zbiór lokalizacji jednej jednostki/regionu (nie pojedyncza lokalizacja — inaczej dojazdy nie mają sensu decyzyjnego).
 - **Determinizm:** stały seed solvera + limit czasu → ten sam input daje ten sam grafik (kryterium akceptacji + wymóg testowalności).
-- **Niewykonalność:** gdy H1-H6 nie da się spełnić, `SolveResult.status = INFEASIBLE` + raport, które sloty niepokryte i dlaczego (nie cichy błąd).
+- **Niewykonalność:** gdy twardych ograniczeń **H1–H4** nie da się spełnić, `SolveResult.status = INFEASIBLE` + raport, które sloty niepokryte i dlaczego (nie cichy błąd). H5 (proxy miękki) nie powoduje `INFEASIBLE`; H6/fairness nieegzekwowane w M2.
 
 ## 6. Geokodowanie i RODO
 
@@ -109,20 +114,20 @@ POST /solve   (grafik-optimizer)
 ```
 
 ## 8. Zakres #1 dla M2 (co budujemy)
-Persystencja (modele §4) + moduł `tenant-runtime/src/grafik` + serwis `grafik-optimizer` (CP-SAT, H1-H6 + 3 cele) + szablony/zapotrzebowanie + akcja „Generuj grafik" + wypięcie web-kit na realne API + ręczna edycja + seed danych syntetycznych.
+Persystencja (modele §4) + moduł `tenant-runtime/src/grafik` + serwis `grafik-optimizer` (CP-SAT: **H1–H4 twarde**, H5 miękki proxy, H6/fairness odroczone → M3, + cele dojazdy/etaty) + szablony/zapotrzebowanie + akcja „Generuj grafik" + wypięcie web-kit na realne API + ręczna edycja + seed danych syntetycznych.
 
 ## 9. Poza zakresem (YAGNI / późniejsze podprojekty)
 - RL / uczenie i prognozowanie — **#2**.
 - Real-time i pre-uzgadnianie zamian — **#3**.
 - Optymalizacja floty/pojazdów w dojazdach (na razie tylko dojazd pracownika, nie relokacja aut).
-- Wielotygodniowy horyzont, pełne pokrycie wszystkich reguł Kodeksu pracy (bierzemy H4-H6; pozostałe reguły → soft/backlog).
+- Wielotygodniowy horyzont, pełne pokrycie wszystkich reguł Kodeksu pracy (w M2: **H1–H4 twarde**, H5 miękki proxy; H6/nadgodziny/fairness i pozostałe reguły → M3/backlog).
 - OSRM (routing drogowy) — interfejs gotowy, implementacja opcjonalna po pilocie.
 
 ## 10. Kryteria akceptacji
 
 | # | Kryterium | Weryfikacja |
 |---|-----------|-------------|
-| G1 | Solver zwraca **wykonalny** grafik (0 naruszeń H1-H6) dla tygodnia × region na danych syntetycznych 4Mobility | test integracyjny optimizer |
+| G1 | Solver zwraca **wykonalny** grafik z twardo egzekwowanymi **H1–H4** (pokrycie, brak nakładania, dostępność/urlopy, odpoczynek dobowy 11h) — 0 naruszeń — dla tygodnia × region na danych syntetycznych 4Mobility. **H5** (odpoczynek tygodniowy 35h) egzekwowany jako miękki proxy „≥N dni wolnych/tydz."; **H6** (limity godzin/nadgodziny) i fairness — **odroczone do M3**, udokumentowane. | test integracyjny optimizer (asercja H1–H4) |
 | G2 | Metryki dojazdów/etatów/godzin raportowane w `SolveResult` | test kontraktu API |
 | G3 | Determinizm: ten sam input → ten sam grafik | test (2× solve, porównanie) |
 | G4 | Niewykonalność raportowana jawnie (`INFEASIBLE` + niepokryte sloty), bez cichego błędu | test przypadku bez rozwiązania |
@@ -134,7 +139,7 @@ Persystencja (modele §4) + moduł `tenant-runtime/src/grafik` + serwis `grafik-
 | Ryzyko | Mitygacja |
 |--------|-----------|
 | CP-SAT za wolny na realnym rozmiarze | limit czasu solvera + akceptacja `FEASIBLE` (nie tylko `OPTIMAL`); horyzont per region, nie globalny |
-| Reguły Kodeksu pracy trudne do pełnego zamodelowania | zakres H4-H6 jasno ograniczony; reszta jako soft/backlog, udokumentowane |
+| Reguły Kodeksu pracy trudne do pełnego zamodelowania | zakres jasno ograniczony: **H1–H4 twarde**, H5 miękki proxy; H6/nadgodziny/fairness → M3, udokumentowane |
 | Brak realnych danych o etatach/adresach 4Mobility | dane syntetyczne do pilota + UAT; realne dane po odbiorze |
 | Rozjazd kontraktu tenant-runtime ↔ optimizer | kontrakt §7 jako współdzielony schemat (walidacja Zod/pydantic po obu stronach) |
 | Geokoder self-hosted to nowy komponent | pilot na haversine (bez geokodera online); Nominatim opcjonalny |
