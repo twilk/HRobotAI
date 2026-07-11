@@ -77,7 +77,7 @@ def test_forecast_weekly_seasonality(client):
 
 def test_policy_endpoint(client):
     client.post("/agent/propose", json={"problemInputId": CANONICAL_ID})
-    r = client.get("/agent/policy", params={"tenantId": "demo-tenant"})
+    r = client.get("/agent/policy")  # tenant comes from the auth token (default: demo-tenant)
     assert r.status_code == 200
     body = r.json()
     assert body["version"] >= 1

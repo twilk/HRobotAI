@@ -61,7 +61,9 @@ function addDays(d: Date, n: number): Date {
  * coverage forces every demand onto `E`; if `E` is unqualified, unavailable, or two of the slots
  * overlap / breach 11h rest, phase 1 is unsatisfiable and the optimizer returns `INFEASIBLE`. That is
  * exactly an H1–H4 check of the pinned post-swap assignment, achieved with no contract or optimizer
- * change. (Week-boundary rest across the Mon/Sun edge is out of scope for this targeted M2 check.)
+ * change. The packed window is widened by ±1 day (see {@link checkEmployee}) so the pairwise
+ * 11h-rest constraint also binds across the Mon/Sun week boundary, and the employee's APPROVED leave
+ * (H3) in that window is threaded through so a swap can never land someone on a leave day.
  *
  * The optimizer call is the injectable {@link OPTIMIZER_CLIENT} seam, so this is unit-testable
  * against a stubbed solver.
@@ -124,17 +126,40 @@ export class OptimizerSwapFeasibilityValidator implements SwapFeasibilityValidat
       return { feasible: false, reason: `unknown employee ${employeeId}` }
     }
 
+    // Widen the loaded window by one day each side so the pairwise 11h-rest constraint can see the
+    // neighbouring Sunday/Monday shifts that share a week boundary with the incoming shift (H4).
+    const probeStart = addDays(weekStart, -1)
+    const probeEnd = addDays(weekEnd, 1)
     const kept = (await client.shift.findMany({
-      where: { employeeId, date: { gte: weekStart, lt: weekEnd } },
+      where: { employeeId, date: { gte: probeStart, lt: probeEnd } },
       select: SHIFT_SELECT,
     })) as ShiftSlot[]
+
+    // H3: APPROVED leave overlapping the (widened) probe window blocks coverage of any demand on
+    // those days, so a swap can never place the employee onto an approved-leave day.
+    const leaveRows = await client.leaveRequest.findMany({
+      where: {
+        employeeId,
+        status: 'APPROVED',
+        startDate: { lt: probeEnd },
+        endDate: { gte: probeStart },
+      },
+      select: { startDate: true, endDate: true },
+    })
+    const leaveDates = new Set<string>()
+    for (const lv of leaveRows) {
+      for (let o = -1; o <= 7; o++) {
+        const day = addDays(weekStart, o)
+        if (day >= lv.startDate && day <= lv.endDate) leaveDates.add(isoDate(day))
+      }
+    }
 
     // Post-swap set: the employee's other week shifts (minus the one given away and any stale copy of
     // the incoming shift), plus the incoming shift they receive.
     const drop = new Set([giveAwayShiftId, incomingShift.id].filter((id): id is string => !!id))
     const postSwap: ShiftSlot[] = [...kept.filter((s) => !drop.has(s.id)), incomingShift]
 
-    const problem = this.buildProblem(weekStart, employee, postSwap)
+    const problem = this.buildProblem(weekStart, employee, postSwap, [...leaveDates].sort())
     const result = await this.optimizer.solve(problem)
 
     if (result.status === SolveStatus.INFEASIBLE) {
@@ -150,6 +175,7 @@ export class OptimizerSwapFeasibilityValidator implements SwapFeasibilityValidat
     weekStart: Date,
     employee: { id: string; qualifications: string[]; etat: unknown },
     shifts: ShiftSlot[],
+    approvedLeaveDates: string[],
   ): ProblemInput {
     const locationIds = [...new Set(shifts.map((s) => s.lokalizacjaId))]
     return {
@@ -161,7 +187,7 @@ export class OptimizerSwapFeasibilityValidator implements SwapFeasibilityValidat
           qualifications: employee.qualifications,
           etat: Number(employee.etat),
           homeLatLng: null,
-          approvedLeaveDates: [],
+          approvedLeaveDates,
           historyHours: 0,
         },
       ],

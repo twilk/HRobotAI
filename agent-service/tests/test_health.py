@@ -15,7 +15,7 @@ def test_health() -> None:
     assert resp.json() == {"status": "ok"}
 
 
-def test_agent_endpoints_are_implemented() -> None:
+def test_agent_endpoints_are_implemented(client) -> None:  # authed fixture (deps.require_tenant now gates /agent/*)
     # M2-C2 filled the phase-B 501 seams: /agent/propose now validates input (422 on empty body,
     # NOT 501) — proving the handler runs rather than returning the deferred stub.
     resp = client.post("/agent/propose", json={})

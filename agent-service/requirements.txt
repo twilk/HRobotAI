@@ -11,6 +11,9 @@ fastapi==0.115.6
 uvicorn[standard]==0.34.0
 pydantic==2.10.4
 httpx==0.27.2
+# Keycloak bearer verification for /agent/* (RS256 against realm JWKS); [cryptography] pulls the
+# backend python-jose needs for RSA signature checks. See app/deps.py.
+python-jose[cryptography]==3.3.0
 
 # --- RL / imitation stack ---
 torch==2.3.1

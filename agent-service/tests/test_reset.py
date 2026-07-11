@@ -3,32 +3,45 @@
 Guards the three properties the acceptance criteria call out: after reset a fresh proposal is back
 at the day-1 gap (~edit-distance 50 / ~52% agreement), the reset is **tenant-scoped** (never a
 blanket wipe), and it is **idempotent** (resetting a fresh tenant, or resetting twice, is a no-op).
+
+The tenant is taken from the bearer token now, so each call carries ``headers=auth(tenant)`` (the
+demo-corrections route still reads its own body ``tenantId``, kept alongside for that route).
 """
 
 from __future__ import annotations
 
 from app.fixtures import CANONICAL_ID
+from tests._authkit import auth
 
 
 def _gap(client, tenant: str) -> dict:
     """Propose for the demo scenario and return the live edit-distance / agreement vs the manager."""
-    prop = client.post("/agent/propose", json={"problemInputId": CANONICAL_ID, "tenantId": tenant}).json()
+    prop = client.post(
+        "/agent/propose", json={"problemInputId": CANONICAL_ID}, headers=auth(tenant)
+    ).json()
     corr = client.post(
-        "/agent/demo/corrections", json={"proposalId": prop["proposalId"], "tenantId": tenant}
+        "/agent/demo/corrections",
+        json={"proposalId": prop["proposalId"], "tenantId": tenant},
+        headers=auth(tenant),
     ).json()
     return {"policyVersion": prop["policyVersion"], **corr}
 
 
 def _train_one_round(client, tenant: str) -> None:
-    prop = client.post("/agent/propose", json={"problemInputId": CANONICAL_ID, "tenantId": tenant}).json()
+    prop = client.post(
+        "/agent/propose", json={"problemInputId": CANONICAL_ID}, headers=auth(tenant)
+    ).json()
     corr = client.post(
-        "/agent/demo/corrections", json={"proposalId": prop["proposalId"], "tenantId": tenant}
+        "/agent/demo/corrections",
+        json={"proposalId": prop["proposalId"], "tenantId": tenant},
+        headers=auth(tenant),
     ).json()
     client.post(
         "/agent/feedback",
-        json={"proposalId": prop["proposalId"], "edits": corr["edits"], "accepted": False, "tenantId": tenant},
+        json={"proposalId": prop["proposalId"], "edits": corr["edits"], "accepted": False},
+        headers=auth(tenant),
     )
-    client.post("/agent/retrain", json={"tenantId": tenant})
+    client.post("/agent/retrain", json={}, headers=auth(tenant))
 
 
 def test_reset_returns_cold_start_gap(client):
@@ -40,7 +53,7 @@ def test_reset_returns_cold_start_gap(client):
     trained = _gap(client, tenant)["editDistance"]
     assert trained < before, f"training did not move the policy: {before} -> {trained}"
 
-    r = client.post("/agent/reset", json={"tenantId": tenant})
+    r = client.post("/agent/reset", json={}, headers=auth(tenant))
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["ok"] is True
@@ -64,7 +77,7 @@ def test_reset_is_tenant_scoped(client):
     keep_trained = _gap(client, keep)["editDistance"]
     assert keep_trained < 50
 
-    client.post("/agent/reset", json={"tenantId": wipe})
+    client.post("/agent/reset", json={}, headers=auth(wipe))
 
     # The wiped tenant is back at cold-start...
     assert _gap(client, wipe)["editDistance"] == 50
@@ -75,7 +88,7 @@ def test_reset_is_tenant_scoped(client):
 def test_reset_is_idempotent(client):
     tenant = "reset-idem"
     # Reset a pristine tenant (nothing to clear) — a clean no-op that still yields the cold-start gap.
-    r0 = client.post("/agent/reset", json={"tenantId": tenant}).json()
+    r0 = client.post("/agent/reset", json={}, headers=auth(tenant)).json()
     assert r0["ok"] is True and r0["policyVersion"] == 1
     assert _gap(client, tenant)["editDistance"] == 50
 
@@ -83,8 +96,8 @@ def test_reset_is_idempotent(client):
         _train_one_round(client, tenant)
 
     # Two resets in a row land at the identical cold-start state.
-    first = client.post("/agent/reset", json={"tenantId": tenant}).json()
-    second = client.post("/agent/reset", json={"tenantId": tenant}).json()
+    first = client.post("/agent/reset", json={}, headers=auth(tenant)).json()
+    second = client.post("/agent/reset", json={}, headers=auth(tenant)).json()
     assert first["policyVersion"] == second["policyVersion"] == 1
     assert second["feedbackCount"] == 0
     assert _gap(client, tenant)["editDistance"] == 50
@@ -95,7 +108,7 @@ def test_reset_then_replay_converges(client):
     tenant = "reset-replay"
     for _ in range(2):
         _train_one_round(client, tenant)
-    client.post("/agent/reset", json={"tenantId": tenant})
+    client.post("/agent/reset", json={}, headers=auth(tenant))
 
     dists, accs = [], []
     for _ in range(6):
@@ -105,16 +118,19 @@ def test_reset_then_replay_converges(client):
         if g["editDistance"] == 0:
             break
         prop_id = client.post(
-            "/agent/propose", json={"problemInputId": CANONICAL_ID, "tenantId": tenant}
+            "/agent/propose", json={"problemInputId": CANONICAL_ID}, headers=auth(tenant)
         ).json()["proposalId"]
         corr = client.post(
-            "/agent/demo/corrections", json={"proposalId": prop_id, "tenantId": tenant}
+            "/agent/demo/corrections",
+            json={"proposalId": prop_id, "tenantId": tenant},
+            headers=auth(tenant),
         ).json()
         client.post(
             "/agent/feedback",
-            json={"proposalId": prop_id, "edits": corr["edits"], "accepted": False, "tenantId": tenant},
+            json={"proposalId": prop_id, "edits": corr["edits"], "accepted": False},
+            headers=auth(tenant),
         )
-        client.post("/agent/retrain", json={"tenantId": tenant})
+        client.post("/agent/retrain", json={}, headers=auth(tenant))
 
     assert dists[0] == 50 and accs[0] == 0.5192, f"did not start at cold-start: {dists[0]}/{accs[0]}"
     assert dists[-1] == 0 and accs[-1] == 1.0, f"did not converge: {dists} / {accs}"

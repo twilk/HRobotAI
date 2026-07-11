@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import threading
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -50,19 +51,24 @@ class AgentStore:
         self.db_path = db_path
         if db_path != ":memory:":
             os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
-        # A single shared connection (check_same_thread off for the FastAPI worker).
+        # A single shared connection (check_same_thread off for the FastAPI worker). Because the one
+        # connection is shared across threads, every write goes through ``_tx`` under ``_lock`` so a
+        # concurrent commit can't interleave and clobber another writer (M2 lost-update fix). Reentrant
+        # so a write path may itself open a nested ``_tx`` without deadlocking.
+        self._lock = threading.RLock()
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._init_schema()
 
     @contextmanager
     def _tx(self):
-        cur = self._conn.cursor()
-        try:
-            yield cur
-            self._conn.commit()
-        finally:
-            cur.close()
+        with self._lock:
+            cur = self._conn.cursor()
+            try:
+                yield cur
+                self._conn.commit()
+            finally:
+                cur.close()
 
     def _init_schema(self) -> None:
         with self._tx() as c:

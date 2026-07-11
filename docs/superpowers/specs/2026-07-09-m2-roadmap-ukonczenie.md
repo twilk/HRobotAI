@@ -39,7 +39,7 @@
 
 | Punkt | Cel na odbiór (realny) | Ambicja przycięta → M3/po pilocie |
 |:-----:|------------------------|-----------------------------------|
-| **a Grafik** | ✅ **PEŁNY**: solver CP-SAT (H1–H6 + 3 cele), persystencja, API, web-kit na realnym API, demo na stagingu | OSRM (routing drogowy) — interfejs gotowy, impl. później |
+| **a Grafik** | ✅ **PEŁNY**: solver CP-SAT (**H1–H4 twarde**, H5 miękki proxy „≥N dni wolnych/tydz.", + cele dojazdy/etaty), persystencja, API, web-kit na realnym API, demo na stagingu | **H6 (limity godzin/nadgodziny) i fairness → M3**; OSRM (routing drogowy) — interfejs gotowy, impl. później |
 | **b Agent AI** (samouczący) | ✅ **DEMONSTROWALNA PĘTLA UCZENIA**: zimny start = imitacja z solvera; wartość = pętla feedbacku (korekty menadżera → sygnał uczenia), auto-naprawa infeasible (**samolecząca**), adnotacje rationale (**wnioskująca**), retrening na akumulowanym feedbacku (**samorozwijająca**), forecaster zapotrzebowania. Demo: mierzalny spadek korekt po feedbacku na danych syntetycznych. SB3/RL utrzymane. | Długohoryzontowy RL on-policy na żywych danych 4Mobility, pełna autonomia produkcyjna → etapowo po M2 |
 | **c Zamiany zmian** | ✅ **MINIMALNY**: async workflow `ShiftSwapRequest` (zgłoś → akceptacja managera/kontrahenta) na modelu `Shift` #1 | Real-time WS/SSE „pre-uzgadnianie" AI → M3 |
 | **d CI/CD** | ✅ **PEŁNY**: `ci.yml` (lint→typecheck→unit→integration→smoke) + branch protection | matrix `python`, remote cache |
@@ -77,7 +77,7 @@ gantt
     axisFormat %d.%m
     section A · Rdzeń Grafiku (#1)
     Schema Prisma + migracja fan-out        :a1, 2026-07-09, 1d
-    Solver CP-SAT (H1-H6 + 3 cele)          :a2, 2026-07-10, 4d
+    Solver CP-SAT (H1-H4 twarde, H5 proxy)  :a2, 2026-07-10, 4d
     Moduł tenant-runtime + CRUD + RBAC      :a3, 2026-07-10, 3d
     POST /grafik/solve (packing+audyt)      :a4, 2026-07-13, 2d
     Web-kit na realnym API                  :a5, 2026-07-14, 2d
@@ -99,7 +99,7 @@ gantt
 |:-----:|:----:|----------------|---------------|---------------|---------|
 | D1 | **Czw 09.07** | Migracja Prisma: `ShiftTemplate/ShiftDemand/Shift` + `Employee`(homeAddress enc, homeLat/lng, etat, qualifications); gen. client; fan-out. Scaffold `grafik-optimizer` (FastAPI `POST /solve` stub, Dockerfile, slot `agent` w compose); scaffold `tenant-runtime/src/grafik` | `ci.yml` (lint→typecheck→unit→integration→smoke); rejestracja self-hosted runnera; branch protection `main` | — | Kick-off speców #2/#3/#5 (brainstorming równolegle) |
 | D2 | **Pt 10.07** | Solver: zmienne `x[e,d]` + H1–H3; pydantic `ProblemInput/SolveResult`. tenant-runtime: CRUD Shift/Demand/Template + RBAC + audyt | `deploy-staging.yml` (workflow_run→compose full→migracje→seed→health→tunel); **seed syntetyczny 4Mobility** (~36 prac., PESEL generowany) | Spec #2 gotowa | — |
-| — | Sob–Nd 11–12.07 | *(crew/bufor)* Solver: H4–H6 (odpoczynek) + cele miękkie + haversine + determinizm + `INFEASIBLE`; testy G1–G4 | — | — | Spec #3, #5 |
+| — | Sob–Nd 11–12.07 | *(crew/bufor)* Solver: H4 (odpoczynek dobowy 11h) twarde + H5 miękki proxy „dni wolnych/tydz." (H6/fairness → M3) + cele miękkie + haversine + determinizm + `INFEASIBLE`; testy G1–G4 | — | — | Spec #3, #5 |
 | D3 | **Pon 13.07** | **`POST /grafik/solve`**: packing DB→ProblemInput→optimizer→zapis `Shift(source=AUTO)`→audyt. Walidacja kontraktu 2-str. | CI zielone e2e | Serwis agenta; Gym-env na kontrakcie #1; dataset z solvera | Model `ShiftSwapRequest` + state machine |
 | D4 | **Wt 14.07** | Web-kit: wypięcie z in-memory → realne API tenant-runtime; akcja „Generuj grafik"; UI zapotrzebowania | Smoke E2E Playwright (login→`/grafik` bez błędów); artefakty na raport KM | Behavior cloning polityki SB3 z danych solvera; forecaster; endpoint serwujący | Moduł zamian (async) + minimalne UI |
 | D5 | **Śr 15.07** | E2E na stagingu: generacja→solver→persist→widoczne/edytowalne (G5, G6); bugfix | Health-check orchestracja stabilna | Demo agenta: metryki vs baseline solvera; **oznaczenie pilotowe** | UAT: scenariusze + checklista akceptacji |
@@ -114,7 +114,7 @@ gantt
 
 ### #1 Rdzeń Grafiku (a) — tor A
 - **Prisma:** `ShiftTemplate`, `ShiftDemand`, `Shift` (§4 spec #1) + `Employee`(`homeAddress` AES-256-GCM, `homeLat/lng`, `etat`, `qualifications`); migracja + fan-out (`migrate-all-tenants.ts`).
-- **grafik-optimizer (Python/FastAPI):** `POST /solve`; CP-SAT: zmienne `x[e,d]`, twarde H1–H6, cel `w_d·dojazdy + w_e·etaty + w_g·godziny`; haversine (interfejs OSRM-ready); determinizm (seed+limit); `INFEASIBLE` + niepokryte sloty. Kontener `agent` w compose.
+- **grafik-optimizer (Python/FastAPI):** `POST /solve`; CP-SAT: zmienne `x[e,d]`, **twarde H1–H4**, H5 jako miękki proxy „≥N dni wolnych/tydz." (**H6/nadgodziny i fairness → M3**), cel `w_d·dojazdy + w_e·etaty` (godziny/fairness odroczone); haversine (interfejs OSRM-ready); determinizm (seed+limit); `INFEASIBLE` + niepokryte sloty. Kontener `agent` w compose.
 - **tenant-runtime/src/grafik:** CRUD (Shift/Demand/Template), `POST /grafik/solve` (packing→optimizer→persist→audyt), RBAC (MANAGER≤jednostka, HR/ADMIN globalnie).
 - **web-kit:** wypięcie `lib/schedule.ts` (in-memory) → realne API; „Generuj grafik"; ręczna edycja zostaje.
 - **Kryteria:** G1–G6 (spec #1 §10).
@@ -152,7 +152,7 @@ gantt
 
 | Ryzyko | P | Wpływ | Mitygacja |
 |--------|:-:|:-----:|-----------|
-| Solver za wolny / niewykonalny na realnym rozmiarze | Ś | Wys | limit czasu + akceptacja `FEASIBLE`; horyzont per region; twarde tylko H1–H6 |
+| Solver za wolny / niewykonalny na realnym rozmiarze | Ś | Wys | limit czasu + akceptacja `FEASIBLE`; horyzont per region; twarde tylko H1–H4 (H5 miękki proxy, H6/fairness → M3) |
 | Agent AI (#2) nie zdąży do produkcyjnego RL | **Wys** | Wys | **z góry pilot: imitation learning z solvera** — działający ML bez treningu on-policy; udokumentować jako etap |
 | Kontrakt #1↔optimizer się rozjeżdża | Ś | Ś | wspólny schemat + walidacja Zod/pydantic 2-str.; zamrożenie na GA |
 | Self-hosted runner na Windows (deva offline w UAT) | Ś | Wys | health-check + alert; ścieżka awaryjna ręczny `docker compose up`; sesje UAT umawiane |

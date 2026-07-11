@@ -109,6 +109,18 @@ export class InvalidSwapTargetError extends Error {
 }
 
 /**
+ * Thrown when a state-guarded update matches zero rows — i.e. the request left the expected state
+ * between the read and the write (a concurrent cancel/reject/approve). The optimistic-lock signal;
+ * the HTTP layer maps it to 409 Conflict so the caller reloads and retries.
+ */
+export class SwapConcurrentModificationError extends Error {
+  constructor(public readonly id: string) {
+    super(`ShiftSwapRequest ${id} changed concurrently; reload and retry`)
+    this.name = 'SwapConcurrentModificationError'
+  }
+}
+
+/**
  * Pure transition function. Returns the next state for `(from, action)` or throws
  * `IllegalSwapTransitionError` if the action is not permitted from `from`.
  */

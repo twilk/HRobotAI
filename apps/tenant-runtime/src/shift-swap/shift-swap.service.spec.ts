@@ -5,6 +5,7 @@ import {
   IllegalSwapTransitionError,
   SwapNotFeasibleError,
   SwapRequestNotFoundError,
+  SwapConcurrentModificationError,
 } from './swap-state-machine.js'
 import {
   AllowAllSwapFeasibilityValidator,
@@ -18,27 +19,44 @@ const TGT_SHIFT = 'shift-target'
 
 type MockTx = {
   shift: { update: jest.Mock }
-  shiftSwapRequest: { update: jest.Mock }
+  shiftSwapRequest: { updateMany: jest.Mock; findUniqueOrThrow: jest.Mock }
   auditLog: { create: jest.Mock }
 }
 
 type MockClient = {
-  shiftSwapRequest: { findUnique: jest.Mock; update: jest.Mock }
+  shiftSwapRequest: { findUnique: jest.Mock; updateMany: jest.Mock; findUniqueOrThrow: jest.Mock }
   shift: { findUnique: jest.Mock; update: jest.Mock }
   $transaction: jest.Mock
   __tx: MockTx
 }
 
+/**
+ * The service now writes via a state-guarded `updateMany` (optimistic lock, B4) and then reloads the
+ * row with `findUniqueOrThrow`. The mock threads the last `updateMany` `data` through the reload so
+ * result-state assertions keep working; each `updateMany` defaults to `{ count: 1 }` (matched).
+ */
 function makeClient(): MockClient {
+  let txData: Record<string, unknown> = {}
+  let topData: Record<string, unknown> = {}
   const tx: MockTx = {
     shift: { update: jest.fn().mockResolvedValue({}) },
-    shiftSwapRequest: { update: jest.fn().mockImplementation(({ data }) => ({ id: 'req-1', ...data })) },
+    shiftSwapRequest: {
+      updateMany: jest.fn().mockImplementation(({ data }) => {
+        txData = data
+        return { count: 1 }
+      }),
+      findUniqueOrThrow: jest.fn().mockImplementation(() => ({ id: 'req-1', ...txData })),
+    },
     auditLog: { create: jest.fn().mockResolvedValue({ id: 'log-1' }) },
   }
   return {
     shiftSwapRequest: {
       findUnique: jest.fn(),
-      update: jest.fn().mockImplementation(({ data }) => ({ id: 'req-1', ...data })),
+      updateMany: jest.fn().mockImplementation(({ data }) => {
+        topData = data
+        return { count: 1 }
+      }),
+      findUniqueOrThrow: jest.fn().mockImplementation(() => ({ id: 'req-1', ...topData })),
     },
     shift: { findUnique: jest.fn(), update: jest.fn() },
     $transaction: jest.fn(async (cb: (tx: MockTx) => unknown) => cb(tx)),
@@ -77,8 +95,8 @@ describe('ShiftSwapService', () => {
       const client = makeClient()
       client.shiftSwapRequest.findUnique.mockResolvedValue(makeRequest(SwapState.DRAFT))
       const result = await service.submit(as(client), 'req-1')
-      expect(client.shiftSwapRequest.update).toHaveBeenCalledWith({
-        where: { id: 'req-1' },
+      expect(client.shiftSwapRequest.updateMany).toHaveBeenCalledWith({
+        where: { id: 'req-1', state: SwapState.DRAFT },
         data: { state: SwapState.PENDING_PEER },
       })
       expect(result.state).toBe(SwapState.PENDING_PEER)
@@ -88,8 +106,8 @@ describe('ShiftSwapService', () => {
       const client = makeClient()
       client.shiftSwapRequest.findUnique.mockResolvedValue(makeRequest(SwapState.PENDING_PEER))
       await service.peerDecision(as(client), 'req-1', true)
-      expect(client.shiftSwapRequest.update).toHaveBeenCalledWith({
-        where: { id: 'req-1' },
+      expect(client.shiftSwapRequest.updateMany).toHaveBeenCalledWith({
+        where: { id: 'req-1', state: SwapState.PENDING_PEER },
         data: { state: SwapState.PEER_AGREED },
       })
     })
@@ -98,8 +116,8 @@ describe('ShiftSwapService', () => {
       const client = makeClient()
       client.shiftSwapRequest.findUnique.mockResolvedValue(makeRequest(SwapState.PEER_AGREED))
       await service.submitToManager(as(client), 'req-1')
-      expect(client.shiftSwapRequest.update).toHaveBeenCalledWith({
-        where: { id: 'req-1' },
+      expect(client.shiftSwapRequest.updateMany).toHaveBeenCalledWith({
+        where: { id: 'req-1', state: SwapState.PEER_AGREED },
         data: { state: SwapState.PENDING_MANAGER },
       })
     })
@@ -110,7 +128,7 @@ describe('ShiftSwapService', () => {
       const client = makeClient()
       client.shiftSwapRequest.findUnique.mockResolvedValue(makeRequest(SwapState.APPROVED))
       await expect(service.submit(as(client), 'req-1')).rejects.toThrow(IllegalSwapTransitionError)
-      expect(client.shiftSwapRequest.update).not.toHaveBeenCalled()
+      expect(client.shiftSwapRequest.updateMany).not.toHaveBeenCalled()
     })
 
     it('submitToManager on a DRAFT request throws', async () => {
@@ -189,8 +207,8 @@ describe('ShiftSwapService', () => {
       expect(client.shift.update).not.toHaveBeenCalled()
       expect(client.__tx.shift.update).not.toHaveBeenCalled()
       expect(client.$transaction).not.toHaveBeenCalled()
-      // The request itself transitions to the expected terminal state.
-      const call = client.shiftSwapRequest.update.mock.calls[0][0]
+      // The request itself transitions to the expected terminal state (state-guarded updateMany).
+      const call = client.shiftSwapRequest.updateMany.mock.calls[0][0]
       expect(call.data.state).toBe(expectedState)
     })
 
@@ -203,8 +221,8 @@ describe('ShiftSwapService', () => {
         actorUserId: 'user-mgr',
         ipAddress: '10.0.0.1',
       })
-      expect(client.shiftSwapRequest.update).toHaveBeenCalledWith({
-        where: { id: 'req-1' },
+      expect(client.shiftSwapRequest.updateMany).toHaveBeenCalledWith({
+        where: { id: 'req-1', state: SwapState.PENDING_MANAGER },
         data: { state: SwapState.REJECTED, decidedByManagerId: 'mgr-7' },
       })
     })
@@ -244,9 +262,9 @@ describe('ShiftSwapService', () => {
       })
       expect(tx.shift.update).toHaveBeenCalledTimes(2)
 
-      // Request transitions to APPROVED with the deciding manager recorded.
-      expect(tx.shiftSwapRequest.update).toHaveBeenCalledWith({
-        where: { id: 'req-1' },
+      // Request transitions to APPROVED with the deciding manager recorded (state-guarded updateMany).
+      expect(tx.shiftSwapRequest.updateMany).toHaveBeenCalledWith({
+        where: { id: 'req-1', state: SwapState.PENDING_MANAGER },
         data: { state: SwapState.APPROVED, decidedByManagerId: 'mgr-1' },
       })
 
@@ -313,6 +331,47 @@ describe('ShiftSwapService', () => {
       expect(client.$transaction).not.toHaveBeenCalled()
       expect(client.shift.update).not.toHaveBeenCalled()
       expect(client.__tx.shift.update).not.toHaveBeenCalled()
+    })
+  })
+
+  // B4: optimistic lock — a state-guarded updateMany matching zero rows means the request moved out
+  // from under us (concurrent cancel/reject/approve), so we abort and roll back instead of clobbering.
+  describe('B4 — concurrent-modification guard (optimistic lock)', () => {
+    it('approve aborts with SwapConcurrentModificationError and writes no audit when the row left PENDING_MANAGER', async () => {
+      const client = makeClient()
+      client.shiftSwapRequest.findUnique.mockResolvedValue(makeRequest(SwapState.PENDING_MANAGER))
+      client.shift.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+        where.id === REQ_SHIFT
+          ? { id: REQ_SHIFT, employeeId: REQUESTER }
+          : { id: TGT_SHIFT, employeeId: TARGET },
+      )
+      // A concurrent transition already moved the row: the guarded update inside the tx matches nothing.
+      client.__tx.shiftSwapRequest.updateMany.mockResolvedValue({ count: 0 })
+
+      await expect(
+        service.managerDecision(as(client), 'req-1', {
+          approve: true,
+          decidedByManagerId: 'mgr-1',
+          actorUserId: 'user-mgr',
+          ipAddress: '127.0.0.1',
+        }),
+      ).rejects.toBeInstanceOf(SwapConcurrentModificationError)
+
+      // The throw aborts the transaction: no audit row and no reload of a (would-be) updated request.
+      expect(client.__tx.auditLog.create).not.toHaveBeenCalled()
+      expect(client.__tx.shiftSwapRequest.findUniqueOrThrow).not.toHaveBeenCalled()
+    })
+
+    it('a non-approve transition aborts with SwapConcurrentModificationError when the state moved concurrently', async () => {
+      const client = makeClient()
+      client.shiftSwapRequest.findUnique.mockResolvedValue(makeRequest(SwapState.DRAFT))
+      client.shiftSwapRequest.updateMany.mockResolvedValue({ count: 0 })
+
+      await expect(service.submit(as(client), 'req-1')).rejects.toBeInstanceOf(
+        SwapConcurrentModificationError,
+      )
+      // We never reload/return a stale row when the guarded update matched nothing.
+      expect(client.shiftSwapRequest.findUniqueOrThrow).not.toHaveBeenCalled()
     })
   })
 })

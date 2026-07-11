@@ -7,6 +7,8 @@ repairs infeasible proposals through the live solver.
 
 from __future__ import annotations
 
+import threading
+
 from .contract import Assignment, ProblemInput
 from .fixtures import canonical_problem, canonical_solution
 from .metrics import acceptance_metric
@@ -21,6 +23,11 @@ DEFAULT_TENANT = "demo-tenant"
 class AgentService:
     def __init__(self, store: AgentStore):
         self.store = store
+        # Serialises the feedback/retrain read-modify-write span (load policy -> apply -> bump version
+        # -> record version). The store's own ``_lock`` protects a single write; this one keeps the
+        # multi-statement span atomic so two concurrent feedback calls can't both read version N and
+        # each write N+1 (lost update / duplicate version — M2 fix). Reentrant.
+        self._lock = threading.RLock()
 
     # --- per-tenant policy lifecycle -------------------------------------------------------------
 
@@ -118,51 +125,54 @@ class AgentService:
     # --- feedback -------------------------------------------------------------------------------
 
     def feedback(self, tenant_id: str, proposal_id: str, edits: list[dict], accepted: bool) -> dict:
-        proposal = self.store.get_proposal(tenant_id, proposal_id)
-        if proposal is None:
-            return {"ok": False, "rewardLogged": 0, "error": "unknown proposalId for tenant"}
-        problem = ProblemInput.model_validate(proposal["problem"])
+        # Hold the service lock across the whole read-modify-write so the online nudge + version bump
+        # are atomic against a concurrent feedback/retrain for the same tenant (M2 lost-update fix).
+        with self._lock:
+            proposal = self.store.get_proposal(tenant_id, proposal_id)
+            if proposal is None:
+                return {"ok": False, "rewardLogged": 0, "error": "unknown proposalId for tenant"}
+            problem = ProblemInput.model_validate(proposal["problem"])
 
-        # Persist each edit as an AgentFeedback row (spec §6), tenant-keyed.
-        logged = 0
-        effective_edits = list(edits)
-        if accepted and not edits:
-            effective_edits = [{"editType": "ACCEPT", "employeeId": None, "demandId": None}]
-        for e in effective_edits:
-            self.store.add_feedback(
-                tenant_id=tenant_id,
-                proposal_id=proposal_id,
-                employee_id=e.get("toEmployeeId") or e.get("employeeId"),
-                demand_id=e.get("demandId"),
-                edit_type=e.get("editType", "REJECT"),
-                reward_signal=reward_for_edit(e.get("editType", "REJECT")),
-            )
-            logged += 1
+            # Persist each edit as an AgentFeedback row (spec §6), tenant-keyed.
+            logged = 0
+            effective_edits = list(edits)
+            if accepted and not edits:
+                effective_edits = [{"editType": "ACCEPT", "employeeId": None, "demandId": None}]
+            for e in effective_edits:
+                self.store.add_feedback(
+                    tenant_id=tenant_id,
+                    proposal_id=proposal_id,
+                    employee_id=e.get("toEmployeeId") or e.get("employeeId"),
+                    demand_id=e.get("demandId"),
+                    edit_type=e.get("editType", "REJECT"),
+                    reward_signal=reward_for_edit(e.get("editType", "REJECT")),
+                )
+                logged += 1
 
-        # Online learning: move the policy toward the manager's corrections, then bump version.
-        state = self._load_policy(tenant_id)
-        policy = ImitationPolicy(state)
-        updates = policy.apply_feedback_edits(problem, effective_edits)
-        if updates:
-            state.version += 1
-            # Re-propose to measure the new acceptance metric on the same problem (AG5 progression).
-            new_assignments, _ = policy.propose(problem)
-            accepted_schedule = self._infer_accepted_schedule(proposal, effective_edits)
-            metric = acceptance_metric(new_assignments, accepted_schedule) if accepted_schedule else None
-            self._save_policy(tenant_id, state)
-            # Online-nudge versions carry no saved artifact — that is the formal *batch* retrain's job
-            # (app.retrain / POST /agent/retrain). The metrics blob records which path wrote the row.
-            self.store.record_policy_version(
-                tenant_id,
-                state.version,
-                metric,
-                note="online feedback nudge",
-                metrics={"acceptanceMetric": metric, "trainMethod": "online-nudge", "updates": updates},
-            )
-        else:
-            self._save_policy(tenant_id, state)
+            # Online learning: move the policy toward the manager's corrections, then bump version.
+            state = self._load_policy(tenant_id)
+            policy = ImitationPolicy(state)
+            updates = policy.apply_feedback_edits(problem, effective_edits)
+            if updates:
+                state.version += 1
+                # Re-propose to measure the new acceptance metric on the same problem (AG5 progression).
+                new_assignments, _ = policy.propose(problem)
+                accepted_schedule = self._infer_accepted_schedule(proposal, effective_edits)
+                metric = acceptance_metric(new_assignments, accepted_schedule) if accepted_schedule else None
+                self._save_policy(tenant_id, state)
+                # Online-nudge versions carry no saved artifact — that is the formal *batch* retrain's
+                # job (app.retrain / POST /agent/retrain). The metrics blob records which path wrote it.
+                self.store.record_policy_version(
+                    tenant_id,
+                    state.version,
+                    metric,
+                    note="online feedback nudge",
+                    metrics={"acceptanceMetric": metric, "trainMethod": "online-nudge", "updates": updates},
+                )
+            else:
+                self._save_policy(tenant_id, state)
 
-        return {"ok": True, "rewardLogged": logged, "policyVersion": state.version}
+            return {"ok": True, "rewardLogged": logged, "policyVersion": state.version}
 
     @staticmethod
     def _infer_accepted_schedule(proposal: dict, edits: list[dict]) -> list[Assignment] | None:
@@ -253,9 +263,12 @@ class AgentService:
         """
         from .retrain import RetrainPipeline  # local import avoids a service<->retrain import cycle
 
-        # Ensure a cold-start v1 exists so retrain versions continue the tenant's history.
-        self._load_policy(tenant_id)
-        return RetrainPipeline(self.store).retrain(tenant_id, note=note)
+        # Serialise against concurrent feedback/retrain so the version sequence stays gap-free and
+        # unique for the tenant (M2 lost-update fix).
+        with self._lock:
+            # Ensure a cold-start v1 exists so retrain versions continue the tenant's history.
+            self._load_policy(tenant_id)
+            return RetrainPipeline(self.store).retrain(tenant_id, note=note)
 
     # --- tenant-scoped reset to cold-start (demo affordance) ------------------------------------
 

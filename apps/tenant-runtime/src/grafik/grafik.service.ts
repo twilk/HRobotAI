@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common'
+import { ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import type { TenantClient, TenantPrisma } from '@hrobot/db'
 import {
   Role,
@@ -84,6 +84,8 @@ const PREFERENCE_WEIGHT = 40
  */
 @Injectable()
 export class GrafikService {
+  private readonly logger = new Logger(GrafikService.name)
+
   constructor(
     private readonly audit: AuditService,
     @Inject(OPTIMIZER_CLIENT) private readonly optimizer: OptimizerClient,
@@ -412,24 +414,60 @@ export class GrafikService {
         if (day >= lv.startDate && day <= lv.endDate) set.add(this.isoDate(day))
       }
     }
-    // locations: those actually referenced by the week's demands.
-    const locIds = [...new Set(demandRows.map((d) => d.lokalizacjaId))]
+    // Existing MANUAL shifts in the solved week × scope are fixed occupancy the solver must honour.
+    // Pack each as a synthetic `count:1` demand whose `role` is a unique `__pinned__<shiftId>` token,
+    // and grant that token as a qualification to only the manual shift's employee. Coverage (H1, hard,
+    // phase 1) then forces the manual shift onto exactly that employee, so H2 (overlap) and H4 (rest)
+    // bind against it — and demand it already covers is not overstaffed. These synthetic demands are
+    // absent from `demandById`, so the persist loop's `if (!d) continue` guard skips them.
+    const manualShifts = employeeIds.length
+      ? await client.shift.findMany({
+          where: {
+            source: 'MANUAL',
+            date: { gte: weekStartDate, lt: weekEndExcl },
+            employeeId: { in: employeeIds },
+            ...(dto.lokalizacjaIds ? { lokalizacjaId: { in: dto.lokalizacjaIds } } : {}),
+          },
+        })
+      : []
+    const pinnedQualByEmployee = new Map<string, string[]>()
+    const pinnedDemands: DemandInput[] = manualShifts.map((s) => {
+      const token = `__pinned__${s.id}`
+      const list = pinnedQualByEmployee.get(s.employeeId) ?? []
+      list.push(token)
+      pinnedQualByEmployee.set(s.employeeId, list)
+      return {
+        id: token,
+        locId: s.lokalizacjaId,
+        date: this.isoDate(s.date),
+        start: s.start,
+        end: s.end,
+        role: token,
+        count: 1,
+      }
+    })
+
+    // locations: those referenced by the week's demands OR by an in-scope manual shift.
+    const locIds = [...new Set([...demandRows.map((d) => d.lokalizacjaId), ...manualShifts.map((s) => s.lokalizacjaId)])]
     const locationRows = locIds.length
       ? await client.lokalizacja.findMany({ where: { id: { in: locIds } } })
       : []
 
-    const demands: DemandInput[] = demandRows.map((d) => ({
-      id: d.id,
-      locId: d.lokalizacjaId,
-      date: this.isoDate(d.date),
-      start: d.start,
-      end: d.end,
-      role: d.requiredRole,
-      count: d.requiredCount,
-    }))
+    const demands: DemandInput[] = [
+      ...demandRows.map((d) => ({
+        id: d.id,
+        locId: d.lokalizacjaId,
+        date: this.isoDate(d.date),
+        start: d.start,
+        end: d.end,
+        role: d.requiredRole,
+        count: d.requiredCount,
+      })),
+      ...pinnedDemands,
+    ]
     const employees: EmployeeInput[] = employeeRows.map((e) => ({
       id: e.id,
-      qualifications: e.qualifications,
+      qualifications: [...e.qualifications, ...(pinnedQualByEmployee.get(e.id) ?? [])],
       etat: Number(e.etat),
       homeLatLng: e.homeLat != null && e.homeLng != null ? { lat: e.homeLat, lng: e.homeLng } : null,
       approvedLeaveDates: [...(leaveByEmployee.get(e.id) ?? [])].sort(),
@@ -486,12 +524,16 @@ export class GrafikService {
 
     // OPTIMAL / FEASIBLE → replace prior AUTO shifts for the scope, then insert the new assignments.
     const demandById = new Map(demandRows.map((d) => [d.id, d]))
+    const packedEmployeeIds = new Set(employeeIds)
     const shifts = await client.$transaction(async (tx) => {
       await tx.shift.deleteMany({
         where: {
           source: 'AUTO',
           date: { gte: weekStartDate, lt: weekEndExcl },
-          ...(locIds.length ? { lokalizacjaId: { in: locIds } } : {}),
+          // ALWAYS scope to the packed demand/manual-shift locations. An empty `locIds` must match
+          // NOTHING (deletes nothing) — omitting the filter would drop the location scope entirely
+          // and, for a global actor solving an empty-demand week, wipe every AUTO shift in the tenant.
+          lokalizacjaId: { in: locIds },
           ...(unitScope ? { employee: { unitId: { in: unitScope } } } : {}),
         },
       })
@@ -499,6 +541,11 @@ export class GrafikService {
       for (const a of result.assignments) {
         const d = demandById.get(a.demandId)
         if (!d) continue // solver referenced a demand outside the packed scope — skip defensively
+        if (!packedEmployeeIds.has(a.employeeId)) {
+          // Trust boundary: never persist a shift for an employee the solver was never handed.
+          this.logger.warn(`optimizer returned out-of-scope employeeId ${a.employeeId}; skipping`)
+          continue
+        }
         created.push(
           await tx.shift.create({
             data: {

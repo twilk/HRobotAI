@@ -1,5 +1,6 @@
 import {
   Body,
+  ConflictException,
   Controller,
   Get,
   HttpCode,
@@ -20,6 +21,7 @@ import {
 } from '../tenant-runtime/tenant-context/current-tenant-client.decorator.js'
 import type { JwtPayload } from '../tenant-runtime/keycloak/keycloak-jwt.strategy.js'
 import { ShiftSwapService, type SwapActor } from './shift-swap.service.js'
+import { SwapConcurrentModificationError } from './swap-state-machine.js'
 import {
   CreateSwapRequestDto,
   ListSwapQueryDto,
@@ -51,6 +53,21 @@ export class ShiftSwapController {
     return { userId: user.sub, roles: user.hrobot_roles ?? [] }
   }
 
+  /**
+   * Surface the service's optimistic-lock signal as HTTP 409 Conflict: a concurrent decision moved
+   * the request out from under this one, so the caller should reload and retry.
+   */
+  private async guardConflict<T>(op: () => Promise<T>): Promise<T> {
+    try {
+      return await op()
+    } catch (err) {
+      if (err instanceof SwapConcurrentModificationError) {
+        throw new ConflictException(err.message)
+      }
+      throw err
+    }
+  }
+
   @Post()
   @Roles(...ANY_ROLE)
   async create(
@@ -80,7 +97,7 @@ export class ShiftSwapController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<unknown> {
     await this.swap.assertRequester(client, this.actor(user), id)
-    return this.swap.submit(client, id)
+    return this.guardConflict(() => this.swap.submit(client, id))
   }
 
   @Post(':id/peer-decision')
@@ -93,7 +110,7 @@ export class ShiftSwapController {
     @Body() dto: PeerDecisionDto,
   ): Promise<unknown> {
     await this.swap.assertTarget(client, this.actor(user), id)
-    return this.swap.peerDecision(client, id, dto.accept)
+    return this.guardConflict(() => this.swap.peerDecision(client, id, dto.accept))
   }
 
   @Post(':id/submit-to-manager')
@@ -105,7 +122,7 @@ export class ShiftSwapController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<unknown> {
     await this.swap.assertRequester(client, this.actor(user), id)
-    return this.swap.submitToManager(client, id)
+    return this.guardConflict(() => this.swap.submitToManager(client, id))
   }
 
   @Post(':id/manager-decision')
@@ -119,12 +136,14 @@ export class ShiftSwapController {
     @Body() dto: ManagerDecisionDto,
   ): Promise<unknown> {
     await this.swap.assertManager(client, this.actor(user), id)
-    return this.swap.managerDecision(client, id, {
-      approve: dto.approve,
-      decidedByManagerId: user.sub,
-      actorUserId: user.sub,
-      ipAddress: ip,
-    })
+    return this.guardConflict(() =>
+      this.swap.managerDecision(client, id, {
+        approve: dto.approve,
+        decidedByManagerId: user.sub,
+        actorUserId: user.sub,
+        ipAddress: ip,
+      }),
+    )
   }
 
   @Post(':id/cancel')
@@ -136,6 +155,6 @@ export class ShiftSwapController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<unknown> {
     await this.swap.assertRequester(client, this.actor(user), id)
-    return this.swap.cancel(client, id)
+    return this.guardConflict(() => this.swap.cancel(client, id))
   }
 }

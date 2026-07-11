@@ -2,15 +2,21 @@
 
 These guard the *presentation surface* only — the learning is already covered by the AG2/AG5 tests.
 Here we assert the demo endpoints reuse the committed scripted manager correctly and stay same-origin.
+
+The shared ``/agent/propose|feedback|retrain`` calls now derive the tenant from the bearer token, so
+they carry ``headers=auth(tenant)``; the demo-corrections route keeps its own body ``tenantId``.
 """
 
 from __future__ import annotations
 
 from app.fixtures import CANONICAL_ID
+from tests._authkit import auth
 
 
 def test_corrections_returns_scripted_manager_edits(client):
-    prop = client.post("/agent/propose", json={"problemInputId": CANONICAL_ID, "tenantId": "t1"}).json()
+    prop = client.post(
+        "/agent/propose", json={"problemInputId": CANONICAL_ID}, headers=auth("t1")
+    ).json()
     r = client.post("/agent/demo/corrections", json={"proposalId": prop["proposalId"], "tenantId": "t1"})
     assert r.status_code == 200, r.text
     body = r.json()
@@ -29,14 +35,25 @@ def test_corrections_returns_scripted_manager_edits(client):
 def test_corrections_drive_the_edit_distance_down(client):
     """One full round over the HTTP surface drops the edit-distance — the loop the CLI/page run."""
     tenant = "t2"
-    p1 = client.post("/agent/propose", json={"problemInputId": CANONICAL_ID, "tenantId": tenant}).json()
-    c1 = client.post("/agent/demo/corrections", json={"proposalId": p1["proposalId"], "tenantId": tenant}).json()
-    client.post("/agent/feedback", json={"proposalId": p1["proposalId"], "edits": c1["edits"],
-                                         "accepted": False, "tenantId": tenant})
-    client.post("/agent/retrain", json={"tenantId": tenant})
+    p1 = client.post(
+        "/agent/propose", json={"problemInputId": CANONICAL_ID}, headers=auth(tenant)
+    ).json()
+    c1 = client.post(
+        "/agent/demo/corrections", json={"proposalId": p1["proposalId"], "tenantId": tenant}
+    ).json()
+    client.post(
+        "/agent/feedback",
+        json={"proposalId": p1["proposalId"], "edits": c1["edits"], "accepted": False},
+        headers=auth(tenant),
+    )
+    client.post("/agent/retrain", json={}, headers=auth(tenant))
 
-    p2 = client.post("/agent/propose", json={"problemInputId": CANONICAL_ID, "tenantId": tenant}).json()
-    c2 = client.post("/agent/demo/corrections", json={"proposalId": p2["proposalId"], "tenantId": tenant}).json()
+    p2 = client.post(
+        "/agent/propose", json={"problemInputId": CANONICAL_ID}, headers=auth(tenant)
+    ).json()
+    c2 = client.post(
+        "/agent/demo/corrections", json={"proposalId": p2["proposalId"], "tenantId": tenant}
+    ).json()
     assert c2["editDistance"] < c1["editDistance"]
 
 
