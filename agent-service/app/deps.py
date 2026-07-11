@@ -23,7 +23,7 @@ from jose import jwt
 # Base Keycloak URL is only used as a sanity anchor for logging; the realm issuer inside the token is
 # the authority we actually fetch keys from (a token's ``iss`` is the realm base).
 _KC = os.environ.get("KEYCLOAK_URL", "http://keycloak:8080").rstrip("/")
-_ISS_RE = re.compile(r"/realms/hrobot-(?P<slug>[a-z0-9-]+)$")
+_ISS_RE = re.compile(r"/realms/hrobot-(?P<slug>[a-zA-Z0-9_-]+)$")
 
 # realm-issuer -> JWKS document. Simple process-lifetime cache (Keycloak key rotation is rare and a
 # restart re-primes it); kept module-level so it survives across requests.

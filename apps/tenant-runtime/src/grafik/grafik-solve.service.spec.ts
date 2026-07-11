@@ -34,6 +34,7 @@ function makeClient() {
     shift: {
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: `shift-${String(data.demandId)}`, ...data })),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      findMany: jest.fn().mockResolvedValue([]), // MANUAL-shift occupancy pack (A2); default: none
     },
     shiftDemand: { findMany: jest.fn().mockResolvedValue(demandRows) },
     employee: { findMany: jest.fn().mockResolvedValue(employeeRows) },
