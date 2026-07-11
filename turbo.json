@@ -11,9 +11,24 @@
     "lint": {
       "dependsOn": ["^build"]
     },
+    "typecheck": {
+      "dependsOn": ["^build", "db:generate"]
+    },
     "test": {
       "dependsOn": ["^build", "db:generate"],
       "outputs": ["coverage/**"]
+    },
+    "test:integration": {
+      "dependsOn": ["^build", "db:generate"],
+      "cache": false
+    },
+    "test:e2e:smoke": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "//#test:e2e:smoke": {
+      "dependsOn": ["^build"],
+      "cache": false
     }
   }
 }

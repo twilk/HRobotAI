@@ -1,0 +1,88 @@
+name: ci
+
+# HRobot CI quality pipeline (M2-B1) — LEAN.
+# Runs only the gates that verify something today: lint → typecheck → unit tests.
+# Each fails the job (red) and, once `ci` is a required check on `main`, blocks merge. [spec §8 CI-1]
+#
+# Cost discipline (public repo = free standard-runner minutes, but we stay lean anyway):
+#   • concurrency cancels superseded runs on the same ref;
+#   • paths-ignore skips doc-only changes (we ship a lot of markdown);
+#   • timeout-minutes caps a hung run;
+#   • pnpm store + turbo caches keep repeat runs fast;
+#   • Postgres/Redis service containers + the integration/e2e lanes were REMOVED because
+#     they tested nothing yet (integration = --passWithNoTests, e2e = placeholder). They
+#     re-appear WITH real tests in CI-4 (tenant-isolation integration) / CI-5 (Playwright smoke).
+
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore: ['**/*.md', 'docs/**', 'data/**']
+  push:
+    branches: [main]
+    paths-ignore: ['**/*.md', 'docs/**', 'data/**']
+
+# Cancel superseded runs on the same ref to save minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  TURBO_TELEMETRY_DISABLED: "1"
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # pnpm before setup-node so `cache: pnpm` can locate the store. Version from
+      # package.json "packageManager".
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # Turbo local cache, keyed on lockfile + sha (restore falls back to older caches).
+      - name: Cache turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            turbo-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Gate 1 — static analysis: eslint + tsc --noEmit across the graph (turbo builds
+      # @hrobot/db + @hrobot/shared first via ^build/db:generate deps). [CI-1]
+      - name: Lint + typecheck
+        run: pnpm turbo run lint typecheck --cache-dir=.turbo/cache
+
+      # Gate 2 — unit tests (Jest). Source-mapped, no live services needed. [CI-1]
+      - name: Unit tests
+        run: pnpm turbo run test --cache-dir=.turbo/cache
+
+  # --- Re-add WITH real coverage (do not un-comment empty lanes — they only burn minutes) ---
+  # CI-4: integration job with Postgres+Redis service containers + the app env block
+  #        (CONTROL_PLANE_DATABASE_URL, REDIS_URL, TENANT_DB_ENCRYPTION_KEY, KEYCLOAK_*, …)
+  #        once *.integration.spec.ts (tenant-isolation) exist.
+  # CI-5: Playwright smoke job (login → /grafik, 0 console errors) once the web e2e package lands.
+  # CI-6: python job (setup-python + ruff + pytest) for agent-service / grafik-optimizer.
+  # spec §8: fan-out tenant migrations (needs control-plane migrate + a provisioned tenant, M2-B2).
+
+  # NOTE (branch protection): with paths-ignore, a docs-only PR does not trigger this workflow,
+  # so the `ci` check stays "expected/pending". If you make `ci` a REQUIRED check on main, add a
+  # tiny always-green companion job (or GitHub "require checks only when run") so doc-only PRs
+  # can still merge. Not an issue until branch protection is enabled.

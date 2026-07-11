@@ -15,7 +15,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint src",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "jest --passWithNoTests",
+    "test:integration": "jest --testMatch '**/*.integration.spec.ts' --passWithNoTests",
     "db:generate": "echo \"no db in @hrobot/config\""
   },
   "dependencies": {
