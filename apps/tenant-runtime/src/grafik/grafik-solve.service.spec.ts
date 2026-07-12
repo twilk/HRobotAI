@@ -34,8 +34,11 @@ function makeClient() {
     shift: {
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: `shift-${String(data.demandId)}`, ...data })),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
-      findMany: jest.fn().mockResolvedValue([]), // MANUAL-shift occupancy pack (A2); default: none
+      // Two call sites: MANUAL occupancy pack (source=MANUAL) and the AUTO stale-shift lookup the
+      // solve deletes before re-inserting (source=AUTO, select id). Default: both empty.
+      findMany: jest.fn().mockResolvedValue([]),
     },
+    shiftSwapRequest: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
     shiftDemand: { findMany: jest.fn().mockResolvedValue(demandRows) },
     employee: { findMany: jest.fn().mockResolvedValue(employeeRows) },
     leaveRequest: { findMany: jest.fn().mockResolvedValue([]) },
@@ -49,7 +52,7 @@ const asClient = (c: MockClient): TenantClient => c as unknown as TenantClient
 
 // The tx callback receives a client with the same shift delegate; we route it back to the outer mock.
 let currentClient: MockClient
-const makeTxProxy = (): unknown => ({ shift: currentClient.shift })
+const makeTxProxy = (): unknown => ({ shift: currentClient.shift, shiftSwapRequest: currentClient.shiftSwapRequest })
 
 const MANAGER: GrafikActor = { userId: 'kc-mgr', roles: [Role.MANAGER], ipAddress: '10.0.0.1' }
 const HR: GrafikActor = { userId: 'kc-hr', roles: [Role.HR], ipAddress: '10.0.0.2' }
@@ -204,14 +207,23 @@ describe('GrafikService.solveGrafik (A4 vertical slice)', () => {
 
   it('persists one Shift(source=AUTO) per assignment and audits, replacing prior AUTO shifts', async () => {
     optimizer.solve.mockResolvedValue(feasible)
+    // Two prior AUTO shifts exist for the week/scope → the solve must clear them (and any dependent
+    // swap request) before inserting. MANUAL occupancy (source!=='AUTO') stays empty.
+    client.shift.findMany.mockImplementation(async (args: { where?: { source?: string } }) =>
+      args?.where?.source === 'AUTO' ? [{ id: 'old-1' }, { id: 'old-2' }] : [],
+    )
 
     const res = await service.solveGrafik(asClient(client), HR, { weekStart: D1 })
 
-    // Re-solve semantics: prior AUTO shifts for the week are cleared first.
-    expect(client.shift.deleteMany).toHaveBeenCalledTimes(1)
-    const delWhere = client.shift.deleteMany.mock.calls[0]![0].where
-    expect(delWhere.source).toBe('AUTO')
-    expect(delWhere.lokalizacjaId).toEqual({ in: ['loc-1'] })
+    // Re-solve semantics: the stale AUTO shifts are located with the location/date scope...
+    const staleQuery = client.shift.findMany.mock.calls.find((c: [{ where?: { source?: string } }]) => c[0]?.where?.source === 'AUTO')![0]
+    expect(staleQuery.where.lokalizacjaId).toEqual({ in: ['loc-1'] })
+    expect(staleQuery.select).toEqual({ id: true })
+    // ...their dependent swap requests are cleared FIRST (FK), then the shifts by id.
+    expect(client.shiftSwapRequest.deleteMany).toHaveBeenCalledWith({
+      where: { OR: [{ requesterShiftId: { in: ['old-1', 'old-2'] } }, { targetShiftId: { in: ['old-1', 'old-2'] } }] },
+    })
+    expect(client.shift.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ['old-1', 'old-2'] } } })
 
     expect(client.shift.create).toHaveBeenCalledTimes(2)
     const firstShift = client.shift.create.mock.calls[0]![0].data
@@ -231,6 +243,17 @@ describe('GrafikService.solveGrafik (A4 vertical slice)', () => {
         payload: expect.objectContaining({ status: SolveStatus.OPTIMAL, assignmentsCreated: 2 }),
       }),
     )
+  })
+
+  it('skips both deletes when there are no prior AUTO shifts to replace', async () => {
+    optimizer.solve.mockResolvedValue(feasible)
+    // findMany default returns [] for every source → nothing stale.
+
+    await service.solveGrafik(asClient(client), HR, { weekStart: D1 })
+
+    expect(client.shiftSwapRequest.deleteMany).not.toHaveBeenCalled()
+    expect(client.shift.deleteMany).not.toHaveBeenCalled()
+    expect(client.shift.create).toHaveBeenCalledTimes(2) // still inserts the new assignments
   })
 
   it('skips assignments whose demand is outside the packed scope', async () => {

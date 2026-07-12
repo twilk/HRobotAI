@@ -533,17 +533,32 @@ export class GrafikService {
     const demandById = new Map(demandRows.map((d) => [d.id, d]))
     const packedEmployeeIds = new Set(employeeIds)
     const shifts = await client.$transaction(async (tx) => {
-      await tx.shift.deleteMany({
+      // Resolve the exact AUTO shifts we're about to replace. ALWAYS scope to the packed
+      // demand/manual-shift locations. An empty `locIds` must match NOTHING (deletes nothing) —
+      // omitting the filter would drop the location scope entirely and, for a global actor solving
+      // an empty-demand week, wipe every AUTO shift in the tenant.
+      const staleShifts = await tx.shift.findMany({
         where: {
           source: 'AUTO',
           date: { gte: weekStartDate, lt: weekEndExcl },
-          // ALWAYS scope to the packed demand/manual-shift locations. An empty `locIds` must match
-          // NOTHING (deletes nothing) — omitting the filter would drop the location scope entirely
-          // and, for a global actor solving an empty-demand week, wipe every AUTO shift in the tenant.
           lokalizacjaId: { in: locIds },
           ...(unitScope ? { employee: { unitId: { in: unitScope } } } : {}),
         },
+        select: { id: true },
       })
+      const staleIds = staleShifts.map((s) => s.id)
+      if (staleIds.length > 0) {
+        // Regenerating the schedule invalidates any pending swap request tied to a shift we're
+        // replacing. shift_swap_requests hold RESTRICT FKs to requester/target shifts, so we must
+        // clear those dependents FIRST or shift.deleteMany throws a FK violation (500 on re-solve).
+        const clearedSwaps = await tx.shiftSwapRequest.deleteMany({
+          where: { OR: [{ requesterShiftId: { in: staleIds } }, { targetShiftId: { in: staleIds } }] },
+        })
+        if (clearedSwaps.count > 0) {
+          this.logger.warn(`solve replaced ${staleIds.length} AUTO shifts; cleared ${clearedSwaps.count} dependent swap request(s)`)
+        }
+        await tx.shift.deleteMany({ where: { id: { in: staleIds } } })
+      }
       const created: unknown[] = []
       for (const a of result.assignments) {
         const d = demandById.get(a.demandId)

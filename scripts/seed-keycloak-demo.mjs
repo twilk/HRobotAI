@@ -54,10 +54,12 @@ async function main() {
   //    minted via the host (localhost:8081) still validate inside the tenant-runtime container:
   //    KeycloakJwtStrategy.isTrustedIssuer requires iss to start with KEYCLOAK_URL (http://keycloak:8080)
   //    and then fetches JWKS from that same iss — which only resolves over the compose network.
-  await kc(base, { method: 'POST', headers: H, body: JSON.stringify({ realm: REALM, enabled: true, accessTokenLifespan: 300, ssoSessionMaxLifespan: 36000, attributes: { frontendUrl: 'http://keycloak:8080' } }) })
-  // PUT the attribute explicitly too — on a re-run the POST above 409s and would not update it.
-  await kc(`${base}/${REALM}`, { method: 'PUT', headers: H, body: JSON.stringify({ attributes: { frontendUrl: 'http://keycloak:8080' } }) })
-  console.log(`realm ${REALM} (frontendUrl=http://keycloak:8080) ✓`)
+  // accessTokenLifespan 3600s (1h): the web-kit cookie lives exactly as long as the access token and
+  // there is no refresh-token rotation yet (M3), so a short lifespan expires sessions mid-demo.
+  await kc(base, { method: 'POST', headers: H, body: JSON.stringify({ realm: REALM, enabled: true, accessTokenLifespan: 3600, ssoSessionMaxLifespan: 36000, attributes: { frontendUrl: 'http://keycloak:8080' } }) })
+  // PUT explicitly too — on a re-run the POST above 409s and would not update these.
+  await kc(`${base}/${REALM}`, { method: 'PUT', headers: H, body: JSON.stringify({ accessTokenLifespan: 3600, attributes: { frontendUrl: 'http://keycloak:8080' } }) })
+  console.log(`realm ${REALM} (frontendUrl=http://keycloak:8080, accessTokenLifespan=3600) ✓`)
 
   // 2. realm roles
   for (const name of ROLES) {

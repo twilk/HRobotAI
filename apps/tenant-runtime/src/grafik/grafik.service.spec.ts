@@ -263,14 +263,22 @@ describe('GrafikService', () => {
   describe('solveGrafik packing', () => {
     const ZERO_METRICS = { commuteTotal: 0, etatDeviation: 0, preferenceViolations: 0, fairnessScore: 0 }
 
-    /** Wire `$transaction` to a tx exposing shift.deleteMany/create, and return those spies. */
-    function wireTransaction(c: MockClient) {
+    /**
+     * Wire `$transaction` to a tx exposing shift.findMany (stale-AUTO lookup), shift.deleteMany/create
+     * and shiftSwapRequest.deleteMany (dependent-swap clear). `staleShifts` seeds the stale-AUTO lookup.
+     */
+    function wireTransaction(c: MockClient, staleShifts: { id: string }[] = []) {
+      const txFindMany = jest.fn().mockResolvedValue(staleShifts)
       const txDeleteMany = jest.fn().mockResolvedValue({ count: 0 })
+      const txSwapDeleteMany = jest.fn().mockResolvedValue({ count: 0 })
       const txCreate = jest.fn().mockImplementation(async (arg: { data: unknown }) => arg.data)
       c.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
-        fn({ shift: { deleteMany: txDeleteMany, create: txCreate } }),
+        fn({
+          shift: { findMany: txFindMany, deleteMany: txDeleteMany, create: txCreate },
+          shiftSwapRequest: { deleteMany: txSwapDeleteMany },
+        }),
       )
-      return { txDeleteMany, txCreate }
+      return { txFindMany, txDeleteMany, txSwapDeleteMany, txCreate }
     }
 
     it('empty-demand solve does not delete out-of-scope AUTO shifts (A1 data-loss guard)', async () => {
@@ -279,13 +287,15 @@ describe('GrafikService', () => {
       client.employee.findMany.mockResolvedValue([])
       client.lokalizacja.findMany.mockResolvedValue([])
       optimizer.solve.mockResolvedValue({ status: SolveStatus.OPTIMAL, assignments: [], unmet: [], metrics: ZERO_METRICS })
-      const { txDeleteMany } = wireTransaction(client)
+      const { txFindMany, txDeleteMany } = wireTransaction(client)
 
       await service.solveGrafik(asClient(client), ADMIN, { weekStart: '2026-07-13' })
 
-      // The delete must be scoped to an EMPTY location list → matches nothing → deletes nothing.
-      const whereArg = txDeleteMany.mock.calls[0]?.[0]?.where
+      // The stale-AUTO lookup must be scoped to an EMPTY location list → matches nothing → nothing to
+      // delete. With no stale shifts, neither the shift delete nor the swap-request clear runs.
+      const whereArg = txFindMany.mock.calls[0]?.[0]?.where
       expect(whereArg.lokalizacjaId).toEqual({ in: [] })
+      expect(txDeleteMany).not.toHaveBeenCalled()
     })
 
     it('packs existing MANUAL shifts as pinned demands (A2)', async () => {
