@@ -85,6 +85,12 @@ describe('GrafikController', () => {
     expect(mockService.listShifts).toHaveBeenCalledWith(client, expect.objectContaining({ userId: 'kc-1' }))
   })
 
+  it('delegates listDemands with an actor projected from the JWT + IP', async () => {
+    mockService.listDemands.mockResolvedValue([{ id: 'dem-1' }])
+    expect(await controller.listDemands(client, user, '1.2.3.4')).toEqual([{ id: 'dem-1' }])
+    expect(mockService.listDemands).toHaveBeenCalledWith(client, expect.objectContaining({ userId: 'kc-1' }))
+  })
+
   it('delegates deleteTemplate', async () => {
     mockService.deleteTemplate.mockResolvedValue({ id: 'tpl-1' })
     expect(await controller.deleteTemplate(client, user, '1.2.3.4', 'tpl-1')).toEqual({ id: 'tpl-1' })

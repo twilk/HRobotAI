@@ -137,8 +137,8 @@ export class GrafikController {
 
   @Get('demands')
   @Roles(...READ_ROLES)
-  async listDemands(@CurrentTenantClient() client: TenantClient): Promise<unknown[]> {
-    return this.grafik.listDemands(client)
+  async listDemands(@CurrentTenantClient() client: TenantClient, @CurrentUser() user: JwtPayload, @Ip() ip: string): Promise<unknown[]> {
+    return this.grafik.listDemands(client, this.actor(user, ip))
   }
 
   @Get('demands/:id')

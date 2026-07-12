@@ -384,4 +384,39 @@ describe('GrafikService', () => {
       expect(rows).toEqual([{ id: 'U1', name: 'Region Centrum' }])
     })
   })
+
+  // --- ShiftDemand scoping (Task 4) ---------------------------------------------------------------
+
+  describe('demand scoping', () => {
+    it('returns all demands for a global actor (HR/ADMIN)', async () => {
+      client.shiftDemand.findMany.mockResolvedValue([])
+      await service.listDemands(asClient(client), HR)
+      expect(client.shiftDemand.findMany).toHaveBeenCalledWith(
+        expect.not.objectContaining({ where: expect.anything() }),
+      )
+    })
+
+    it('scopes a plain PRACOWNIK to demands at their own shift locations', async () => {
+      client.userRole.findMany.mockResolvedValue([]) // manages nothing
+      client.shift.findMany.mockResolvedValue([{ lokalizacjaId: 'L1' }, { lokalizacjaId: 'L1' }, { lokalizacjaId: 'L2' }])
+      client.shiftDemand.findMany.mockResolvedValue([])
+      await service.listDemands(asClient(client), PRACOWNIK)
+      expect(client.shiftDemand.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { lokalizacjaId: { in: ['L1', 'L2'] } } }),
+      )
+    })
+
+    it("scopes a MANAGER to demands at their managed units' staffed locations", async () => {
+      client.userRole.findMany.mockResolvedValue([{ unitId: 'unit-A' }]) // manages unit-A
+      client.shift.findMany.mockResolvedValue([{ lokalizacjaId: 'L3' }, { lokalizacjaId: 'L3' }])
+      client.shiftDemand.findMany.mockResolvedValue([])
+      await service.listDemands(asClient(client), MANAGER)
+      expect(client.shift.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { employee: { unitId: { in: ['unit-A'] } } }, select: { lokalizacjaId: true } }),
+      )
+      expect(client.shiftDemand.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { lokalizacjaId: { in: ['L3'] } } }),
+      )
+    })
+  })
 })

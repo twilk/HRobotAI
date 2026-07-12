@@ -230,8 +230,27 @@ export class GrafikService {
 
   // --- ShiftDemand (HR/ADMIN mutations; MANAGER read) --------------------------------------------
 
-  async listDemands(client: TenantClient): Promise<unknown[]> {
-    return client.shiftDemand.findMany({ orderBy: [{ date: 'desc' }, { start: 'asc' }] })
+  async listDemands(client: TenantClient, actor: GrafikActor): Promise<unknown[]> {
+    if (isGlobal(actor.roles)) {
+      return client.shiftDemand.findMany({ orderBy: [{ date: 'desc' }, { start: 'asc' }] })
+    }
+    const units = await this.managedUnitIds(client, actor.userId)
+    if (units.length > 0) {
+      // A MANAGER sees demands at the locations their units staff.
+      const unitShifts = await client.shift.findMany({
+        where: { employee: { unitId: { in: units } } },
+        select: { lokalizacjaId: true },
+      })
+      const locIds = [...new Set(unitShifts.map((s) => s.lokalizacjaId))]
+      return client.shiftDemand.findMany({ where: { lokalizacjaId: { in: locIds } }, orderBy: [{ date: 'desc' }, { start: 'asc' }] })
+    }
+    // Plain employee: only demands at locations where they personally have shifts.
+    const ownShifts = await client.shift.findMany({
+      where: { employee: { user: { keycloakSub: actor.userId } } },
+      select: { lokalizacjaId: true },
+    })
+    const locIds = [...new Set(ownShifts.map((s) => s.lokalizacjaId))]
+    return client.shiftDemand.findMany({ where: { lokalizacjaId: { in: locIds } }, orderBy: [{ date: 'desc' }, { start: 'asc' }] })
   }
 
   async getDemand(client: TenantClient, id: string): Promise<unknown> {
