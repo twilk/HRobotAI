@@ -45,7 +45,12 @@ function describeError(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
-export function GrafikScreen() {
+/**
+ * @param canManage true for MANAGER/HR/ADMIN_KLIENTA (generate + manual CRUD). A plain PRACOWNIK
+ *        passes false: the backend returns only their own shifts, so the screen is read-only —
+ *        no "Generuj grafik", no add/edit affordances.
+ */
+export function GrafikScreen({ canManage = true }: { canManage?: boolean }) {
   const [mondayIso, setMondayIso] = useState(() => mondayOf(new Date()).toISOString().slice(0, 10))
   const [employees, setEmployees] = useState<Employee[]>([])
   const [shifts, setShifts] = useState<Shift[]>([])
@@ -96,10 +101,15 @@ export function GrafikScreen() {
     return ids.map((id) => ({ id, label: unitName(id) }))
   }, [employees])
 
-  const visibleEmployees = useMemo(
-    () => (unitFilter === ALL_UNITS ? employees : employees.filter((e) => e.unitId === unitFilter)),
-    [employees, unitFilter],
-  )
+  const visibleEmployees = useMemo(() => {
+    // Read-only (PRACOWNIK): the backend already scopes shifts to self, so show ONLY the rows the
+    // employee owns — a "my schedule" view, not the whole roster with 30+ empty rows.
+    if (!canManage) {
+      const own = new Set(shifts.map((s) => s.employeeId))
+      return employees.filter((e) => own.has(e.id))
+    }
+    return unitFilter === ALL_UNITS ? employees : employees.filter((e) => e.unitId === unitFilter)
+  }, [employees, shifts, unitFilter, canManage])
 
   // Location labels (no location-name API → stable short label from the UUID).
   const locationLabel = useCallback((id: string) => locationName(id), [])
@@ -216,7 +226,7 @@ export function GrafikScreen() {
           </p>
         </div>
         <div className="flex items-center gap-2.5 flex-wrap">
-          {unitOptions.length > 0 ? (
+          {canManage && unitOptions.length > 0 ? (
             <select
               aria-label="Filtr jednostki"
               value={unitFilter}
@@ -231,10 +241,17 @@ export function GrafikScreen() {
               ))}
             </select>
           ) : null}
-          <Button onClick={generate} disabled={solving || loading} className="h-10 px-3.5 text-sm">
-            <IconWand className="w-[17px] h-[17px]" strokeWidth={1.7} />
-            {solving ? 'Generowanie…' : 'Generuj grafik'}
-          </Button>
+          {canManage ? (
+            <Button onClick={generate} disabled={solving || loading} className="h-10 px-3.5 text-sm">
+              <IconWand className="w-[17px] h-[17px]" strokeWidth={1.7} />
+              {solving ? 'Generowanie…' : 'Generuj grafik'}
+            </Button>
+          ) : (
+            <Badge className="h-10 px-3.5 inline-flex items-center gap-1.5 text-[12.5px] bg-card-2 border-line-strong text-muted">
+              <IconCalendar className="w-[15px] h-[15px]" strokeWidth={1.7} />
+              Twój grafik — podgląd
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -314,6 +331,7 @@ export function GrafikScreen() {
           days={days}
           shiftsByCell={shiftsByCell}
           locationLabel={locationLabel}
+          readOnly={!canManage}
           onAddShift={(employeeId, date) => {
             setEditorError(null)
             setEditor({ mode: 'create', employeeId, date })

@@ -3,13 +3,14 @@
 > Cel: 15–20 min, pokazać 2 moduły M2 na żywo, na danych syntetycznych (RODO), z podkreśleniem różnicy: **agent, który się uczy**. Prowadzi kapitan.
 
 ## 0. Przed demo (checklist — 5 min wcześniej)
-- [ ] Stack up: `docker ps` → 7 kontenerów `hrobot-*` + `agent-service-demo` (healthy). Jeśli nie: `docker start hrobot-postgres-1 hrobot-redis-1 hrobot-keycloak-1 hrobot-rabbitmq-1` → poczekaj 25s → `docker start hrobot-control-plane-1 hrobot-optimizer-1 hrobot-tenant-runtime-1`.
+- [ ] Stack up: `docker ps` → 7 kontenerów `hrobot-*` + `agent-service-demo` (healthy). Jeśli nie żyją: `cd HRobot-m2 && docker compose -p hrobot --profile full up -d` (używa `docker-compose.override.yml` — remapuje porty pod współdzielony box: keycloak→8081, tenant-runtime→3001, backing services bez host-portów).
+- [ ] **KRYTYCZNE — realm Keycloak jest efemeryczny** (H2 w kontenerze; `compose down`/recreate keycloak go kasuje). Po świeżym `up` odtwórz realm `hrobot-staging` + userów demo: `cd HRobot-m2 && node scripts/seed-keycloak-demo.mjs`. Jeśli skrypt wypisze linie `UPDATE users SET keycloak_sub=…`, wykonaj je w bazie tenanta (`docker exec hrobot-postgres-1 psql -U postgres -d hrobot_t_900d948b -c "…"`) — inaczej „mój grafik" pracownika będzie pusty. Weryfikacja: login `pracownik.demo` → GET `:3001/api/grafik/shifts` zwraca 5 zmian.
 - [ ] Front: `cd HRobot-m2/docs/design/web-kit && node start-live.mjs` → `http://localhost:5601`.
 - [ ] Zakładki gotowe: **:5601/grafik**, **:5601/zamiany**, **:8010/agent/demo**.
 - [ ] Tydzień demo: **13–19 lipca 2026** (feasible, 52 AUTO-zmiany). Na :5601/grafik kliknij „Następny tydzień" jeśli trzeba.
-- [ ] **Logowanie (jest teraz realny gate!):** `:5601` → przekierowanie na `/login`. Trzy konta:
+- [ ] **Logowanie (realny gate + RBAC):** `:5601` → przekierowanie na `/login`. Trzy konta:
   - **Admin/manager demo:** `demo` / `demo-staging-2026` (Admin klienta) — pełny grafik, generowanie, zatwierdzanie zamian.
-  - **Pracownik:** `pracownik.demo` / `Pracownik!2026` (rola Pracownik = Anna Kowalska) — widok pracownika, ograniczona nawigacja.
+  - **Pracownik:** `pracownik.demo` / `Pracownik!2026` (rola Pracownik = Anna Kowalska) — **własny grafik w trybie podglądu** (5 zmian, tydz. 13–19 lip), ograniczona nawigacja, brak akcji admina.
   - **Manager:** `manager.demo` / `Manager!2026` (Manager Region Centrum) — zatwierdza zamiany swojej jednostki.
   - Token httpOnly, wylogowanie w topbarze.
 - [ ] Fallback pod ręką: prekomputowany snapshot (`agent-service/fixtures/canonical_solution.json`) + nagranie zapasowe (jeśli zrobione).
@@ -40,10 +41,10 @@
 - **Talking point (uczciwie):** „To pilotowy inkrement — agent uczy się i samodoskonali na danych syntetycznych; pełna autonomia produkcyjna to kolejny etap." (NIE mów „RL/Stable-Baselines3" — mechanizm to uczący się scorer + retrening; patrz known-limitations)
 
 ## 6. J5 — zamiany zmian + KONTA PRACOWNIKÓW (3 min) · `:5601/zamiany`
-- **Pokaż dwustronność (login):** wyloguj się → zaloguj jako **`pracownik.demo`** → „pracownicy mają własne, bezpieczne konta, widzą swój świat, bez dostępu administracyjnego" (nawigacja ograniczona, tożsamość „Pracownik"). Wyloguj → wróć jako `demo`/`manager.demo`.
+- **Pokaż dwustronność (login) + „mój grafik":** wyloguj się → zaloguj jako **`pracownik.demo`** (Anna Kowalska) → wejdź w **Grafik**: pracownik widzi **tylko własne zmiany** w trybie podglądu (badge „TWÓJ GRAFIK — PODGLĄD", brak „Generuj grafik", brak edycji) — RBAC egzekwowany po stronie backendu (zapytanie scope'owane po `keycloak_sub`, nie ukryte tylko w UI). „Pracownicy mają własne, bezpieczne konta i widzą swój grafik, bez dostępu administracyjnego." Wyloguj → wróć jako `demo`/`manager.demo`.
 - „Pracownik zgłasza zamianę, druga strona akceptuje wstępnie, menedżer zatwierdza — a **system sprawdza solverem, że zamiana nie łamie reguł** (np. nie wstawi kogoś na urlop, nie złamie odpoczynku), i pilnuje uprawnień (menedżer tylko swojej jednostki)."
 - Jako manager: **Skrzynka managera** → oczekująca prośba (RECEPCJA↔RECEPCJA) → **Zatwierdź** → zmiana przepina się atomowo + audyt.
-- **Talking point:** realny workflow na modelu grafiku, walidacja solverem, konta z rolami (RBAC). **Uczciwie:** samodzielne zgłaszanie zamiany przez pracownika z jego grafiku wymaga widoku „mój grafik" — dochodzi w M3 (dziś pracownik loguje się i widzi swój świat; wniosek inicjuje manager/seed). Real-time powiadomienia — M3.
+- **Talking point:** realny workflow na modelu grafiku, walidacja solverem, konta z rolami (RBAC), pracownik widzi swój grafik. **Uczciwie:** *inicjowanie* zamiany przez pracownika bezpośrednio z jego grafiku (wybór zmiany kolegi) dochodzi w M3 — dziś wniosek inicjuje manager/seed, a pracownik widzi własny grafik i swoje zamiany. Real-time powiadomienia — M3.
 
 ## 7. Zamknięcie (1 min)
 - „Podsumowując: układamy zgodne z prawem grafiki, optymalizujemy dojazdy/etaty, a agent uczy się Waszej specyfiki. Dane syntetyczne, RODO od pierwszego dnia."

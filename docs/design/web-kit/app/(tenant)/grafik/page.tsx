@@ -12,10 +12,12 @@ export default async function GrafikPage() {
   const tenant = { name: '4Mobility sp. z o.o.', slug: '4mobility.hrobot.ai' }
   const user = session?.user ?? { name: 'Użytkownik', role: '—', initials: '?' }
   const roles: Role[] = session?.roles ?? []
+  // Scheduling roles get generate + manual CRUD; a plain PRACOWNIK gets a read-only own-schedule view.
+  const canManage = roles.some((r) => r === 'MANAGER' || r === 'HR' || r === 'ADMIN_KLIENTA')
 
   return (
     <AppShell activeHref="/grafik" title="Grafik" tenant={tenant} user={user} roles={roles}>
-      <GrafikScreen />
+      <GrafikScreen canManage={canManage} />
     </AppShell>
   )
 }

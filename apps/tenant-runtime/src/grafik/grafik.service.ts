@@ -144,8 +144,15 @@ export class GrafikService {
       return client.shift.findMany({ orderBy: [{ date: 'desc' }, { start: 'asc' }] })
     }
     const units = await this.managedUnitIds(client, actor.userId)
+    if (units.length > 0) {
+      return client.shift.findMany({
+        where: { employee: { unitId: { in: units } } },
+        orderBy: [{ date: 'desc' }, { start: 'asc' }],
+      })
+    }
+    // Plain employee (no managed units): may read only their OWN shifts, matched via Keycloak subject.
     return client.shift.findMany({
-      where: { employee: { unitId: { in: units } } },
+      where: { employee: { user: { keycloakSub: actor.userId } } },
       orderBy: [{ date: 'desc' }, { start: 'asc' }],
     })
   }

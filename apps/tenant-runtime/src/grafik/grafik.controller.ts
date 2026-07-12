@@ -23,8 +23,8 @@ import { CreateShiftDemandDto, UpdateShiftDemandDto } from './dto/shift-demand.d
 import { CreateShiftTemplateDto, UpdateShiftTemplateDto } from './dto/shift-template.dto.js'
 import { SolveGrafikDto } from './dto/solve.dto.js'
 
-/** Any scheduling staff role may read the grafik. */
-const READ_ROLES = [Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA] as const
+/** Any scheduling staff role may read the grafik; a PRACOWNIK reads their OWN shifts (scoped in the service). */
+const READ_ROLES = [Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA, Role.PRACOWNIK] as const
 /** Shift mutations: MANAGER allowed but unit-scoped in the service; HR/ADMIN global. */
 const SHIFT_WRITE_ROLES = [Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA] as const
 /** Demand/template mutations: catalog with no unit dimension → HR/ADMIN only. */

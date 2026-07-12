@@ -114,9 +114,9 @@ describe('GrafikController', () => {
       }
     })
 
-    it('allows MANAGER/HR/ADMIN to read', () => {
+    it('allows every scheduling role — including PRACOWNIK — to read (shifts own-scoped in the service)', () => {
       for (const m of ['listShifts', 'getShift', 'listDemands', 'listTemplates'] as const) {
-        expect(rolesFor(m)).toEqual([Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA])
+        expect(rolesFor(m)).toEqual([Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA, Role.PRACOWNIK])
       }
     })
   })

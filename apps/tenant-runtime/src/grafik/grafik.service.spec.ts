@@ -44,6 +44,7 @@ const asClient = (c: MockClient): TenantClient => c as unknown as TenantClient
 const MANAGER: GrafikActor = { userId: 'kc-mgr', roles: [Role.MANAGER], ipAddress: '10.0.0.1' }
 const HR: GrafikActor = { userId: 'kc-hr', roles: [Role.HR], ipAddress: '10.0.0.2' }
 const ADMIN: GrafikActor = { userId: 'kc-admin', roles: [Role.ADMIN_KLIENTA], ipAddress: '10.0.0.3' }
+const PRACOWNIK: GrafikActor = { userId: 'kc-emp', roles: [Role.PRACOWNIK], ipAddress: '10.0.0.4' }
 
 describe('GrafikService', () => {
   let service: GrafikService
@@ -133,6 +134,16 @@ describe('GrafikService', () => {
       client.shift.findMany.mockClear()
       await service.listShifts(asClient(client), HR)
       expect(client.shift.findMany).toHaveBeenCalledWith(expect.not.objectContaining({ where: expect.anything() }))
+    })
+
+    it('scopes a plain PRACOWNIK list to their own shifts (no managed units)', async () => {
+      client.userRole.findMany.mockResolvedValue([]) // manages nothing
+      client.shift.findMany.mockResolvedValue([])
+
+      await service.listShifts(asClient(client), PRACOWNIK)
+      expect(client.shift.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { employee: { user: { keycloakSub: 'kc-emp' } } } }),
+      )
     })
 
     it('throws NotFound when the target employee does not exist', async () => {

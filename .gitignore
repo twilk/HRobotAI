@@ -27,3 +27,6 @@ Thumbs.db
 .staging-run/
 
 # Claude Code / gstack harness files (not project source)
+
+# Local dev-box compose override (host-port remaps for shared box)
+docker-compose.override.yml
