@@ -12,6 +12,9 @@
 - Checklist (zweryfikowane 2026-07-12): **7/7** kontenerów `hrobot-*` + agent :8010 = 200; **3 konta**
   logują się; tydz. **13–19 lip = 52 zmiany AUTO** (Anna=5); wniosek J5 **PENDING_MANAGER** obecny.
 - Zakładki gotowe: **:5601/grafik**, **:5601/zamiany**, **:8010/agent/demo**. Zaloguj z góry jako `demo`.
+- ⚠ **Grafik otwiera się na tygodniu wg zegara maszyny (nie na 13–19)** — przed demem wejdź na Grafik
+  i klikami „Następny/Poprzedni tydzień" ustaw **13–19 lipca**, i tam zostaw. Wtedy wow (6–12) i
+  granica (20–26) są **po jednym kliknięciu** od hero.
 - Zegarek na stół. Przećwicz raz na czas.
 
 ## Choreografia logowań (minimalizuj przełączenia)
@@ -29,23 +32,25 @@ danych syntetycznych w kształcie 4Mobility, zero realnych danych osobowych."
 *(Ekran: :5601/grafik zalogowany jako `demo`, tydz. 13–19 lipca.)*
 
 **0:45–3:30 · RDZEŃ — „Generuj grafik" (pierwszy wow)**
-Choreografia (próba potwierdziła — patrz ⚠): klik **„Następny tydzień"** raz (→ tydz. 20–26 lip),
-potem **„Generuj grafik"**. „Solver (OR-Tools CP-SAT) układa wykonalny tydzień: **twardo** pilnuje
-pokrycia, braku nakładania, urlopów i **11h odpoczynku dobowego** (Kodeks pracy art. 132),
-minimalizując dojazdy i odchyłkę od etatu." Siatka zapełnia się na oczach (~0,6 s). Potem
-**„Poprzedni tydzień"** → wróć na **13–19 lip** (hero week — Anna, kontekst wniosku).
+Choreografia (próba w Chrome potwierdziła — patrz ⚠): startujesz na hero week 13–19 (ustawione
+przed demem). Klik **„Poprzedni tydzień"** raz (→ **6–12 lip**), potem **„Generuj grafik"**.
+„Solver (OR-Tools CP-SAT) układa wykonalny tydzień: **twardo** pilnuje pokrycia, braku nakładania,
+urlopów i **11h odpoczynku dobowego** (Kodeks pracy art. 132), minimalizując dojazdy i odchyłkę od
+etatu." Siatka zapełnia się na oczach (~0,6 s — próba potwierdziła brak przymuleń w produkcji).
+Potem **„Następny tydzień"** → wróć na **13–19 lip** (hero week — Anna, kontekst wniosku).
 - **Kotwica danych:** tydz. 13–19 lip = **52 zmiany AUTO** (zweryfikowane, pre-seed). Badge AUTO, godziny, lokacje.
 - **Uczciwie:** „Twardo H1–H4. Tygodniowy odpoczynek 35h i limity nadgodzin — kolejny etap."
 - ⚠ **NIGDY nie klikaj „Generuj grafik" na tygodniu 13–19.** To hero week: globalny re-solve kasuje
   zmiany referowane przez wniosek J5 (fix F2) → skrzynka managera będzie pusta w bicie 8:00. Solvuj
-  **na sąsiednim tygodniu** (20–26). Solver <1 s, więc to bezpieczny, szybki wow. Jeśli i tak solvniesz
-  13–19 (lub klikniesz wielokrotnie) → `node scripts/demo-up.mjs` re-seeduje wniosek.
+  wow na **6–12** (jeden klik „Poprzedni"). Jeśli i tak solvniesz 13–19 (lub klikniesz wielokrotnie)
+  → `node scripts/demo-up.mjs` re-seeduje wniosek.
 
 **3:30–5:00 · Uczciwa granica — INFEASIBLE (buduje zaufanie mocniej niż happy-path)**
-Przejdź na **tydzień 14–20 września** → „Generuj grafik" → **INFEASIBLE + `unmet[]`**.
-„System nie udaje. Ten tydzień jest niewykonalny — wszyscy koordynatorzy na urlopie — i mówi
-**dokładnie**, których slotów nie da się obsadzić." (Kotwica: **3/3 koordynatorów na urlopie**,
-solve → INFEASIBLE, zweryfikowane.)
+Z hero week klik **„Następny tydzień"** raz → **tydz. 20–26 lip** → **„Generuj grafik"** →
+**INFEASIBLE + `unmet[]`**. „System nie udaje. Już następny tydzień jest niewykonalny — wszyscy
+koordynatorzy na urlopie — i mówi **dokładnie**, których slotów nie da się obsadzić." (Kotwica:
+solve 20–26 → INFEASIBLE, zweryfikowane w próbie; ten sam efekt jest też na 14–20 września.)
+Potem **„Poprzedni tydzień"** → wróć na 13–19.
 
 **5:00–8:00 · RÓŻNICA — Agent AI, który się uczy (drugi wow)**  ·  `:8010/agent/demo`
 „To nie drugi solver. Solver ma stałe reguły. **Agent uczy się realnych preferencji Waszego zespołu**
@@ -110,3 +115,15 @@ Zmierzone latencje systemu (nie zależą od tempa prezentera):
   przełączanie kont (3× login ~3–5 s każde) i mówienie — dlatego choreografia minimalizuje logowania
   (rdzeń+granica+agent jako admin, potem 1× pracownik, 1× manager). Przećwicz raz z zegarkiem —
   jeśli wychodzisz ponad 10:00, tnij agenta (bit 5:00–8:00) do 2 min, nie rdzeń ani granicę.
+
+## Próba w produkcyjnym Chrome — potwierdzone (2026-07-12)
+Pełny przechód w `start-prod.mjs` (produkcja) prawdziwym Chrome:
+- **Zero pigułki „N Issues", brak przymuleń** — każdy ekran ładuje się natychmiast (produkcja pre-buduje).
+- Wszystkie bity działają realnym kliknięciem: 3× login, **wylogowanie**, Dashboard (KPI 36/832/1/3),
+  Grafik + „Generuj grafik" (siatka zapełnia się, baner wyniku), pracownik read-only (badge, tylko
+  wiersz Anny, bez Dostępów/Administracji), manager „Skrzynka managera" z wnioskiem KIEROWCA↔KIEROWCA
+  + **Zatwierdź/Odrzuć**. Konsola czysta.
+- **Znalezisko 1 (choreografia tygodni):** Grafik otwiera się na tygodniu wg zegara maszyny (widziałem
+  1–7 cze i 6–12 lip), NIE na 13–19 → checklist: ustaw hero week przed demem (patrz ⚠ w checklistcie).
+- **Znalezisko 2 naprawione:** dodano tydzień INFEASIBLE **tuż obok** hero (20–26 lip, urlop wszystkich
+  koordynatorów) — granica jest teraz **1 klik** od 13–19, zamiast 9 klików do września.

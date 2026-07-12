@@ -70,6 +70,21 @@ SELECT
 FROM employees WHERE 'KOORDYNATOR' = ANY(qualifications)
 ON CONFLICT (id) DO NOTHING;
 
+-- 3b. INTENTIONAL INFEASIBILITY, adjacent to the hero week — all coordinators on leave 20–26 July
+--     (the week right after the demo fortnight). Lets the 10-min demo show INFEASIBLE ONE click from
+--     the hero week (13–19) instead of navigating to September. Does not overlap 13–19, so Anna keeps
+--     her hero-week shifts and the J5 swap is untouched.
+INSERT INTO leave_requests (id, employee_id, start_date, end_date, status, type, created_at, updated_at)
+SELECT
+  'ds26-koord-jul-' || left(md5(id), 20),
+  id, DATE '2026-07-20', DATE '2026-07-26', 'APPROVED'::"LeaveStatus", 'URLOP_WYPOCZYNKOWY', now(), now()
+FROM employees WHERE 'KOORDYNATOR' = ANY(qualifications)
+ON CONFLICT (id) DO NOTHING;
+-- Clear pre-existing AUTO shifts for 20–26 so the week presents EMPTY. Then a live "Generuj grafik"
+-- returns INFEASIBLE against an empty grid (clean demo), rather than showing stale shifts. The J5 swap
+-- references only 13–14 July shifts, so this delete never touches it.
+DELETE FROM shifts WHERE date BETWEEN DATE '2026-07-20' AND DATE '2026-07-26';
+
 COMMIT;
 
 -- Report
