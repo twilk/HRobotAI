@@ -7,7 +7,11 @@
 - [ ] Front: `cd HRobot-m2/docs/design/web-kit && node start-live.mjs` → `http://localhost:5601`.
 - [ ] Zakładki gotowe: **:5601/grafik**, **:5601/zamiany**, **:8010/agent/demo**.
 - [ ] Tydzień demo: **13–19 lipca 2026** (feasible, 52 AUTO-zmiany). Na :5601/grafik kliknij „Następny tydzień" jeśli trzeba.
-- [ ] Konto: `demo` / `demo-staging-2026` (rola Admin klienta). Web-kit renderuje bez logowania (proxy self-auth) — wejście od razu.
+- [ ] **Logowanie (jest teraz realny gate!):** `:5601` → przekierowanie na `/login`. Trzy konta:
+  - **Admin/manager demo:** `demo` / `demo-staging-2026` (Admin klienta) — pełny grafik, generowanie, zatwierdzanie zamian.
+  - **Pracownik:** `pracownik.demo` / `Pracownik!2026` (rola Pracownik = Anna Kowalska) — widok pracownika, ograniczona nawigacja.
+  - **Manager:** `manager.demo` / `Manager!2026` (Manager Region Centrum) — zatwierdza zamiany swojej jednostki.
+  - Token httpOnly, wylogowanie w topbarze.
 - [ ] Fallback pod ręką: prekomputowany snapshot (`agent-service/fixtures/canonical_solution.json`) + nagranie zapasowe (jeśli zrobione).
 - [ ] Tenant w UI = **4Mobility sp. z o.o.** (rebrand).
 
@@ -35,10 +39,11 @@
 - Pokaż `rationale` (dlaczego taki przydział) i auto-naprawę niewykonalnej propozycji.
 - **Talking point (uczciwie):** „To pilotowy inkrement — agent uczy się i samodoskonali na danych syntetycznych; pełna autonomia produkcyjna to kolejny etap." (NIE mów „RL/Stable-Baselines3" — mechanizm to uczący się scorer + retrening; patrz known-limitations)
 
-## 6. J5 — zamiany zmian (2 min) · `:5601/zamiany`
+## 6. J5 — zamiany zmian + KONTA PRACOWNIKÓW (3 min) · `:5601/zamiany`
+- **Pokaż dwustronność (login):** wyloguj się → zaloguj jako **`pracownik.demo`** → „pracownicy mają własne, bezpieczne konta, widzą swój świat, bez dostępu administracyjnego" (nawigacja ograniczona, tożsamość „Pracownik"). Wyloguj → wróć jako `demo`/`manager.demo`.
 - „Pracownik zgłasza zamianę, druga strona akceptuje wstępnie, menedżer zatwierdza — a **system sprawdza solverem, że zamiana nie łamie reguł** (np. nie wstawi kogoś na urlop, nie złamie odpoczynku), i pilnuje uprawnień (menedżer tylko swojej jednostki)."
-- Pokaż oczekującą prośbę → **Zatwierdź** → zmiana się przepina + audyt.
-- **Talking point:** to realny workflow na tym samym modelu grafiku; wersja real-time (powiadomienia na żywo) w kolejnym etapie.
+- Jako manager: **Skrzynka managera** → oczekująca prośba (RECEPCJA↔RECEPCJA) → **Zatwierdź** → zmiana przepina się atomowo + audyt.
+- **Talking point:** realny workflow na modelu grafiku, walidacja solverem, konta z rolami (RBAC). **Uczciwie:** samodzielne zgłaszanie zamiany przez pracownika z jego grafiku wymaga widoku „mój grafik" — dochodzi w M3 (dziś pracownik loguje się i widzi swój świat; wniosek inicjuje manager/seed). Real-time powiadomienia — M3.
 
 ## 7. Zamknięcie (1 min)
 - „Podsumowując: układamy zgodne z prawem grafiki, optymalizujemy dojazdy/etaty, a agent uczy się Waszej specyfiki. Dane syntetyczne, RODO od pierwszego dnia."
