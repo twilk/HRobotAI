@@ -5,13 +5,14 @@ export interface Employee {
   id: string
   firstName: string
   lastName: string
-  email: string
+  /** Optional: the tenant-runtime /api/employees payload omits email (it lives on the linked User). */
+  email?: string
   position: string
   unit: string
-  contract: 'UoP' | 'Zlecenie' | 'B2B'
-  /** Last 4 of PESEL only — plaintext PESEL never reaches the client. */
-  peselLast4: string
-  status: 'active' | 'leave'
+  contract: string
+  /** Last 4 of PESEL, when available. The real API omits PESEL entirely (RODO) → masked placeholder. */
+  peselLast4?: string
+  status?: 'active' | 'leave'
 }
 
 export function EmployeesTable({ employees }: { employees: Employee[] }) {
@@ -39,7 +40,7 @@ export function EmployeesTable({ employees }: { employees: Employee[] }) {
                   <div className="font-medium">
                     {e.firstName} {e.lastName}
                   </div>
-                  <div className="text-[11.5px] text-muted-2">{e.email}</div>
+                  {e.email ? <div className="text-[11.5px] text-muted-2">{e.email}</div> : null}
                 </div>
               </div>
             </Td>
@@ -49,9 +50,13 @@ export function EmployeesTable({ employees }: { employees: Employee[] }) {
               <Badge>{e.contract}</Badge>
             </Td>
             <Td>
-              <span className="font-mono text-[12.5px] tabular-nums text-muted">•••••••{e.peselLast4}</span>
+              {e.peselLast4 ? (
+                <span className="font-mono text-[12.5px] tabular-nums text-muted">•••••••{e.peselLast4}</span>
+              ) : (
+                <span className="font-mono text-[12.5px] text-muted-2" title="PESEL nie opuszcza serwera (RODO)">•••••••••</span>
+              )}
             </Td>
-            <Td>{e.status === 'active' ? <Badge tone="ok">Aktywny</Badge> : <Badge tone="warn">Urlop</Badge>}</Td>
+            <Td>{e.status === 'leave' ? <Badge tone="warn">Urlop</Badge> : <Badge tone="ok">Aktywny</Badge>}</Td>
           </tr>
         ))}
       </tbody>
