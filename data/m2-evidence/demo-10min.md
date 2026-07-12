@@ -27,12 +27,17 @@ danych syntetycznych w kształcie 4Mobility, zero realnych danych osobowych."
 *(Ekran: :5601/grafik zalogowany jako `demo`, tydz. 13–19 lipca.)*
 
 **0:45–3:30 · RDZEŃ — „Generuj grafik" (pierwszy wow)**
-Klik **„Generuj grafik"**. „Solver (OR-Tools CP-SAT) układa wykonalny tydzień: **twardo** pilnuje
+Choreografia (próba potwierdziła — patrz ⚠): klik **„Następny tydzień"** raz (→ tydz. 20–26 lip),
+potem **„Generuj grafik"**. „Solver (OR-Tools CP-SAT) układa wykonalny tydzień: **twardo** pilnuje
 pokrycia, braku nakładania, urlopów i **11h odpoczynku dobowego** (Kodeks pracy art. 132),
-minimalizując dojazdy i odchyłkę od etatu."
-- **Kotwica danych:** tydz. 13–19 lip → **52 zmiany AUTO** (zweryfikowane). Badge AUTO, godziny, lokacje.
+minimalizując dojazdy i odchyłkę od etatu." Siatka zapełnia się na oczach (~0,6 s). Potem
+**„Poprzedni tydzień"** → wróć na **13–19 lip** (hero week — Anna, kontekst wniosku).
+- **Kotwica danych:** tydz. 13–19 lip = **52 zmiany AUTO** (zweryfikowane, pre-seed). Badge AUTO, godziny, lokacje.
 - **Uczciwie:** „Twardo H1–H4. Tygodniowy odpoczynek 35h i limity nadgodzin — kolejny etap."
-- ⚠ Klikaj „Generuj" **raz**. Po solve trzeba re-seedować wniosek (`demo-up` to robi).
+- ⚠ **NIGDY nie klikaj „Generuj grafik" na tygodniu 13–19.** To hero week: globalny re-solve kasuje
+  zmiany referowane przez wniosek J5 (fix F2) → skrzynka managera będzie pusta w bicie 8:00. Solvuj
+  **na sąsiednim tygodniu** (20–26). Solver <1 s, więc to bezpieczny, szybki wow. Jeśli i tak solvniesz
+  13–19 (lub klikniesz wielokrotnie) → `node scripts/demo-up.mjs` re-seeduje wniosek.
 
 **3:30–5:00 · Uczciwa granica — INFEASIBLE (buduje zaufanie mocniej niż happy-path)**
 Przejdź na **tydzień 14–20 września** → „Generuj grafik" → **INFEASIBLE + `unmet[]`**.
@@ -88,3 +93,18 @@ zabawka na jeden tydzień." → przejście do **protokołu odbioru** + uwag (eta
   re-seeduje wniosek J5.
 - Logowanie: klikaj przycisk „Zaloguj/Wyloguj" normalnie (działa); przy problemie z kliknięciem odśwież
   stronę i spróbuj ponownie.
+
+## Próba generalna — potwierdzone (2026-07-12)
+Zmierzone latencje systemu (nie zależą od tempa prezentera):
+- Logowanie (token): **~217 ms**. Solve wykonalny: **~0,6 s** (globalny) / **~0,36 s** (scoped).
+  Solve INFEASIBLE (14 wrz): **~0,3 s**. → **System nigdy nie każe czekać >1 s**; budżet 10 min zależy
+  wyłącznie od tempa mówienia/klikania, nie od zawieszeń solvera. Ryzyko „solver się zaciął" — realnie zerowe.
+- Kotwice na żywo: 3 konta logują się; tydz. 13–19 = **52 zmiany / Anna 5**; 14 wrz → **INFEASIBLE**
+  (3/3 koordynatorów na urlopie); wniosek J5 = **PENDING_MANAGER**; agent :8010 = 200; 7/7 kontenerów.
+- **Znalezisko naprawione:** solvowanie hero week (13–19) na żywo psuło dane (52→88 zmian) i kasowało
+  wniosek J5 → dlatego bit 0:45 solvuje na **sąsiednim** tygodniu 20–26 (patrz ⚠ wyżej). Po próbie
+  przywrócono czysty stan (13–19 = 52, wniosek PENDING_MANAGER).
+- **Werdykt czasu:** treść mieści się w ≤10:00 z zapasem na pytania. Największy pożeracz czasu to
+  przełączanie kont (3× login ~3–5 s każde) i mówienie — dlatego choreografia minimalizuje logowania
+  (rdzeń+granica+agent jako admin, potem 1× pracownik, 1× manager). Przećwicz raz z zegarkiem —
+  jeśli wychodzisz ponad 10:00, tnij agenta (bit 5:00–8:00) do 2 min, nie rdzeń ani granicę.
