@@ -127,7 +127,14 @@ export function SwapWorkspace() {
       setProposing(false)
       await refresh()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Nie udało się utworzyć propozycji zamiany')
+      const msg = e instanceof Error ? e.message : ''
+      setError(
+        /Required roles|Forbidden|403/.test(msg)
+          ? 'Zaproponowanie zamiany z tego widoku wymaga dostępu do grafiku (rola managera). Samodzielne zgłoszenie zamiany ze swojego grafiku dla pracownika jest w przygotowaniu.'
+          : /no employee record/i.test(msg)
+            ? 'Twoje konto nie jest powiązane z pracownikiem — zaloguj się na konto pracownika, aby proponować zamiany.'
+            : msg || 'Nie udało się utworzyć propozycji zamiany',
+      )
     } finally {
       setBusy(null)
     }
