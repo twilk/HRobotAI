@@ -28,6 +28,15 @@ import {
 
 const ALL_UNITS = '__all__'
 
+/** Polish 3-form plural for "zmiana": 1 → zmiana, 2–4 → zmiany, else → zmian (12–14 stay "zmian"). */
+function zmianaLabel(n: number): string {
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (n === 1) return 'zmiana'
+  if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) return 'zmiany'
+  return 'zmian'
+}
+
 /** Editor target: an existing shift (edit) or a fresh cell (create). */
 type EditorState =
   | { mode: 'edit'; shift: Shift }
@@ -222,7 +231,8 @@ export function GrafikScreen({ canManage = true }: { canManage?: boolean }) {
         <div>
           <h1 className="font-display font-extrabold text-[26px] tracking-tightish text-navy leading-tight">Grafik</h1>
           <p className="text-muted text-sm mt-1.5">
-            {weekShiftCount} {weekShiftCount === 1 ? 'zmiana' : 'zmian'} · {weekDemandCount} zapotrzebowań w tym tygodniu
+            {weekShiftCount} {zmianaLabel(weekShiftCount)}
+            {canManage ? ` · ${weekDemandCount} zapotrzebowań w tym tygodniu` : ' w tym tygodniu'}
           </p>
         </div>
         <div className="flex items-center gap-2.5 flex-wrap">
