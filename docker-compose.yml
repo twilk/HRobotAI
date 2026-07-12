@@ -53,13 +53,17 @@ services:
       retries: 10
 
   keycloak:
-    image: quay.io/keycloak/keycloak:24.0
+    image: quay.io/keycloak/keycloak:26.0
     command: ["start-dev"]
     environment:
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
+      # KC 25+ renamed KEYCLOAK_ADMIN* -> KC_BOOTSTRAP_ADMIN*.
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
     ports:
       - "8080:8080"
+    # Persist KC's embedded H2 so realms/clients/users survive `docker compose down` (without -v).
+    volumes:
+      - hrobot_keycloak:/opt/keycloak/data
 
   # Control-plane API as a container (CI/prod parity). For day-to-day dev, run it
   # on the host. Gated behind the "full" profile so a bare `docker compose up -d`
@@ -149,3 +153,4 @@ services:
 
 volumes:
   hrobot_pgdata:
+  hrobot_keycloak:
