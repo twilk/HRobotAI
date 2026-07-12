@@ -101,15 +101,19 @@ export async function proxyToTenantRuntime(req: Request, backendPath: string, se
     if (upstream.status === 401 && resolved.source === 'cookie') {
       const rc = req.headers.get('cookie')
       const rm = rc ? /(?:^|;\s*)hrobot_refresh=([^;]+)/.exec(rc) : null
-      if (rm) {
-        const rotated = await refreshAccessToken(decodeURIComponent(rm[1]))
-        if (rotated) {
-          upstream = await sendOnce(`Bearer ${rotated.accessToken}`)
-          const store = await cookies()
-          const base = { httpOnly: true, sameSite: 'lax' as const, secure: process.env.NODE_ENV === 'production', path: '/' }
-          store.set(SESSION_COOKIE, rotated.accessToken, { ...base, maxAge: rotated.refreshExpiresIn })
-          store.set(REFRESH_COOKIE, rotated.refreshToken, { ...base, maxAge: rotated.refreshExpiresIn })
-        }
+      const rotated = rm ? await refreshAccessToken(decodeURIComponent(rm[1])) : null
+      const store = await cookies()
+      if (rotated) {
+        upstream = await sendOnce(`Bearer ${rotated.accessToken}`)
+        const base = { httpOnly: true, sameSite: 'lax' as const, secure: process.env.NODE_ENV === 'production', path: '/' }
+        store.set(SESSION_COOKIE, rotated.accessToken, { ...base, maxAge: rotated.refreshExpiresIn })
+        store.set(REFRESH_COOKIE, rotated.refreshToken, { ...base, maxAge: rotated.refreshExpiresIn })
+      } else {
+        // Refresh unavailable or rejected → the session is truly over. Clear both cookies so the next
+        // navigation hits middleware with no cookie and is re-gated to /login, instead of leaving the
+        // user on a stale 401 screen for the length of the (now longer) cookie TTL.
+        store.delete(SESSION_COOKIE)
+        store.delete(REFRESH_COOKIE)
       }
     }
   } catch (err) {

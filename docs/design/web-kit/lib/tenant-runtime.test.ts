@@ -5,9 +5,9 @@ import { __resetKeycloakTokenCacheForTests } from './keycloak-token'
 // The cookie-401→refresh path re-sets the session/refresh cookies via next/headers cookies().set().
 // Mock the module so that mutable-cookie call works under vitest; the spy lets us assert on it.
 // The other paths in this file never reach cookies() (they 200 or use header/dev/minted tokens).
-const { cookieSetSpy } = vi.hoisted(() => ({ cookieSetSpy: vi.fn() }))
+const { cookieSetSpy, cookieDeleteSpy } = vi.hoisted(() => ({ cookieSetSpy: vi.fn(), cookieDeleteSpy: vi.fn() }))
 vi.mock('next/headers', () => ({
-  cookies: vi.fn(async () => ({ set: cookieSetSpy, get: vi.fn(), delete: vi.fn() })),
+  cookies: vi.fn(async () => ({ set: cookieSetSpy, get: vi.fn(), delete: cookieDeleteSpy })),
 }))
 
 const ORIGINAL_ENV = { ...process.env }
@@ -265,6 +265,42 @@ describe('proxyToTenantRuntime — cookie token refresh rotation', () => {
     expect(res.status).toBe(401)
     expect(fetchFn).toHaveBeenCalledTimes(1) // no refresh POST, no retry
     expect(cookieSetSpy).not.toHaveBeenCalled()
+  })
+
+  it('clears both cookies and returns 401 when the refresh token is rejected', async () => {
+    cookieSetSpy.mockClear()
+    cookieDeleteSpy.mockClear()
+    let backendCalls = 0
+    const fn = vi.fn(async (url: string | URL, _init?: RequestInit) => {
+      // Keycloak rejects the (revoked / expired) refresh token → refreshAccessToken returns null.
+      if (String(url).includes('/protocol/openid-connect/token')) {
+        return new Response('{"error":"invalid_grant"}', {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      backendCalls += 1
+      return new Response(JSON.stringify({ error: 'expired' }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' },
+      })
+    })
+    vi.stubGlobal('fetch', fn)
+
+    const req = new Request('http://localhost/api/grafik/shifts', {
+      headers: { cookie: 'hrobot_token=stale-jwt; hrobot_refresh=dead-refresh' },
+    })
+    const res = await proxyToTenantRuntime(req, 'grafik/shifts')
+
+    // The stale 401 passes through — no retry with a new bearer happened.
+    expect(res.status).toBe(401)
+    expect(backendCalls).toBe(1)
+
+    // Session is over: both cookies cleared (so the next navigation is re-gated to /login), none re-set.
+    expect(cookieSetSpy).not.toHaveBeenCalled()
+    const deletedNames = cookieDeleteSpy.mock.calls.map((c) => c[0])
+    expect(deletedNames).toContain('hrobot_token')
+    expect(deletedNames).toContain('hrobot_refresh')
   })
 })
 
