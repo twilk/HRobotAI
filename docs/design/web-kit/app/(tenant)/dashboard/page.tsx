@@ -3,18 +3,16 @@ import { QuickActions } from '@/components/dashboard/quick-actions'
 import { SetupChecklist, type ChecklistStep } from '@/components/dashboard/setup-checklist'
 import { DataProtectionPanel } from '@/components/dashboard/data-protection-panel'
 import type { Role } from '@/lib/nav'
+import { getSession } from '@/lib/session'
 
-// Server Component. In the real app, derive identity from the Auth.js session and
-// tenant context resolved by middleware, e.g.:
-//   const session = await auth()
-//   const tenant  = await getTenantForRequest()   // reads x-tenant-id header
-//   const roles   = session.user.roles as Role[]
-// Fetch independent data with Promise.all to avoid request waterfalls.
+// Server Component. Identity comes from the real Keycloak session (the `hrobot_token` cookie set by
+// the login action, decoded in lib/session). Tenant is still a fixed demo org.
 
 export default async function DashboardPage() {
+  const session = await getSession()
   const tenant = { name: '4Mobility sp. z o.o.', slug: '4mobility.hrobot.ai' }
-  const user = { name: 'Jan Kowalski', role: 'Admin klienta', initials: 'JK' }
-  const roles: Role[] = ['ADMIN_KLIENTA']
+  const user = session?.user ?? { name: 'Użytkownik', role: '—', initials: '?' }
+  const roles: Role[] = session?.roles ?? []
 
   // From tenants.onboarding_checklist (org-level Json column).
   const checklist: ChecklistStep[] = [

@@ -4,6 +4,7 @@ import { EmployeesTable, type Employee } from '@/components/employees/employees-
 import { EmployeesEmpty } from '@/components/employees/employees-empty'
 import { IconPlus, IconSearch } from '@/components/icons'
 import type { Role } from '@/lib/nav'
+import { getSession } from '@/lib/session'
 
 // Proof-of-stack: in the real app this is `await fetch('/api/employees')` through the
 // authenticated tenant runtime (returns last-4 of PESEL only, never plaintext).
@@ -17,9 +18,10 @@ const EMPLOYEES: Employee[] = [
 ]
 
 export default async function PracownicyPage() {
+  const session = await getSession()
   const tenant = { name: '4Mobility sp. z o.o.', slug: '4mobility.hrobot.ai' }
-  const user = { name: 'Jan Kowalski', role: 'Admin klienta', initials: 'JK' }
-  const roles: Role[] = ['ADMIN_KLIENTA']
+  const user = session?.user ?? { name: 'Użytkownik', role: '—', initials: '?' }
+  const roles: Role[] = session?.roles ?? []
   const employees = EMPLOYEES
 
   return (

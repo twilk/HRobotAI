@@ -1,6 +1,7 @@
 import { MobileNav } from './mobile-drawer'
 import { SecuredChip } from '@/components/ui/secured-chip'
-import { IconBell } from '@/components/icons'
+import { IconBell, IconLogout } from '@/components/icons'
+import { logout } from '@/lib/auth-actions'
 import type { Role } from '@/lib/nav'
 
 export interface TopBarProps {
@@ -38,6 +39,16 @@ export function TopBar({ title, user, activeHref, roles, tenant }: TopBarProps) 
             <div className="font-mono text-[9.5px] tracking-[.08em] uppercase text-accent-ink mt-0.5">{user.role}</div>
           </div>
         </div>
+        <form action={logout} className="flex">
+          <button
+            type="submit"
+            aria-label="Wyloguj się"
+            title="Wyloguj się"
+            className="grid place-items-center w-[34px] h-[34px] rounded-lg border border-line-strong bg-card text-muted hover:text-error hover:border-error/40 transition-colors"
+          >
+            <IconLogout className="w-[17px] h-[17px]" />
+          </button>
+        </form>
       </div>
     </header>
   )
