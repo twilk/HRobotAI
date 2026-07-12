@@ -86,6 +86,18 @@ export class GrafikController {
     return this.grafik.getShift(client, this.actor(user, ip), id)
   }
 
+  @Get('lokalizacje')
+  @Roles(...READ_ROLES)
+  async listLokalizacje(@CurrentTenantClient() client: TenantClient): Promise<unknown[]> {
+    return this.grafik.listLokalizacje(client)
+  }
+
+  @Get('units')
+  @Roles(...READ_ROLES)
+  async listUnits(@CurrentTenantClient() client: TenantClient): Promise<unknown[]> {
+    return this.grafik.listUnits(client)
+  }
+
   @Post('shifts')
   @Roles(...SHIFT_WRITE_ROLES)
   async createShift(

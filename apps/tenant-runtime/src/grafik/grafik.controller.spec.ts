@@ -29,6 +29,8 @@ const mockService = {
   createTemplate: jest.fn(),
   updateTemplate: jest.fn(),
   deleteTemplate: jest.fn(),
+  listLokalizacje: jest.fn(),
+  listUnits: jest.fn(),
 }
 const client = {} as TenantClient
 const user: JwtPayload = { sub: 'kc-1', iss: 'x', hrobot_roles: [Role.HR], exp: 0 }
@@ -116,6 +118,12 @@ describe('GrafikController', () => {
 
     it('allows every scheduling role — including PRACOWNIK — to read (shifts own-scoped in the service)', () => {
       for (const m of ['listShifts', 'getShift', 'listDemands', 'listTemplates'] as const) {
+        expect(rolesFor(m)).toEqual([Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA, Role.PRACOWNIK])
+      }
+    })
+
+    it('exposes catalog name lookups to every scheduling role including PRACOWNIK', () => {
+      for (const m of ['listLokalizacje', 'listUnits'] as const) {
         expect(rolesFor(m)).toEqual([Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA, Role.PRACOWNIK])
       }
     })

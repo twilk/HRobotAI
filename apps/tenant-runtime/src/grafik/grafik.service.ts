@@ -137,6 +137,18 @@ export class GrafikService {
     })
   }
 
+  // --- Catalog name lookups (read-only; any scheduling role) ------------------------------------
+
+  /** Location id→name catalog for UI labels (no PII, no geolocation). */
+  async listLokalizacje(client: TenantClient): Promise<unknown[]> {
+    return client.lokalizacja.findMany({ select: { id: true, name: true, typ: true }, orderBy: { name: 'asc' } })
+  }
+
+  /** Organizational-unit id→name catalog for UI labels. */
+  async listUnits(client: TenantClient): Promise<unknown[]> {
+    return client.organizationalUnit.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } })
+  }
+
   // --- Shift -------------------------------------------------------------------------------------
 
   async listShifts(client: TenantClient, actor: GrafikActor): Promise<unknown[]> {

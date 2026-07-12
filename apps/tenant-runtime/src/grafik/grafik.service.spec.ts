@@ -33,7 +33,8 @@ function makeClient() {
     },
     employee: { findUnique: jest.fn(), findMany: jest.fn() },
     leaveRequest: { findMany: jest.fn() },
-    lokalizacja: { findMany: jest.fn() },
+    lokalizacja: { findMany: jest.fn(), findUnique: jest.fn() },
+    organizationalUnit: { findMany: jest.fn() },
     userRole: { findMany: jest.fn() },
     $transaction: jest.fn(),
   }
@@ -357,6 +358,30 @@ describe('GrafikService', () => {
       expect(result.assignmentsCreated).toBe(0)
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('GHOST'))
       warn.mockRestore()
+    })
+  })
+
+  // --- Catalog name lookups (Task 3) -------------------------------------------------------------
+
+  describe('catalog name lookups', () => {
+    it('lists lokalizacje as {id,name,typ}', async () => {
+      client.lokalizacja.findMany.mockResolvedValue([{ id: 'L1', name: 'Lotnisko', typ: 'AIRPORT' }])
+      const rows = await service.listLokalizacje(asClient(client))
+      expect(client.lokalizacja.findMany).toHaveBeenCalledWith({
+        select: { id: true, name: true, typ: true },
+        orderBy: { name: 'asc' },
+      })
+      expect(rows).toEqual([{ id: 'L1', name: 'Lotnisko', typ: 'AIRPORT' }])
+    })
+
+    it('lists org units as {id,name}', async () => {
+      client.organizationalUnit.findMany.mockResolvedValue([{ id: 'U1', name: 'Region Centrum' }])
+      const rows = await service.listUnits(asClient(client))
+      expect(client.organizationalUnit.findMany).toHaveBeenCalledWith({
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      })
+      expect(rows).toEqual([{ id: 'U1', name: 'Region Centrum' }])
     })
   })
 })
