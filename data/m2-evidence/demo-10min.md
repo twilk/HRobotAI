@@ -6,7 +6,9 @@
 > Pełna (dłuższa) wersja: `demo-scenario-4mobility.md`. To jest zredukowana wersja na czas.
 
 ## Przed demem (5 min wcześniej) — jedna komenda
-- `cd HRobot-m2 && node scripts/demo-up.mjs` → `cd docs/design/web-kit && node start-live.mjs` (:5601).
+- `cd HRobot-m2 && node scripts/demo-up.mjs` → `cd docs/design/web-kit && node start-prod.mjs` (:5601).
+- ⚠ Na demo używaj **`start-prod.mjs`** (produkcja: build + `next start`), NIE `start-live.mjs` (`next dev`):
+  produkcja nie ma nakładki „N Issues" ani ~30 s przymulenia przy pierwszym wejściu na każdą stronę.
 - Checklist (zweryfikowane 2026-07-12): **7/7** kontenerów `hrobot-*` + agent :8010 = 200; **3 konta**
   logują się; tydz. **13–19 lip = 52 zmiany AUTO** (Anna=5); wniosek J5 **PENDING_MANAGER** obecny.
 - Zakładki gotowe: **:5601/grafik**, **:5601/zamiany**, **:8010/agent/demo**. Zaloguj z góry jako `demo`.
@@ -88,7 +90,7 @@ zabawka na jeden tydzień." → przejście do **protokołu odbioru** + uwag (eta
 ## Ryzyka + fallback (demo ma jedno podejście)
 - Solver wolny / live-solve pada → tydzień 13–19 jest **już zaseedowany** (nie musisz solvować na żywo);
   ostateczność: prekomputowany snapshot / nagranie.
-- Stack/tunel pada → `node scripts/demo-up.mjs` + `node start-live.mjs`.
+- Stack/tunel pada → `node scripts/demo-up.mjs` + `node start-prod.mjs`.
 - Nie klikaj „Generuj grafik" wielokrotnie na oczach klienta. Po solve → `node scripts/demo-up.mjs`
   re-seeduje wniosek J5.
 - Logowanie: klikaj przycisk „Zaloguj/Wyloguj" normalnie (działa); przy problemie z kliknięciem odśwież

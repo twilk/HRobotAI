@@ -95,9 +95,11 @@ Full walkthrough + talking points: `data/m2-evidence/demo-scenario-4mobility.md`
 # seed the J5 pending swap. Idempotent; re-run after any "Generuj grafik".
 node scripts/demo-up.mjs
 
-# Then the demo UI (a host Node process, NOT in compose — start-live.mjs forces the
-# correct KEYCLOAK_* + TENANT_RUNTIME_URL so the self-auth proxy works).
-cd docs/design/web-kit && node start-live.mjs      # http://localhost:5601
+# Then the demo UI (a host Node process, NOT in compose — forces the correct KEYCLOAK_* +
+# TENANT_RUNTIME_URL so the self-auth proxy works).
+#   Dev:  node start-live.mjs   (next dev — HMR, but a dev-tools overlay + on-demand compiles)
+#   Demo: node start-prod.mjs   (next build + start — no overlay, no first-hit compile stalls)
+cd docs/design/web-kit && node start-prod.mjs      # http://localhost:5601
 ```
 
 `demo-up.mjs` wraps `docker compose --profile full up -d` plus `scripts/seed-keycloak-demo.mjs`
