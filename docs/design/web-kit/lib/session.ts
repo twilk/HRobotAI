@@ -12,6 +12,9 @@ import type { Role } from './nav'
 /** Cookie name shared with the login/logout actions and the tenant-runtime proxy. */
 export const SESSION_COOKIE = 'hrobot_token'
 
+/** httpOnly cookie holding the Keycloak refresh token, used to rotate the access token on 401. */
+export const REFRESH_COOKIE = 'hrobot_refresh'
+
 export interface SessionUser {
   /** Display name for the topbar. */
   name: string

@@ -12,7 +12,7 @@
 
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { SESSION_COOKIE } from './session'
+import { SESSION_COOKIE, REFRESH_COOKIE } from './session'
 
 const DEFAULT_TOKEN_URL = 'http://localhost:8081/realms/hrobot-staging/protocol/openid-connect/token'
 const DEFAULT_CLIENT_ID = 'hrobot-web'
@@ -63,9 +63,14 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
     return { error: `Błąd uwierzytelniania (${res.status}).` }
   }
 
-  let payload: { access_token?: string; expires_in?: number }
+  let payload: { access_token?: string; expires_in?: number; refresh_token?: string; refresh_expires_in?: number }
   try {
-    payload = (await res.json()) as { access_token?: string; expires_in?: number }
+    payload = (await res.json()) as {
+      access_token?: string
+      expires_in?: number
+      refresh_token?: string
+      refresh_expires_in?: number
+    }
   } catch {
     return { error: 'Nieprawidłowa odpowiedź serwera uwierzytelniania.' }
   }
@@ -79,10 +84,23 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
-    // Cookie lives exactly as long as the access token: once it expires the proxy would get a 401,
-    // so we let the cookie lapse and re-gate to /login rather than forward a dead token.
-    maxAge: payload.expires_in ?? 300,
+    // Cookie lives as long as the REFRESH window, not the (short) access-token lifetime: a stale
+    // access token inside just yields a 401 that the proxy rotates using the refresh cookie. The
+    // token's real expiry is enforced server-side by tenant-runtime via the JWT `exp`, so a longer
+    // cookie TTL is safe — the cookie is only transport. The session ends (re-gate to /login) only
+    // once the refresh token itself expires.
+    maxAge: payload.refresh_expires_in ?? 1800,
   })
+
+  if (payload.refresh_token) {
+    store.set(REFRESH_COOKIE, payload.refresh_token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: payload.refresh_expires_in ?? 1800,
+    })
+  }
 
   // redirect() throws NEXT_REDIRECT — must stay outside any try/catch so it isn't swallowed.
   redirect('/dashboard')
@@ -92,5 +110,6 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
 export async function logout(): Promise<void> {
   const store = await cookies()
   store.delete(SESSION_COOKIE)
+  store.delete(REFRESH_COOKIE)
   redirect('/login')
 }
