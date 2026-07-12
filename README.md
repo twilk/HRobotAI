@@ -91,23 +91,19 @@ The Grafik + Agent demo runs on synthetic data (tenant `staging`, realm `hrobot-
 Full walkthrough + talking points: `data/m2-evidence/demo-scenario-4mobility.md`.
 
 ```bash
-# 1. Full stack up (see the containers section above).
-docker compose --profile full up -d
+# One command: stack up → wait healthy → rebuild the demo realm (+ sync keycloak_sub) →
+# seed the J5 pending swap. Idempotent; re-run after any "Generuj grafik".
+node scripts/demo-up.mjs
 
-# 2. Seed the demo Keycloak realm + 3 demo users. REQUIRED after every fresh `up` —
-#    the dev Keycloak runs start-dev on an ephemeral H2 store, so the realm does NOT
-#    survive a container recreate. If the script prints `UPDATE users SET keycloak_sub=…`
-#    lines, run them against the tenant DB (Keycloak ignores client-supplied user ids).
-node scripts/seed-keycloak-demo.mjs
-
-# 3. Seed one pending shift-swap for the manager-approval step (J5). Re-run after any
-#    "Generuj grafik" — a re-solve regenerates shifts and clears dependent swaps.
-docker exec -i hrobot-postgres-1 psql -U postgres -d hrobot_t_900d948b < scripts/seed-demo-swap.sql
-
-# 4. Demo UI (a host Node process, NOT in compose). start-live.mjs forces the correct
-#    KEYCLOAK_* + TENANT_RUNTIME_URL env so the self-auth proxy works.
+# Then the demo UI (a host Node process, NOT in compose — start-live.mjs forces the
+# correct KEYCLOAK_* + TENANT_RUNTIME_URL so the self-auth proxy works).
 cd docs/design/web-kit && node start-live.mjs      # http://localhost:5601
 ```
+
+`demo-up.mjs` wraps `docker compose --profile full up -d` plus `scripts/seed-keycloak-demo.mjs`
+(the dev Keycloak runs start-dev on an ephemeral H2 store, so the realm does NOT survive a
+container recreate — this rebuilds it) and `scripts/seed-demo-swap.sql`. Run those individually
+if you need to.
 
 Logins (real gate on :5601 → `/login`): `demo` / `demo-staging-2026` (ADMIN, full grafik),
 `manager.demo` / `Manager!2026` (MANAGER, unit-scoped + swap approval),
