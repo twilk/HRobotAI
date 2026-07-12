@@ -8,6 +8,7 @@
 - [ ] Front: `cd HRobot-m2/docs/design/web-kit && node start-live.mjs` → `http://localhost:5601`.
 - [ ] Zakładki gotowe: **:5601/grafik**, **:5601/zamiany**, **:8010/agent/demo**.
 - [ ] Tydzień demo: **13–19 lipca 2026** (feasible, 52 AUTO-zmiany). Na :5601/grafik kliknij „Następny tydzień" jeśli trzeba.
+- [ ] **Dane obejmują cały czerwiec–wrzesień 2026** (~830 zmian, urlopy skumulowane latem). Opcjonalny pokaz „niewykonalności": przejdź na tydzień **14–20 września** → wszyscy koordynatorzy na urlopie → solver zwraca INFEASIBLE + `unmet[]` (art. G4, uczciwie pokazuje granice pokrycia). Reszta tygodni OPTIMAL. Odtwarzanie danych (jednorazowo, jeśli baza czysta): `scripts/seed-dataset-2026.sql` + `node scripts/seed-dataset-2026.mjs`.
 - [ ] **Logowanie (realny gate + RBAC):** `:5601` → przekierowanie na `/login`. Trzy konta:
   - **Admin/manager demo:** `demo` / `demo-staging-2026` (Admin klienta) — pełny grafik, generowanie, zatwierdzanie zamian.
   - **Pracownik:** `pracownik.demo` / `Pracownik!2026` (rola Pracownik = Anna Kowalska) — **własny grafik w trybie podglądu** (5 zmian, tydz. 13–19 lip), ograniczona nawigacja, brak akcji admina.

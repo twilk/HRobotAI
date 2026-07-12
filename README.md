@@ -105,6 +105,13 @@ cd docs/design/web-kit && node start-live.mjs      # http://localhost:5601
 container recreate — this rebuilds it) and `scripts/seed-demo-swap.sql`. Run those individually
 if you need to.
 
+The tenant DB is seeded with a coherent **June–September 2026** dataset (36 employees, ~830
+solver-generated shifts, clustered summer leave, one intentionally INFEASIBLE week — Sep 14, all
+coordinators on leave). It persists in the Postgres volume, so it's a one-time build after
+provisioning: `psql … < scripts/seed-dataset-2026.sql` (demands + leave) then
+`node scripts/seed-dataset-2026.mjs` (runs the solver per week). Both are idempotent and leave the
+demo fortnight (Jul 13–26) untouched.
+
 Logins (real gate on :5601 → `/login`): `demo` / `demo-staging-2026` (ADMIN, full grafik),
 `manager.demo` / `Manager!2026` (MANAGER, unit-scoped + swap approval),
 `pracownik.demo` / `Pracownik!2026` (PRACOWNIK — Anna Kowalska, read-only "my schedule").
