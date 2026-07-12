@@ -10,6 +10,7 @@ import { ScheduleGrid, cellKey } from './schedule-grid'
 import { ShiftEditor, type LocationOption } from './shift-editor'
 import { SolveResultBanner } from './solve-result-banner'
 import { MetricsStrip } from './metrics-strip'
+import { locationName } from '@/lib/demo-locations'
 import {
   formatWeekRange,
   grafikApi,
@@ -101,7 +102,7 @@ export function GrafikScreen() {
   )
 
   // Location labels (no location-name API → stable short label from the UUID).
-  const locationLabel = useCallback((id: string) => `Lok. ${id.slice(0, 6)}`, [])
+  const locationLabel = useCallback((id: string) => locationName(id), [])
   const locationOptions = useMemo<LocationOption[]>(() => {
     const ids = new Set<string>()
     shifts.forEach((s) => ids.add(s.lokalizacjaId))
