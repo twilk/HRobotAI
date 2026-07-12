@@ -10,7 +10,7 @@ import { ScheduleGrid, cellKey } from './schedule-grid'
 import { ShiftEditor, type LocationOption } from './shift-editor'
 import { SolveResultBanner } from './solve-result-banner'
 import { MetricsStrip } from './metrics-strip'
-import { locationName } from '@/lib/demo-locations'
+import { locationName, unitName } from '@/lib/demo-locations'
 import {
   formatWeekRange,
   grafikApi,
@@ -93,7 +93,7 @@ export function GrafikScreen() {
   // Distinct units present in the roster → the scope filter (we have no unit-name API, so short ids).
   const unitOptions = useMemo(() => {
     const ids = [...new Set(employees.map((e) => e.unitId))].filter(Boolean).sort()
-    return ids.map((id) => ({ id, label: `Jednostka · ${id.slice(0, 6)}` }))
+    return ids.map((id) => ({ id, label: unitName(id) }))
   }, [employees])
 
   const visibleEmployees = useMemo(

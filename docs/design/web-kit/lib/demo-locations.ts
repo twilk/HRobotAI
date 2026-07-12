@@ -31,6 +31,19 @@ export function locationName(id: string): string {
   return DEMO_LOCATION_NAMES[id] ?? `Lok. ${id.slice(0, 6)}`
 }
 
+/** DEMO-only: friendly organizational-unit names (Unit has no list endpoint yet either). */
+export const DEMO_UNIT_NAMES: Record<string, string> = {
+  '0276f4fd-43a2-51eb-b450-c48afe912fd9': 'Region Północ',
+  '053774f2-63fb-565c-b142-77b17f456ec7': 'Region Centrum',
+  '10371c96-5b67-5d0b-ba25-e68144236954': 'Region Południe',
+  '59790e2a-2d64-591b-a7bf-70aa612c897b': '4Mobility — Operacje',
+}
+
+/** Friendly unit name for an id, or a short-uuid fallback. */
+export function unitName(id: string): string {
+  return DEMO_UNIT_NAMES[id] ?? `Jednostka · ${id.slice(0, 6)}`
+}
+
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
 
 /**
