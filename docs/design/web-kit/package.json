@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev -p 5601",
     "build": "next build",
+    "build:clean": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && next build",
     "start": "next start -p 5601",
     "lint": "next lint",
     "test": "vitest run",

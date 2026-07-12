@@ -5,6 +5,7 @@
 // KEYCLOAK_* + TENANT_RUNTIME_URL env as start-live so the self-auth proxy mints an `hrobot-web`
 // token. LOCAL DEMO ONLY.
 import { spawnSync, spawn } from 'node:child_process'
+import { rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -21,6 +22,7 @@ const env = {
   NODE_ENV: 'production',
 }
 
+rmSync(join(dir, '.next'), { recursive: true, force: true })
 console.log('▶ next build (production, ~30–60s)…')
 const build = spawnSync(process.execPath, [nextBin, 'build'], { cwd: dir, stdio: 'inherit', env })
 if (build.status !== 0) {
