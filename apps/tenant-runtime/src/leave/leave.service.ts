@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import type { TenantClient, TenantPrisma } from '@hrobot/db'
 import { LeaveAction, LeaveStatus, nextLeaveState } from '@hrobot/shared'
 import { AuditService } from '../tenant-runtime/audit/audit.service.js'
@@ -92,6 +92,11 @@ export class LeaveService {
    * The request is created EXPLICITLY in PENDING — a decider must approve/reject it. Audit `leave.created`.
    */
   async createRequest(client: TenantClient, actor: LeaveActor, dto: CreateLeaveDto): Promise<LeaveRow> {
+    // FIX 4: reject an inverted range up front — equal dates (a single-day leave) are allowed.
+    if (dto.endDate < dto.startDate) {
+      throw new BadRequestException('endDate cannot be before startDate')
+    }
+
     let employeeId: string
     if (dto.employeeId != null && isGlobal(actor.roles)) {
       employeeId = dto.employeeId

@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
 import { LeaveStatus, Role } from '@hrobot/shared'
 import { LeaveService, type LeaveActor } from './leave.service.js'
@@ -87,6 +87,24 @@ describe('LeaveService', () => {
       await expect(
         service.createRequest(asClient(client), PRACOWNIK, { startDate: '2026-08-01', endDate: '2026-08-05', type: 'X' }),
       ).rejects.toThrow(NotFoundException)
+    })
+
+    it('FIX 4: rejects an inverted date range (endDate before startDate) with a BadRequestException, before any write', async () => {
+      client.employee.findFirst.mockResolvedValue({ id: 'emp-self' })
+      await expect(
+        service.createRequest(asClient(client), PRACOWNIK, { startDate: '2026-08-05', endDate: '2026-08-01', type: 'URLOP_WYPOCZYNKOWY' }),
+      ).rejects.toThrow(BadRequestException)
+      expect(client.leaveRequest.create).not.toHaveBeenCalled()
+    })
+
+    it('FIX 4: allows a single-day leave (startDate === endDate)', async () => {
+      client.employee.findFirst.mockResolvedValue({ id: 'emp-self' })
+      client.leaveRequest.create.mockResolvedValue({ id: 'lv-1', employeeId: 'emp-self', status: LeaveStatus.PENDING })
+
+      await expect(
+        service.createRequest(asClient(client), PRACOWNIK, { startDate: '2026-08-01', endDate: '2026-08-01', type: 'URLOP_NA_ZADANIE' }),
+      ).resolves.toBeDefined()
+      expect(client.leaveRequest.create).toHaveBeenCalled()
     })
   })
 
