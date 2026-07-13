@@ -1,7 +1,6 @@
 import { ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import type { TenantClient, TenantPrisma } from '@hrobot/db'
 import {
-  Role,
   ProblemInputSchema,
   SolveStatus,
   type DemandInput,
@@ -13,6 +12,7 @@ import {
   type Unmet,
 } from '@hrobot/shared'
 import { AuditService } from '../tenant-runtime/audit/audit.service.js'
+import { isGlobal, managedUnitIds } from '../tenant-runtime/rbac/unit-scope.js'
 import type { CreateShiftDto, UpdateShiftDto } from './dto/shift.dto.js'
 import type { CreateShiftDemandDto, UpdateShiftDemandDto } from './dto/shift-demand.dto.js'
 import type { CreateShiftTemplateDto, UpdateShiftTemplateDto } from './dto/shift-template.dto.js'
@@ -42,10 +42,6 @@ export interface GrafikActor {
   roles: string[] // hrobot_roles claim
   ipAddress: string
 }
-
-/** HR and the tenant admin act across every unit; MANAGER is scoped to the unit(s) they manage. */
-const GLOBAL_ROLES: string[] = [Role.HR, Role.ADMIN_KLIENTA]
-const isGlobal = (roles: string[]): boolean => roles.some((r) => GLOBAL_ROLES.includes(r))
 
 /**
  * Soft-preference objective weight sent as `weights.p` to the solver (#28).
@@ -93,19 +89,10 @@ export class GrafikService {
 
   // --- unit scoping ------------------------------------------------------------------------------
 
-  /** Unit IDs the user holds a MANAGER role for (via tenant `UserRole`). */
-  private async managedUnitIds(client: TenantClient, userId: string): Promise<string[]> {
-    const rows = await client.userRole.findMany({
-      where: { user: { keycloakSub: userId }, role: Role.MANAGER, unitId: { not: null } },
-      select: { unitId: true },
-    })
-    return rows.map((r) => r.unitId).filter((u): u is string => u !== null)
-  }
-
   /** Throws unless the actor is global or manages `unitId`. */
   private async assertManagesUnit(client: TenantClient, actor: GrafikActor, unitId: string): Promise<void> {
     if (isGlobal(actor.roles)) return
-    const units = await this.managedUnitIds(client, actor.userId)
+    const units = await managedUnitIds(client, actor.userId)
     if (!units.includes(unitId)) {
       throw new ForbiddenException('MANAGER may only act on their own unit')
     }
@@ -155,7 +142,7 @@ export class GrafikService {
     if (isGlobal(actor.roles)) {
       return client.shift.findMany({ orderBy: [{ date: 'desc' }, { start: 'asc' }] })
     }
-    const units = await this.managedUnitIds(client, actor.userId)
+    const units = await managedUnitIds(client, actor.userId)
     if (units.length > 0) {
       return client.shift.findMany({
         where: { employee: { unitId: { in: units } } },
@@ -234,7 +221,7 @@ export class GrafikService {
     if (isGlobal(actor.roles)) {
       return client.shiftDemand.findMany({ orderBy: [{ date: 'desc' }, { start: 'asc' }] })
     }
-    const units = await this.managedUnitIds(client, actor.userId)
+    const units = await managedUnitIds(client, actor.userId)
     if (units.length > 0) {
       // A MANAGER sees demands at the locations their units staff.
       const unitShifts = await client.shift.findMany({
@@ -384,7 +371,7 @@ export class GrafikService {
    */
   private async resolveUnitScope(client: TenantClient, actor: GrafikActor, unitId?: string): Promise<string[] | null> {
     if (isGlobal(actor.roles)) return unitId ? [unitId] : null
-    const managed = await this.managedUnitIds(client, actor.userId)
+    const managed = await managedUnitIds(client, actor.userId)
     if (unitId) {
       if (!managed.includes(unitId)) throw new ForbiddenException('MANAGER may only solve their own unit')
       return [unitId]
