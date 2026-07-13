@@ -1,4 +1,4 @@
-import { IsArray, IsDateString, IsEnum, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, Min } from 'class-validator'
+import { IsArray, IsDateString, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, Min } from 'class-validator'
 import { EmploymentType } from '@hrobot/shared'
 
 /**
@@ -38,9 +38,9 @@ export class UpdateEmployeeDto {
  * `etat`/`qualifications` are optional — the schema defaults them (1.0 / []) when omitted.
  */
 export class CreateEmployeeDto {
-  @IsString() firstName!: string
-  @IsString() lastName!: string
-  @IsString() position!: string
+  @IsString() @IsNotEmpty() firstName!: string
+  @IsString() @IsNotEmpty() lastName!: string
+  @IsString() @IsNotEmpty() position!: string
 
   /** Real Prisma enum (schema.prisma `EmploymentType`) — UMOWA_O_PRACE | UMOWA_ZLECENIE | UMOWA_O_DZIELO | B2B. */
   @IsEnum(EmploymentType) employmentType!: EmploymentType

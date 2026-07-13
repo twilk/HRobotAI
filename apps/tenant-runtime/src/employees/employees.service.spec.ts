@@ -383,6 +383,7 @@ describe('EmployeesService', () => {
       expect(call.data.pesel).not.toBe('44051401359')
       expect(call.data.peselHash).toBeDefined()
       expect(call.data.userId).toBeNull()
+      expect(call.data.hiredAt).toBeInstanceOf(Date)
 
       const ret = result as Record<string, unknown>
       expect(ret.id).toBe('new-id')

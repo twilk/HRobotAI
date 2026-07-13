@@ -89,6 +89,11 @@ describe('CreateEmployeeDto validation', () => {
     expect(errors.some((e) => e.property === 'hiredAt')).toBe(true)
   })
 
+  it('rejects an empty-string firstName', async () => {
+    const errors = await errorsFor({ ...validBody, firstName: '' })
+    expect(errors.some((e) => e.property === 'firstName')).toBe(true)
+  })
+
   it('rejects a malformed PESEL', async () => {
     const errors = await errorsFor({ ...validBody, pesel: '123' })
     expect(errors.some((e) => e.property === 'pesel')).toBe(true)

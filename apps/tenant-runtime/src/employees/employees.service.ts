@@ -1,6 +1,6 @@
 import { ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
-import { decryptEmployeePesel, encryptEmployeePesel } from '@hrobot/db'
+import { decryptEmployeePesel, encryptEmployeePesel, TenantPrisma } from '@hrobot/db'
 import { EncryptionService } from '@hrobot/shared'
 import { AuditService } from '../tenant-runtime/audit/audit.service.js'
 import { isGlobal, managedUnitIds } from '../tenant-runtime/rbac/unit-scope.js'
@@ -168,11 +168,11 @@ export class EmployeesService {
 
     const { pesel, hiredAt, ...rest } = dto
     const enc = encryptEmployeePesel(this.encryption, this.peselBlindIndexKey, tenantId, pesel)
-    const data: Record<string, unknown> = { ...rest, ...enc, hiredAt: new Date(hiredAt), userId: null }
+    const data: TenantPrisma.EmployeeUncheckedCreateInput = { ...rest, ...enc, hiredAt: new Date(hiredAt), userId: null }
 
     let created: unknown
     try {
-      created = await client.employee.create({ data: data as never })
+      created = await client.employee.create({ data })
     } catch (err: unknown) {
       // P2002 = unique-constraint violation; the only unique column a create can hit is peselHash.
       if (typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2002') {
