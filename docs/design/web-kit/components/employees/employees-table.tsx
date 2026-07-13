@@ -1,3 +1,6 @@
+'use client'
+
+import { useRouter } from 'next/navigation'
 import { Table, Th, Td } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 
@@ -16,6 +19,8 @@ export interface Employee {
 }
 
 export function EmployeesTable({ employees }: { employees: Employee[] }) {
+  const router = useRouter()
+
   return (
     <Table>
       <thead>
@@ -30,7 +35,16 @@ export function EmployeesTable({ employees }: { employees: Employee[] }) {
       </thead>
       <tbody>
         {employees.map((e) => (
-          <tr key={e.id}>
+          <tr
+            key={e.id}
+            role="link"
+            tabIndex={0}
+            onClick={() => router.push(`/pracownicy/${e.id}`)}
+            onKeyDown={(ev) => {
+              if (ev.key === 'Enter') router.push(`/pracownicy/${e.id}`)
+            }}
+            className="cursor-pointer"
+          >
             <Td>
               <div className="flex items-center gap-[11px]">
                 <span className="grid place-items-center w-[30px] h-[30px] rounded-lg bg-gradient-to-b from-navy-700 to-navy text-white text-[11px] font-semibold">

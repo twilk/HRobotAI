@@ -17,8 +17,9 @@ interface ApiEmployee {
   unitId: string
 }
 
-/** Polish contract label from the DB employmentType enum. */
-function contractLabel(t: string): string {
+/** Polish contract label from the DB employmentType enum. Exported so employee-profile.tsx reuses
+ *  the exact same mapping instead of duplicating it. */
+export function contractLabel(t: string): string {
   switch (t) {
     case 'UMOWA_O_PRACE':
       return 'UoP'
