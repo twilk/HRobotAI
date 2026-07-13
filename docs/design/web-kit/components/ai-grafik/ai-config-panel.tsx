@@ -14,14 +14,20 @@ import {
 } from '@/lib/ai-grafik'
 
 /**
- * Surface the backend's already-humanized message (`AiGrafikApiError#message`, populated by
- * `lib/ai-grafik.ts`'s `humanizeError`) rather than the employee-domain `mutationErrorMessage`
- * helper — that helper's 409 branch is PESEL-collision copy, which is nonsensical on a screen with
- * no employee/PESEL concept. Non-API failures (the fetch itself throwing, e.g. offline) fall back
- * to a generic connectivity message.
+ * Surface a Polish error message for a config load/save failure. The page already gates the panel to
+ * global roles (HR/ADMIN_KLIENTA) so a MANAGER never renders it — but as defense in depth we still map
+ * an RBAC 403 to a Polish sentence rather than leaking the raw English backend message ("...outside
+ * your scope"). Other API failures surface the backend's already-humanized `message`
+ * (`AiGrafikApiError#message`, populated by `lib/ai-grafik.ts`'s `humanizeError`) rather than the
+ * employee-domain `mutationErrorMessage` helper — that helper's 409 branch is PESEL-collision copy,
+ * nonsensical on a screen with no employee/PESEL concept. Non-API failures (the fetch itself throwing,
+ * e.g. offline) fall back to a generic connectivity message.
  */
 function configErrorMessage(err: unknown): string {
-  if (err instanceof AiGrafikApiError) return err.message || 'Coś poszło nie tak. Spróbuj ponownie.'
+  if (err instanceof AiGrafikApiError) {
+    if (err.status === 403) return 'Konfiguracja jest poza Twoim zakresem.'
+    return err.message || 'Coś poszło nie tak. Spróbuj ponownie.'
+  }
   return 'Brak połączenia z serwerem. Spróbuj ponownie.'
 }
 

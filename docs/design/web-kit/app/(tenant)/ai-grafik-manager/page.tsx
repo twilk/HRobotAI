@@ -8,25 +8,36 @@ import { getSession } from '@/lib/session'
 
 // Server shell (identity/AppShell); the config editor + manager proposal inbox are Client Components
 // that read/write the REAL tenant-runtime ai-grafik API through the /api/ai-grafik/* proxy.
-// MANAGER-ONLY again (product decision, restoring the SP0 locked scope): only scheduling roles
-// (MANAGER/HR/ADMIN_KLIENTA) may manage the tenant-wide config, see the manager approval inbox, or
-// trigger the vacated-shift scan. The nav item (lib/nav.ts) is restricted to those roles too, so a
-// plain PRACOWNIK won't see this page in the menu — but direct navigation must still be denied
-// gracefully rather than leaking the config/inbox. The employee's own AI replacement-consent section
-// moved to /zamiany (components/ai-grafik/ai-consent-section.tsx). Identity comes from the real
-// Keycloak session.
+//
+// Two distinct scopes on this page:
+//   • canManage (MANAGER/HR/ADMIN_KLIENTA) — may see the approval inbox + trigger the vacated-shift
+//     scan. The nav item (lib/nav.ts) is restricted to these roles, so a plain PRACOWNIK never sees
+//     the page in the menu — but direct navigation must still be denied gracefully.
+//   • canEditConfig (HR/ADMIN_KLIENTA only = isGlobal) — may read/write the tenant-DEFAULT (null-unit)
+//     AI scheduling config. This mirrors the backend RBAC: GET/PATCH /ai-grafik/config with no unitId
+//     resolves the tenant-default config, which only global roles may touch — a MANAGER hitting it
+//     WITHOUT a unitId gets a (correct) 403. So we render AiConfigPanel ONLY for canEditConfig,
+//     otherwise a MANAGER would trip that 403 and see a spurious error banner.
+//   FUTURE: per-unit manager config (AiConfigPanel scoped to a MANAGER's own unit via unitId) is a
+//   planned enhancement; until then MANAGERs get inbox + scan but no config editor.
+//
+// The employee's own AI replacement-consent section moved to /zamiany
+// (components/ai-grafik/ai-consent-section.tsx). Identity comes from the real Keycloak session.
 export default async function AiGrafikManagerPage() {
   const session = await getSession()
   const tenant = { name: '4Mobility sp. z o.o.', slug: '4mobility.hrobot.ai' }
   const user = session?.user ?? { name: 'Użytkownik', role: '—', initials: '?' }
   const roles: Role[] = session?.roles ?? []
   const canManage = roles.some((r) => r === 'MANAGER' || r === 'HR' || r === 'ADMIN_KLIENTA')
+  // isGlobal: only HR/ADMIN_KLIENTA may read/write the tenant-default config (backend returns 403 to a
+  // MANAGER hitting /ai-grafik/config without a unitId), so gate the config panel on this SEPARATELY.
+  const canEditConfig = roles.some((r) => r === 'HR' || r === 'ADMIN_KLIENTA')
 
   return (
     <AppShell activeHref="/ai-grafik-manager" title="AI Grafik Manager" tenant={tenant} user={user} roles={roles}>
       {canManage ? (
         <div className="space-y-10">
-          <AiConfigPanel />
+          {canEditConfig ? <AiConfigPanel /> : null}
           <ProposalInbox canManage />
         </div>
       ) : (
