@@ -350,6 +350,18 @@ describe('CostService', () => {
       expect(result.overBudget).toBe(false)
     })
 
+    it('(Codex Open-Q missing rate) never asserts overBudget=false when there is no cap AND a rate is missing', async () => {
+      client.shift.findMany.mockResolvedValue([shiftRow({ position: 'Kucharz', employmentType: EmploymentType.B2B })])
+      client.positionCostRate.findMany.mockResolvedValue([]) // missing
+      aiConfig.getEffectiveBudgetCap.mockResolvedValue({ cap: null, source: 'none' })
+
+      const result = await service.budgetStatus(asClient(client), HR, 'unit-A', WEEK_START)
+
+      expect(result.cap).toBeNull()
+      expect(result.missingRates).toHaveLength(1)
+      expect(result.overBudget).toBeNull()
+    })
+
     it('(Codex Open-Q currency) never asserts an overBudget boolean when there is a currency conflict', async () => {
       client.shift.findMany.mockResolvedValue([
         shiftRow({ employeeId: 'emp-1', position: 'Kasjer', employmentType: EmploymentType.UMOWA_O_PRACE }),

@@ -240,7 +240,11 @@ export class CostService {
     if (week.currencyConflict || week.cost === null) {
       overBudget = null
     } else if (cap === null) {
-      overBudget = false
+      // No cap configured anywhere in scope — there is nothing to compare against, so "over budget"
+      // is trivially false. BUT a missing rate means the known partial sum could still understate the
+      // real cost, so "OK"/false must not be asserted either (Codex Open-Q missing rate: "budget OK
+      // must NOT be asserted while any rate is missing" — this applies with or without a cap).
+      overBudget = week.missingRates.length > 0 ? null : false
     } else {
       const known = new Decimal(week.cost)
       const capDecimal = new Decimal(cap)
