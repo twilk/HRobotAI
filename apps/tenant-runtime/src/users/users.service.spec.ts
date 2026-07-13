@@ -34,6 +34,7 @@ describe('UsersService', () => {
     removeRealmRole: jest.Mock
     setEnabled: jest.Mock
     sendPasswordSetupEmail: jest.Mock
+    getUserRealmRoles: jest.Mock
   }
   let client: MockClient
 
@@ -45,6 +46,7 @@ describe('UsersService', () => {
       removeRealmRole: jest.fn().mockResolvedValue(undefined),
       setEnabled: jest.fn().mockResolvedValue(undefined),
       sendPasswordSetupEmail: jest.fn().mockResolvedValue(undefined),
+      getUserRealmRoles: jest.fn().mockResolvedValue([]),
     }
 
     const module: TestingModule = await Test.createTestingModule({
@@ -353,6 +355,123 @@ describe('UsersService', () => {
           select: expect.objectContaining({ id: true, email: true, active: true, createdAt: true }),
         }),
       )
+    })
+  })
+
+  describe('reconcile', () => {
+    beforeEach(() => {
+      client.user.findFirst.mockResolvedValue({ id: 'admin-db-id', active: true, roles: [{ role: Role.ADMIN_KLIENTA, unitId: null }] })
+    })
+
+    it('reports no findings when KC and DB agree for every user', async () => {
+      client.user.findMany.mockResolvedValue([
+        { id: 'user-1', keycloakSub: 'kc-1', roles: [{ role: Role.MANAGER }] },
+      ])
+      keycloak.getUserRealmRoles.mockResolvedValue(['MANAGER'])
+
+      const result = await service.reconcile(asClient(client), ADMIN, REALM)
+
+      expect(result).toEqual({ findings: [], fixedCount: 0 })
+      expect(client.userRole.deleteMany).not.toHaveBeenCalled()
+    })
+
+    it("reports a 'db_only' finding for a UserRole row with no matching KC realm-role mapping (dangling GRANT/REVOKE step)", async () => {
+      client.user.findMany.mockResolvedValue([
+        { id: 'user-1', keycloakSub: 'kc-1', roles: [{ role: Role.MANAGER }] },
+      ])
+      keycloak.getUserRealmRoles.mockResolvedValue([])
+
+      const result = await service.reconcile(asClient(client), ADMIN, REALM)
+
+      expect(result.findings).toEqual([{ userId: 'user-1', role: Role.MANAGER, kind: 'db_only' }])
+      expect(result.fixedCount).toBe(0)
+      expect(client.userRole.deleteMany).not.toHaveBeenCalled()
+    })
+
+    it("reports a 'kc_only' finding for a KC realm-role mapping with no matching UserRole row, and NEVER auto-fixes it", async () => {
+      client.user.findMany.mockResolvedValue([
+        { id: 'user-1', keycloakSub: 'kc-1', roles: [] },
+      ])
+      keycloak.getUserRealmRoles.mockResolvedValue(['HR'])
+
+      const result = await service.reconcile(asClient(client), ADMIN, REALM, { fix: true })
+
+      expect(result.findings).toEqual([{ userId: 'user-1', role: Role.HR, kind: 'kc_only' }])
+      expect(result.fixedCount).toBe(0)
+      expect(keycloak.assignRealmRole).not.toHaveBeenCalled()
+      expect(keycloak.removeRealmRole).not.toHaveBeenCalled()
+    })
+
+    it("fix:true deletes the dangling UserRole row(s) for a 'db_only' finding — never calls Keycloak to re-grant", async () => {
+      client.user.findMany.mockResolvedValue([
+        { id: 'user-1', keycloakSub: 'kc-1', roles: [{ role: Role.MANAGER }] },
+      ])
+      keycloak.getUserRealmRoles.mockResolvedValue([])
+      client.userRole.deleteMany.mockResolvedValue({ count: 1 })
+
+      const result = await service.reconcile(asClient(client), ADMIN, REALM, { fix: true })
+
+      expect(result.fixedCount).toBe(1)
+      expect(client.userRole.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1', role: Role.MANAGER } })
+      expect(keycloak.assignRealmRole).not.toHaveBeenCalled()
+    })
+
+    it('ignores unknown KC role names (defense-in-depth against a foreign/legacy realm role)', async () => {
+      client.user.findMany.mockResolvedValue([
+        { id: 'user-1', keycloakSub: 'kc-1', roles: [] },
+      ])
+      keycloak.getUserRealmRoles.mockResolvedValue(['SOME_UNRELATED_CLIENT_ROLE'])
+
+      const result = await service.reconcile(asClient(client), ADMIN, REALM)
+
+      expect(result.findings).toEqual([])
+    })
+
+    it('is best-effort per user: a Keycloak read failure for one user is skipped, not fatal', async () => {
+      client.user.findMany.mockResolvedValue([
+        { id: 'user-1', keycloakSub: 'kc-1', roles: [{ role: Role.MANAGER }] },
+        { id: 'user-2', keycloakSub: 'kc-2', roles: [{ role: Role.HR }] },
+      ])
+      keycloak.getUserRealmRoles.mockImplementation(async (_realm: string, kcId: string) => {
+        if (kcId === 'kc-1') throw new Error('keycloak unreachable')
+        return []
+      })
+
+      const result = await service.reconcile(asClient(client), ADMIN, REALM)
+
+      expect(result.findings).toEqual([{ userId: 'user-2', role: Role.HR, kind: 'db_only' }])
+    })
+
+    it('scopes to a single user via opts.userId', async () => {
+      client.user.findMany.mockResolvedValue([{ id: 'user-1', keycloakSub: 'kc-1', roles: [] }])
+      keycloak.getUserRealmRoles.mockResolvedValue([])
+
+      await service.reconcile(asClient(client), ADMIN, REALM, { userId: 'user-1' })
+
+      expect(client.user.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'user-1' } }))
+    })
+
+    it('audits user.reconciled ids-only with counts, never PII', async () => {
+      client.user.findMany.mockResolvedValue([{ id: 'user-1', keycloakSub: 'kc-1', roles: [{ role: Role.MANAGER }] }])
+      keycloak.getUserRealmRoles.mockResolvedValue([])
+
+      await service.reconcile(asClient(client), ADMIN, REALM, { fix: true })
+
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'user.reconciled', payload: { fix: true, findingsCount: 1, fixedCount: 1 } }),
+      )
+    })
+
+    it('403s BEFORE any DB/KC read for a non-admin actor', async () => {
+      await expect(service.reconcile(asClient(client), HR, REALM)).rejects.toThrow(ForbiddenException)
+      expect(client.user.findMany).not.toHaveBeenCalled()
+      expect(keycloak.getUserRealmRoles).not.toHaveBeenCalled()
+    })
+
+    it("403s a stale JWT whose real DB role was demoted from ADMIN_KLIENTA", async () => {
+      client.user.findFirst.mockResolvedValue({ id: 'admin-db-id', active: true, roles: [{ role: Role.HR, unitId: null }] })
+      await expect(service.reconcile(asClient(client), ADMIN, REALM)).rejects.toThrow(ForbiddenException)
+      expect(client.user.findMany).not.toHaveBeenCalled()
     })
   })
 })

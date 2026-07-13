@@ -194,6 +194,28 @@ describe('KeycloakAdminService', () => {
     })
   })
 
+  describe('getUserRealmRoles', () => {
+    it('returns the realm-role names currently mapped to the KC user', async () => {
+      mockFetch.mockImplementation((url: string, init: FetchInit = {}) => {
+        if ((init.method ?? 'GET') === 'GET' && url.includes('/role-mappings/realm')) {
+          return res({ body: [{ id: 'role-uuid-manager', name: 'MANAGER' }, { id: 'role-uuid-hr', name: 'HR' }] })
+        }
+        return happyPathFetch(url, init)
+      })
+
+      const roles = await service.getUserRealmRoles(REALM, 'kc-user-1')
+      expect(roles).toEqual(['MANAGER', 'HR'])
+    })
+
+    it('throws on a non-409 error', async () => {
+      mockFetch.mockImplementation((url: string, init: FetchInit = {}) => {
+        if ((init.method ?? 'GET') === 'GET' && url.includes('/role-mappings/realm')) return res({ status: 500 })
+        return happyPathFetch(url, init)
+      })
+      await expect(service.getUserRealmRoles(REALM, 'kc-user-1')).rejects.toThrow()
+    })
+  })
+
   describe('URL encoding of realm/role path segments', () => {
     it('encodes a realm containing path-traversal characters instead of interpolating it raw', async () => {
       const hostileRealm = '../master'

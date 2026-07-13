@@ -347,4 +347,100 @@ export class UsersService {
   async list(client: TenantClient): Promise<UserRow[]> {
     return client.user.findMany({ orderBy: { createdAt: 'desc' }, select: SAFE_USER_SELECT })
   }
+
+  /**
+   * Diffs Keycloak's realm-role mappings (what `RbacGuard` actually trusts, via the `hrobot_roles`
+   * JWT claim) against the tenant `UserRole` rows, for every user (or just `opts.userId` if given).
+   * ADMIN_KLIENTA-only, re-verified against the actor's REAL DB state — same posture as every other
+   * privileged mutation in this class.
+   *
+   * A dangling row can only ever take ONE shape from {@link grant}/{@link revokeInternal}'s ordering:
+   * a `UserRole` row with no matching KC realm-role mapping ('db_only') — see their doc comments for
+   * why both an interrupted GRANT (KC step failed) and an interrupted REVOKE (DB-delete step failed
+   * after the KC removal already succeeded) converge on this exact same observable shape. Because the
+   * two causes are genuinely indistinguishable from the dangling state alone, `opts.fix` resolves
+   * 'db_only' findings by DELETING the dangling `UserRole` row(s) — never by re-issuing the KC grant.
+   * This is the conservative direction: it can never auto-escalate privilege (KC, the JWT source of
+   * truth, is left untouched), and if the row really was an interrupted GRANT the admin can simply
+   * re-run it.
+   *
+   * A 'kc_only' finding (KC has the role mapping, no matching `UserRole` row) should never arise from
+   * this class's own write paths — it signals an out-of-band Keycloak change. It is always REPORTED,
+   * never auto-fixed: silently removing it would revoke a real, currently-effective privilege without
+   * human review.
+   *
+   * Best-effort per user: a Keycloak read failure for one user is logged and skipped rather than
+   * aborting the whole reconciliation pass.
+   */
+  async reconcile(
+    client: TenantClient,
+    actor: UsersActor,
+    realm: string,
+    opts: { fix?: boolean; userId?: string } = {},
+  ): Promise<ReconcileResult> {
+    if (!actor.roles.includes(Role.ADMIN_KLIENTA)) {
+      throw new ForbiddenException('Only ADMIN_KLIENTA may run reconciliation')
+    }
+    await this.requireRealAdmin(client, actor)
+
+    const knownRoles = new Set<string>(Object.values(Role))
+    const users = await client.user.findMany({
+      where: opts.userId ? { id: opts.userId } : undefined,
+      select: { id: true, keycloakSub: true, roles: { select: { role: true } } },
+    })
+
+    const findings: ReconcileFinding[] = []
+    let fixedCount = 0
+
+    for (const user of users) {
+      let kcRoleNames: string[]
+      try {
+        kcRoleNames = await this.keycloak.getUserRealmRoles(realm, user.keycloakSub)
+      } catch (err) {
+        this.logger.error(
+          { err, userId: user.id, realm },
+          'reconcile: failed to read Keycloak role mappings for this user — skipping (best-effort)',
+        )
+        continue
+      }
+
+      const kcRoles = new Set(kcRoleNames.filter((r) => knownRoles.has(r)) as Role[])
+      const dbRoles = new Set(user.roles.map((r) => r.role))
+
+      for (const role of dbRoles) {
+        if (kcRoles.has(role)) continue
+        findings.push({ userId: user.id, role, kind: 'db_only' })
+        if (opts.fix) {
+          await client.userRole.deleteMany({ where: { userId: user.id, role } })
+          fixedCount++
+        }
+      }
+      for (const role of kcRoles) {
+        if (!dbRoles.has(role)) findings.push({ userId: user.id, role, kind: 'kc_only' })
+      }
+    }
+
+    await this.writeAudit(client, actor, 'user.reconciled', opts.userId ?? 'ALL', {
+      fix: Boolean(opts.fix),
+      findingsCount: findings.length,
+      fixedCount,
+    })
+
+    return { findings, fixedCount }
+  }
+}
+
+/**
+ * One diff entry from {@link UsersService.reconcile} — see that method's doc for the meaning of each
+ * `kind` and why 'db_only' is the only one ever auto-fixable.
+ */
+export interface ReconcileFinding {
+  userId: string
+  role: Role
+  kind: 'db_only' | 'kc_only'
+}
+
+export interface ReconcileResult {
+  findings: ReconcileFinding[]
+  fixedCount: number
 }

@@ -196,4 +196,18 @@ export class KeycloakAdminService {
       body: JSON.stringify({ enabled }),
     })
   }
+
+  /**
+   * Reads back the Keycloak-side truth for `UsersService.reconcile`: the realm-role NAMES
+   * currently mapped to `kcId` (what `RbacGuard` actually trusts via the `hrobot_roles` JWT
+   * claim). Used only to DIFF against the tenant `UserRole` rows — never to drive an
+   * authorization decision on its own.
+   */
+  async getUserRealmRoles(realm: string, kcId: string): Promise<string[]> {
+    const token = await this.getAdminToken()
+    const base = this.realmBase(realm)
+    const resp = await this.kc(token, `${base}/users/${encodeURIComponent(kcId)}/role-mappings/realm`, { method: 'GET' })
+    const roles = (await resp.json()) as Array<{ name: string }>
+    return roles.map((r) => r.name)
+  }
 }
