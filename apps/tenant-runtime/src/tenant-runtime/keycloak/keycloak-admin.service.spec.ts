@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing'
+import { Role } from '@hrobot/shared'
 import { KeycloakAdminService } from './keycloak-admin.service.js'
 
 const mockFetch = jest.fn()
@@ -190,6 +191,36 @@ describe('KeycloakAdminService', () => {
         return happyPathFetch(url, init)
       })
       await expect(service.setEnabled(REALM, 'kc-user-1', false)).rejects.toThrow()
+    })
+  })
+
+  describe('URL encoding of realm/role path segments', () => {
+    it('encodes a realm containing path-traversal characters instead of interpolating it raw', async () => {
+      const hostileRealm = '../master'
+      await service.setEnabled(hostileRealm, 'kc-user-1', false)
+
+      const putCalls = callsTo((url, init) => init.method === 'PUT' && url.includes('kc-user-1'))
+      expect(putCalls).toHaveLength(1)
+      expect(putCalls[0]![0]).toContain(encodeURIComponent(hostileRealm))
+      expect(putCalls[0]![0]).not.toContain('/admin/realms/../master')
+    })
+
+    it('encodes a role containing path-traversal characters instead of interpolating it raw', async () => {
+      const hostileRole = '../../clients' as Role
+      await service.assignRealmRole(REALM, 'kc-user-1', hostileRole)
+
+      const roleCalls = callsTo((url, init) => (init.method ?? 'GET') === 'GET' && url.includes('/roles/'))
+      expect(roleCalls).toHaveLength(1)
+      expect(roleCalls[0]![0]).toContain(encodeURIComponent(hostileRole))
+      expect(roleCalls[0]![0]).not.toContain(`/roles/${hostileRole}`)
+    })
+
+    it('still resolves the real MANAGER role by its typed enum value', async () => {
+      await service.assignRealmRole(REALM, 'kc-user-1', Role.MANAGER)
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining(`/realms/${REALM}/roles/MANAGER`),
+        expect.objectContaining({ method: 'GET' }),
+      )
     })
   })
 })

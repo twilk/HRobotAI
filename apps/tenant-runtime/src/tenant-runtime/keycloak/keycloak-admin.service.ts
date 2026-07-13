@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common'
 import { parseEnv } from '@hrobot/config'
+import { Role } from '@hrobot/shared'
 
 type FetchFn = typeof fetch
 
@@ -14,6 +15,14 @@ type FetchFn = typeof fetch
  * Unlike the control-plane step (which provisions exactly one realm per job), tenant-runtime is
  * a single process serving every tenant's realm, so every public method here takes `realm`
  * (`hrobot-<slug>`) as an explicit first argument rather than assuming a fixed realm.
+ *
+ * SECURITY NOTE: this service performs no authorization of its own — it will happily
+ * create/enable/disable users and grant/revoke realm roles for whichever `realm`/`kcId`/`role`
+ * it is called with. It is safe today only because nothing outside tenant-runtime's internal
+ * providers can reach it. The forthcoming 'uzytkownicy' controller (RBAC role management) MUST
+ * enforce @Roles(Role.ADMIN_KLIENTA) + a DB active-role check BEFORE calling into this service,
+ * and MUST return 403 before any Keycloak call — do not assume this class will reject a bad
+ * caller for you.
  */
 @Injectable()
 export class KeycloakAdminService {
@@ -45,8 +54,13 @@ export class KeycloakAdminService {
     return data.access_token
   }
 
+  /**
+   * `realm` (`hrobot-<slug>`) is always encoded before it hits the URL path — nothing upstream
+   * of this service validates it, so an untrusted realm value containing '/', '..', or query
+   * characters must not be able to redirect the admin-API call to a different KC endpoint.
+   */
   private realmBase(realm: string): string {
-    return `${this.keycloakUrl}/admin/realms/${realm}`
+    return `${this.keycloakUrl}/admin/realms/${encodeURIComponent(realm)}`
   }
 
   /**
@@ -107,17 +121,23 @@ export class KeycloakAdminService {
     return kcId
   }
 
-  /** role-mappings/realm needs the full role representation, so the role is fetched first. */
+  /**
+   * role-mappings/realm needs the full role representation, so the role is fetched first.
+   *
+   * `role` is typed against the tenant `Role` enum (not `string`) so nothing outside this file
+   * can hand in an arbitrary path segment; it is additionally encodeURIComponent'd here (mirroring
+   * the email param) as defense-in-depth against a future caller widening the type.
+   */
   private async fetchRoleRepresentation(
     token: string,
     base: string,
-    role: string,
+    role: Role,
   ): Promise<{ id: string; name: string }> {
-    const roleResp = await this.kc(token, `${base}/roles/${role}`, { method: 'GET' })
+    const roleResp = await this.kc(token, `${base}/roles/${encodeURIComponent(role)}`, { method: 'GET' })
     return (await roleResp.json()) as { id: string; name: string }
   }
 
-  async assignRealmRole(realm: string, kcId: string, role: string): Promise<void> {
+  async assignRealmRole(realm: string, kcId: string, role: Role): Promise<void> {
     const token = await this.getAdminToken()
     const base = this.realmBase(realm)
     const roleRep = await this.fetchRoleRepresentation(token, base, role)
@@ -127,7 +147,7 @@ export class KeycloakAdminService {
     })
   }
 
-  async removeRealmRole(realm: string, kcId: string, role: string): Promise<void> {
+  async removeRealmRole(realm: string, kcId: string, role: Role): Promise<void> {
     const token = await this.getAdminToken()
     const base = this.realmBase(realm)
     const roleRep = await this.fetchRoleRepresentation(token, base, role)
