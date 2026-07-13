@@ -241,6 +241,16 @@ describe('LeaveService', () => {
       expect(client.leaveRequest.updateMany).not.toHaveBeenCalled()
     })
 
+    it('FIX 5: throws instead of writing a null decidedByUserId when the decider has no resolvable User row', async () => {
+      client.leaveRequest.findUnique.mockResolvedValue({ ...pendingLeave })
+      client.employee.findFirst.mockResolvedValue({ id: 'emp-hr' }) // maker != leave employee
+      client.user.findFirst.mockResolvedValue(null) // no User row for this keycloakSub
+
+      await expect(service.decide(asClient(client), HR, 'lv-1', { approve: true })).rejects.toThrow()
+      expect(client.leaveRequest.updateMany).not.toHaveBeenCalled()
+      expect(audit.log).not.toHaveBeenCalled()
+    })
+
     it('AUTO-SCAN: an approve creates a replacement proposal for each colliding shift of the approved employee', async () => {
       client.leaveRequest.findUnique.mockResolvedValue({ ...pendingLeave })
       client.employee.findFirst.mockResolvedValue({ id: 'emp-hr' })

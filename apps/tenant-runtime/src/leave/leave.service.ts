@@ -222,7 +222,13 @@ export class LeaveService {
     }
 
     const target = nextLeaveState(LeaveStatus.PENDING, approve ? LeaveAction.Approve : LeaveAction.Reject)
+    // FIX 5: a decider (HR/ADMIN/MANAGER — already authorized above) with no resolvable User row
+    // must never silently write a null decidedByUserId, losing attribution on both the row and the
+    // audit log. Fail loudly instead — this should not happen for a real authorized actor.
     const decidedByUserId = await this.ownUserId(client, actor)
+    if (decidedByUserId == null) {
+      throw new ForbiddenException('Nie można ustalić tożsamości decydenta')
+    }
 
     const flipped = await client.leaveRequest.updateMany({
       where: { id, status: LeaveStatus.PENDING },
