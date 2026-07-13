@@ -6,7 +6,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common'
-import type { TenantClient, TenantPrisma } from '@hrobot/db'
+import type { TenantClient } from '@hrobot/db'
+import { TenantPrisma } from '@hrobot/db'
 import {
   AiProposalAction,
   AiProposalState,
@@ -14,6 +15,7 @@ import {
   AutonomyLevel,
   ConsentState,
   nextProposalState,
+  type EmploymentType,
 } from '@hrobot/shared'
 import { AuditService } from '../tenant-runtime/audit/audit.service.js'
 import { isGlobal, managedUnitIds } from '../tenant-runtime/rbac/unit-scope.js'
@@ -21,8 +23,12 @@ import {
   SWAP_FEASIBILITY_VALIDATOR,
   type SwapFeasibilityValidator,
 } from '../shift-swap/swap-feasibility-validator.js'
+import { CostService } from '../cost/cost.service.js'
+import { normalizePosition } from '../cost/position.util.js'
 import { AiConfigService, type AiConfigActor } from './ai-config.service.js'
 import { ReplacementService, type RankedCandidate } from './replacement.service.js'
+
+const { Decimal } = TenantPrisma
 
 /** A persisted AiProposal with its ranked candidate rows pre-loaded — the STABLE return shape. */
 export type AiProposalRow = TenantPrisma.AiProposalGetPayload<{ include: { candidates: true } }>
@@ -63,6 +69,7 @@ export class AiProposalService {
     private readonly audit: AuditService,
     @Inject(SWAP_FEASIBILITY_VALIDATOR)
     private readonly validator: SwapFeasibilityValidator,
+    private readonly cost: CostService,
   ) {}
 
   private writeAudit(
@@ -108,12 +115,20 @@ export class AiProposalService {
 
     const ranked = await this.replacement.rankCandidatesForShift(client, shift)
     const feasible = ranked.filter((c) => c.feasible)
+    const topFeasible = feasible[0] // rank 1 (best-first), or undefined if none feasible
     const config = (await this.aiConfig.getConfig(client, actor, unitId)) as ResolvedConfig
     const level = config.autonomyLevel
 
     // Client-side candidate ids so the top feasible one can be referenced as `activeCandidateId` in
     // the SAME insert (no follow-up update, no transaction needed for the create).
     const candidateSeeds = ranked.map((c) => ({ id: randomUUID(), candidate: c }))
+
+    // Δcost hook (Codex P1-6): computed for the top feasible candidate regardless of autonomy level
+    // or reachability — a DRAFT proposal still shows Δcost for the human to weigh. `null` (not 0)
+    // whenever either side's rate is missing.
+    const estimatedCost = topFeasible
+      ? await this.computeEstimatedCost(client, shift, topFeasible.employeeId, shift.employeeId)
+      : null
 
     // --- Derive the initial state (autonomy-gated), all through the pure transition machine. -------
     let state: AiProposalState
@@ -127,7 +142,7 @@ export class AiProposalService {
       auditAction = 'ai_proposal.escalated'
       escalationReason = 'NO_FEASIBLE_CANDIDATE'
     } else if (level === AutonomyLevel.AUTO_ASK_CONSENT || level === AutonomyLevel.AUTO_COMMIT_ON_APPROVAL) {
-      const top = feasible[0]! // rank 1 (best-first); feasible is non-empty here
+      const top = topFeasible! // feasible is non-empty here
       const topEmployee = await client.employee.findUnique({
         where: { id: top.employeeId },
         select: { userId: true },
@@ -159,6 +174,7 @@ export class AiProposalService {
         ...(reason != null ? { reason } : {}),
         ...(activeSeedId != null ? { activeCandidateId: activeSeedId } : {}),
         ...(expiresAt != null ? { expiresAt } : {}),
+        ...(estimatedCost != null ? { estimatedCost: estimatedCost.toFixed(2) } : {}),
         candidates: {
           create: candidateSeeds.map(({ id, candidate }) => this.candidateData(id, candidate, activeSeedId, now)),
         },
@@ -177,6 +193,47 @@ export class AiProposalService {
     })
 
     return proposal
+  }
+
+  /**
+   * Δcost for the top feasible candidate replacing the vacated employee on this shift (Codex P1-6):
+   * cost(candidate) − cost(vacated) for the shift's hours. The ranked-candidate shape carries NO
+   * cost inputs (only `employeeId`/`feasible`/`rank`/`score`/`reason`), so this ALWAYS re-reads
+   * `position`/`employmentType` for both employees in one query, then looks up both rates in a
+   * SECOND single query via {@link CostService.findRatesForPairs}. Returns `null` (never 0) the
+   * moment either side's rate is missing — a positive result means the candidate is MORE expensive
+   * than the vacated employee, negative means a saving.
+   */
+  private async computeEstimatedCost(
+    client: TenantClient,
+    shift: { start: string; end: string },
+    candidateEmployeeId: string,
+    vacatedEmployeeId: string,
+  ): Promise<InstanceType<typeof Decimal> | null> {
+    const employees = await client.employee.findMany({
+      where: { id: { in: [candidateEmployeeId, vacatedEmployeeId] } },
+      select: { id: true, position: true, employmentType: true },
+    })
+    const candidateEmp = employees.find((e) => e.id === candidateEmployeeId)
+    const vacatedEmp = employees.find((e) => e.id === vacatedEmployeeId)
+    if (!candidateEmp || !vacatedEmp) return null
+
+    const pairKey = (position: string, employmentType: EmploymentType) =>
+      `${normalizePosition(position)} ${employmentType}`
+
+    const rates = await this.cost.findRatesForPairs(client, [
+      { position: candidateEmp.position, employmentType: candidateEmp.employmentType as EmploymentType },
+      { position: vacatedEmp.position, employmentType: vacatedEmp.employmentType as EmploymentType },
+    ])
+    const rateByKey = new Map(rates.map((r) => [pairKey(r.position, r.employmentType as EmploymentType), r]))
+
+    const candidateRate = rateByKey.get(pairKey(candidateEmp.position, candidateEmp.employmentType as EmploymentType))
+    const vacatedRate = rateByKey.get(pairKey(vacatedEmp.position, vacatedEmp.employmentType as EmploymentType))
+    if (!candidateRate || !vacatedRate) return null
+
+    const candidateCost = this.cost.shiftCost(candidateRate, shift)
+    const vacatedCost = this.cost.shiftCost(vacatedRate, shift)
+    return candidateCost.sub(vacatedCost)
   }
 
   /**

@@ -142,6 +142,21 @@ export class CostService {
   }
 
   /**
+   * Rates for a small set of (position, employmentType) pairs in ONE query — every `position` is
+   * normalized first (Codex P1-5), matching the write-side normalization in {@link upsertRate}.
+   * Shared by {@link weekCost}'s own per-shift pair lookup and by `AiProposalService`'s Δcost hook
+   * (Codex P1-6), so both do a single `OR` query rather than re-deriving the normalize+match logic.
+   */
+  async findRatesForPairs(
+    client: TenantClient,
+    pairs: { position: string; employmentType: EmploymentType }[],
+  ): Promise<CostRate[]> {
+    if (pairs.length === 0) return []
+    const normalized = pairs.map((p) => ({ position: normalizePosition(p.position), employmentType: p.employmentType }))
+    return client.positionCostRate.findMany({ where: { OR: normalized } })
+  }
+
+  /**
    * The [Monday, next-Monday) week of shifts in scope, scoped by unit (Codex P1-3: a MANAGER MUST
    * pass a `unitId` they manage; a global HR/ADMIN may omit it for a tenant-wide sum). Sums only the
    * shifts whose (normalized position, employmentType) has a matching {@link CostRate} — every other

@@ -1,12 +1,16 @@
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
-import { AiProposalState, AutonomyLevel, ConsentState, Role } from '@hrobot/shared'
+import { TenantPrisma } from '@hrobot/db'
+import { AiProposalState, AutonomyLevel, ConsentState, EmploymentType, Role } from '@hrobot/shared'
 import { AiProposalService } from './ai-proposal.service.js'
 import type { AiConfigActor } from './ai-config.service.js'
 import type { ReplacementService, RankedCandidate } from './replacement.service.js'
 import type { AiConfigService } from './ai-config.service.js'
 import type { AuditService } from '../tenant-runtime/audit/audit.service.js'
 import type { SwapFeasibilityValidator } from '../shift-swap/swap-feasibility-validator.js'
+import type { CostService, CostRate } from '../cost/cost.service.js'
+
+const { Decimal } = TenantPrisma
 
 const HR: AiConfigActor = { userId: 'kc-hr', roles: [Role.HR], ipAddress: '10.0.0.1' }
 const MANAGER: AiConfigActor = { userId: 'kc-mgr', roles: [Role.MANAGER], ipAddress: '10.0.0.2' }
@@ -43,8 +47,14 @@ function makeClient() {
     auditLog: { create: jest.fn().mockResolvedValue({ id: 'log-1' }) },
   }
   return {
-    shift: { findUnique: jest.fn().mockResolvedValue({ id: SHIFT_ID, employeeId: VACATED, employee: { unitId: UNIT } }) },
-    employee: { findUnique: jest.fn(), findFirst: jest.fn() },
+    shift: {
+      findUnique: jest
+        .fn()
+        .mockResolvedValue({ id: SHIFT_ID, employeeId: VACATED, start: '08:00', end: '16:00', employee: { unitId: UNIT } }),
+    },
+    // Δcost hook (SP4 step 4): default to "no employees found" so estimatedCost resolves to null
+    // unless a test explicitly wires candidate/vacated position+employmentType rows.
+    employee: { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     userRole: { findMany: jest.fn().mockResolvedValue([]) },
     aiProposalCandidate: { update: jest.fn().mockResolvedValue({}) },
     aiProposal: {
@@ -95,8 +105,16 @@ function makeService(overrides: {
     ...(overrides.feasibleReason != null ? { reason: overrides.feasibleReason } : {}),
   })
   const validator = { validate } as unknown as SwapFeasibilityValidator
-  const service = new AiProposalService(replacement, aiConfig, audit, validator)
-  return { service, replacement, aiConfig, audit, validator, validate }
+  // Δcost hook (SP4 step 4): default "no rates" so estimatedCost resolves to null unless a test
+  // explicitly wires findRatesForPairs. shiftCost mirrors CostService's real (pure) implementation
+  // closely enough for these tests: hourlyRate × hours, hours derived from the 08:00–16:00 default
+  // shift mock (8h) unless a test overrides it.
+  const cost = {
+    findRatesForPairs: jest.fn().mockResolvedValue([]),
+    shiftCost: jest.fn((rate: { hourlyRate: number | string }) => new Decimal(rate.hourlyRate).mul(8)),
+  } as unknown as CostService
+  const service = new AiProposalService(replacement, aiConfig, audit, validator, cost)
+  return { service, replacement, aiConfig, audit, validator, validate, cost }
 }
 
 const feasible = (id: string, rank: number, score = 0): RankedCandidate => ({ employeeId: id, feasible: true, rank, score })
@@ -236,6 +254,96 @@ describe('AiProposalService.createReplacement', () => {
     expect(payload).toEqual(
       expect.objectContaining({ shiftId: SHIFT_ID, vacatedEmployeeId: VACATED }),
     )
+  })
+})
+
+// --- SP4 step 4: Δcost hook -----------------------------------------------------------------------
+
+const employeeRow = (id: string, position: string, employmentType: EmploymentType) => ({ id, position, employmentType })
+const costRateRow = (position: string, employmentType: EmploymentType, hourlyRate: string): CostRate =>
+  ({ position, employmentType, hourlyRate }) as unknown as CostRate
+
+describe('AiProposalService.createReplacement — Δcost hook (Codex P1-6)', () => {
+  it('persists estimatedCost = candidate cost − vacated cost when both rates are present (candidate costlier)', async () => {
+    const client = makeClient()
+    client.employee.findMany.mockResolvedValue([
+      employeeRow('c1', 'Kasjer', EmploymentType.UMOWA_O_PRACE),
+      employeeRow(VACATED, 'Kucharz', EmploymentType.B2B),
+    ])
+    const { service, cost } = makeService({ ranked: [feasible('c1', 1)], autonomyLevel: AutonomyLevel.SUGGEST_ONLY })
+    ;(cost.findRatesForPairs as jest.Mock).mockResolvedValue([
+      costRateRow('Kasjer', EmploymentType.UMOWA_O_PRACE, '20'),
+      costRateRow('Kucharz', EmploymentType.B2B, '15'),
+    ])
+
+    await service.createReplacement(as(client), HR, SHIFT_ID)
+
+    expect(client.employee.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ['c1', VACATED] } },
+      select: { id: true, position: true, employmentType: true },
+    })
+    const data = client.aiProposal.create.mock.calls[0][0].data
+    expect(data.estimatedCost).toBe('40.00') // (20×8h) − (15×8h) = 160 − 120
+  })
+
+  it('flips sign when the candidate is cheaper than the vacated employee (a saving)', async () => {
+    const client = makeClient()
+    client.employee.findMany.mockResolvedValue([
+      employeeRow('c1', 'Kasjer', EmploymentType.UMOWA_O_PRACE),
+      employeeRow(VACATED, 'Kucharz', EmploymentType.B2B),
+    ])
+    const { service, cost } = makeService({ ranked: [feasible('c1', 1)], autonomyLevel: AutonomyLevel.SUGGEST_ONLY })
+    ;(cost.findRatesForPairs as jest.Mock).mockResolvedValue([
+      costRateRow('Kasjer', EmploymentType.UMOWA_O_PRACE, '10'),
+      costRateRow('Kucharz', EmploymentType.B2B, '15'),
+    ])
+
+    await service.createReplacement(as(client), HR, SHIFT_ID)
+
+    const data = client.aiProposal.create.mock.calls[0][0].data
+    expect(data.estimatedCost).toBe('-40.00') // (10×8h) − (15×8h) = 80 − 120
+  })
+
+  it('leaves estimatedCost unset (never 0) when the CANDIDATE rate is missing', async () => {
+    const client = makeClient()
+    client.employee.findMany.mockResolvedValue([
+      employeeRow('c1', 'Nieznany', EmploymentType.UMOWA_O_PRACE),
+      employeeRow(VACATED, 'Kucharz', EmploymentType.B2B),
+    ])
+    const { service, cost } = makeService({ ranked: [feasible('c1', 1)], autonomyLevel: AutonomyLevel.SUGGEST_ONLY })
+    ;(cost.findRatesForPairs as jest.Mock).mockResolvedValue([costRateRow('Kucharz', EmploymentType.B2B, '15')])
+
+    await service.createReplacement(as(client), HR, SHIFT_ID)
+
+    const data = client.aiProposal.create.mock.calls[0][0].data
+    expect(data.estimatedCost).toBeUndefined()
+  })
+
+  it('leaves estimatedCost unset (never 0) when the VACATED employee rate is missing', async () => {
+    const client = makeClient()
+    client.employee.findMany.mockResolvedValue([
+      employeeRow('c1', 'Kasjer', EmploymentType.UMOWA_O_PRACE),
+      employeeRow(VACATED, 'Nieznany', EmploymentType.B2B),
+    ])
+    const { service, cost } = makeService({ ranked: [feasible('c1', 1)], autonomyLevel: AutonomyLevel.SUGGEST_ONLY })
+    ;(cost.findRatesForPairs as jest.Mock).mockResolvedValue([costRateRow('Kasjer', EmploymentType.UMOWA_O_PRACE, '20')])
+
+    await service.createReplacement(as(client), HR, SHIFT_ID)
+
+    const data = client.aiProposal.create.mock.calls[0][0].data
+    expect(data.estimatedCost).toBeUndefined()
+  })
+
+  it('never computes Δcost (no employee/rate lookups) when there is no feasible candidate', async () => {
+    const client = makeClient()
+    const { service, cost } = makeService({ ranked: [infeasible('a')] })
+
+    await service.createReplacement(as(client), HR, SHIFT_ID)
+
+    expect(client.employee.findMany).not.toHaveBeenCalled()
+    expect(cost.findRatesForPairs).not.toHaveBeenCalled()
+    const data = client.aiProposal.create.mock.calls[0][0].data
+    expect(data.estimatedCost).toBeUndefined()
   })
 })
 
