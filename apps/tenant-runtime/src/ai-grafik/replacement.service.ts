@@ -1,9 +1,26 @@
 import { Inject, Injectable } from '@nestjs/common'
-import type { TenantClient } from '@hrobot/db'
+import type { TenantClient, TenantPrisma } from '@hrobot/db'
 import {
   SWAP_FEASIBILITY_VALIDATOR,
   type SwapFeasibilityValidator,
 } from '../shift-swap/swap-feasibility-validator.js'
+import { isGlobal, managedUnitIds } from '../tenant-runtime/rbac/unit-scope.js'
+import type { AiConfigActor } from './ai-config.service.js'
+
+/**
+ * A vacated shift with its assigned employee and that employee's APPROVED leaves pre-loaded — the
+ * shape {@link ReplacementService.findVacatedShifts} returns so callers can see WHY the shift is
+ * vacated (which leave interval covers it) without a second round-trip.
+ */
+export type VacatedShift = TenantPrisma.ShiftGetPayload<{
+  include: { employee: { include: { leaves: true } } }
+}>
+
+/** The inclusive `[from, to]` calendar-date window (ISO `YYYY-MM-DD`) a vacated-shift scan sweeps. */
+export interface ScanRange {
+  from: string
+  to: string
+}
 
 /**
  * One evaluated replacement candidate for a vacated shift. STABLE inter-task contract (later AI
@@ -149,5 +166,41 @@ export class ReplacementService {
       rank: 0,
     }))
     return [...ranked, ...rejected]
+  }
+
+  /**
+   * Detects vacated shifts in the inclusive `[range.from, range.to]` calendar window (Task 1.2): a
+   * scheduled shift whose assigned employee holds an APPROVED {@link TenantPrisma.LeaveRequest}
+   * covering the shift's date (CLOSED interval `startDate <= shift.date <= endDate`). RBAC mirrors
+   * the config surface: a GLOBAL actor (HR/ADMIN) sees every unit; a MANAGER only shifts whose
+   * employee sits in a unit they manage (`managedUnitIds`).
+   *
+   * The Prisma relation filter narrows at the DB to employees with APPROVED leave overlapping the
+   * WINDOW; because a `some` filter can only test the fixed window (not each row's own `shift.date`),
+   * a final in-memory pass enforces the exact per-shift closed-interval covering. `Shift.date` and
+   * the leave bounds are all `@db.Date` (UTC midnight), so the comparison stays in UTC. DETECTS
+   * only — no proposal is created and nothing is mutated.
+   */
+  async findVacatedShifts(client: TenantClient, actor: AiConfigActor, range: ScanRange): Promise<VacatedShift[]> {
+    const from = new Date(range.from)
+    const to = new Date(range.to)
+
+    // Employee must have APPROVED leave overlapping the window; a MANAGER is further unit-scoped.
+    const employeeWhere: TenantPrisma.EmployeeWhereInput = {
+      leaves: { some: { status: 'APPROVED', startDate: { lte: to }, endDate: { gte: from } } },
+    }
+    if (!isGlobal(actor.roles)) {
+      employeeWhere.unitId = { in: await managedUnitIds(client, actor.userId) }
+    }
+
+    const shifts = await client.shift.findMany({
+      where: { date: { gte: from, lte: to }, employee: employeeWhere },
+      include: { employee: { include: { leaves: { where: { status: 'APPROVED' } } } } },
+    })
+
+    // Exact per-shift covering: keep only shifts whose date falls inside a loaded leave's CLOSED
+    // interval (the window-level `some` filter above can over-match on a leave that overlaps the
+    // window but not this shift's own date).
+    return shifts.filter((s) => s.employee.leaves.some((lv) => lv.startDate <= s.date && s.date <= lv.endDate))
   }
 }

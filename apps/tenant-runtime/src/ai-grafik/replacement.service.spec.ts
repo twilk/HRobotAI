@@ -1,6 +1,8 @@
 import type { TenantClient } from '@hrobot/db'
-import { ReplacementService, type RankableShift } from './replacement.service.js'
+import { Role } from '@hrobot/shared'
+import { ReplacementService, type RankableShift, type VacatedShift } from './replacement.service.js'
 import type { SwapFeasibilityValidator } from '../shift-swap/swap-feasibility-validator.js'
+import type { AiConfigActor } from './ai-config.service.js'
 
 const UNIT = 'unit-1'
 const VACATED_EMP = 'emp-vacated'
@@ -193,5 +195,128 @@ describe('ReplacementService.rankCandidatesForShift', () => {
       expect(validate).not.toHaveBeenCalled()
       expect(client.shift.findMany).not.toHaveBeenCalled()
     })
+  })
+})
+
+// ----------------------------------------------------------------------------------------------
+// Task 1.2 — vacated-shift detection (approved-leave collision) + role scoping.
+// ----------------------------------------------------------------------------------------------
+
+type ScanClient = {
+  shift: { findMany: jest.Mock }
+  userRole: { findMany: jest.Mock }
+}
+
+const asScan = (c: ScanClient) => c as unknown as TenantClient
+
+const HR_ACTOR: AiConfigActor = { userId: 'kc-hr', roles: [Role.HR], ipAddress: '10.0.0.1' }
+const MANAGER_ACTOR: AiConfigActor = { userId: 'kc-mgr', roles: [Role.MANAGER], ipAddress: '10.0.0.2' }
+const RANGE = { from: '2026-07-01', to: '2026-07-31' }
+
+/** A vacated-shift row as Prisma returns it with `employee.leaves` pre-loaded (only APPROVED). */
+function scanShift(
+  id: string,
+  dateIso: string,
+  leaves: Array<{ startIso: string; endIso: string }>,
+  unitId = 'unit-A',
+): VacatedShift {
+  return {
+    id,
+    date: new Date(dateIso),
+    employee: {
+      unitId,
+      leaves: leaves.map((lv, i) => ({
+        id: `${id}-lv-${i}`,
+        startDate: new Date(lv.startIso),
+        endDate: new Date(lv.endIso),
+      })),
+    },
+  } as unknown as VacatedShift
+}
+
+function makeScanClient(shifts: VacatedShift[], managedUnits: string[] = []): ScanClient {
+  return {
+    shift: { findMany: jest.fn().mockResolvedValue(shifts) },
+    userRole: { findMany: jest.fn().mockResolvedValue(managedUnits.map((unitId) => ({ unitId }))) },
+  }
+}
+
+describe('ReplacementService.findVacatedShifts', () => {
+  const service = new ReplacementService(allowAll)
+
+  it('returns a shift whose employee has an APPROVED leave covering the shift date', async () => {
+    // Shift on 2026-07-15; leave 07-14..07-16 covers it (closed interval).
+    const covered = scanShift('shift-1', '2026-07-15', [{ startIso: '2026-07-14', endIso: '2026-07-16' }])
+    const client = makeScanClient([covered])
+
+    const result = await service.findVacatedShifts(asScan(client), HR_ACTOR, RANGE)
+
+    expect(result.map((s) => s.id)).toEqual(['shift-1'])
+  })
+
+  it('excludes a shift whose loaded leave does NOT cover its own date (closed-interval post-filter)', async () => {
+    // Both employees have APPROVED leave overlapping the window, so the DB `some` filter returns
+    // both rows — but only the first leave actually covers its shift's date.
+    const covered = scanShift('covered', '2026-07-15', [{ startIso: '2026-07-14', endIso: '2026-07-16' }])
+    const notCovering = scanShift('gap', '2026-07-15', [{ startIso: '2026-07-20', endIso: '2026-07-25' }])
+    const client = makeScanClient([covered, notCovering])
+
+    const result = await service.findVacatedShifts(asScan(client), HR_ACTOR, RANGE)
+
+    expect(result.map((s) => s.id)).toEqual(['covered'])
+  })
+
+  it('treats the leave interval as CLOSED — endpoints (startDate == date, date == endDate) count', async () => {
+    const onStart = scanShift('on-start', '2026-07-10', [{ startIso: '2026-07-10', endIso: '2026-07-12' }])
+    const onEnd = scanShift('on-end', '2026-07-12', [{ startIso: '2026-07-10', endIso: '2026-07-12' }])
+    const client = makeScanClient([onStart, onEnd])
+
+    const result = await service.findVacatedShifts(asScan(client), HR_ACTOR, RANGE)
+
+    expect(result.map((s) => s.id).sort()).toEqual(['on-end', 'on-start'])
+  })
+
+  it('only counts APPROVED leave — the DB filter is keyed on status APPROVED (PENDING/REJECTED excluded)', async () => {
+    const client = makeScanClient([])
+
+    await service.findVacatedShifts(asScan(client), HR_ACTOR, RANGE)
+
+    const where = client.shift.findMany.mock.calls[0][0].where
+    expect(where.employee.leaves.some.status).toBe('APPROVED')
+    // The included leaves are likewise narrowed to APPROVED so the post-filter never sees others.
+    const include = client.shift.findMany.mock.calls[0][0].include
+    expect(include.employee.include.leaves.where.status).toBe('APPROVED')
+  })
+
+  it('scopes a MANAGER to their managed units via managedUnitIds', async () => {
+    const client = makeScanClient([], ['unit-A'])
+
+    await service.findVacatedShifts(asScan(client), MANAGER_ACTOR, RANGE)
+
+    expect(client.userRole.findMany).toHaveBeenCalledWith({
+      where: { user: { keycloakSub: 'kc-mgr' }, role: Role.MANAGER, unitId: { not: null } },
+      select: { unitId: true },
+    })
+    const where = client.shift.findMany.mock.calls[0][0].where
+    expect(where.employee.unitId).toEqual({ in: ['unit-A'] })
+  })
+
+  it('does NOT unit-scope a global HR actor (no managed-unit lookup, no employee.unitId filter)', async () => {
+    const client = makeScanClient([])
+
+    await service.findVacatedShifts(asScan(client), HR_ACTOR, RANGE)
+
+    expect(client.userRole.findMany).not.toHaveBeenCalled()
+    const where = client.shift.findMany.mock.calls[0][0].where
+    expect(where.employee.unitId).toBeUndefined()
+  })
+
+  it('queries Shift.date within the inclusive [from, to] window', async () => {
+    const client = makeScanClient([])
+
+    await service.findVacatedShifts(asScan(client), HR_ACTOR, RANGE)
+
+    const where = client.shift.findMany.mock.calls[0][0].where
+    expect(where.date).toEqual({ gte: new Date('2026-07-01'), lte: new Date('2026-07-31') })
   })
 })
