@@ -21,6 +21,7 @@ import {
   type VacatedShift,
 } from '@/lib/ai-grafik'
 import { isoDate, addDays, mondayOf } from '@/lib/grafik'
+import { formatCostDelta } from '@/lib/koszty'
 
 const POLL_MS = 4000
 
@@ -301,6 +302,7 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
                   <tr>
                     <Th>Wakująca zmiana</Th>
                     <Th>Kandydat</Th>
+                    <Th>Δ koszt</Th>
                     <Th>Status</Th>
                     <Th className="text-right pr-4">Decyzja</Th>
                   </tr>
@@ -320,6 +322,9 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
                           ) : (
                             <span className="text-muted-2">—</span>
                           )}
+                        </Td>
+                        <Td>
+                          <span className="text-[13px] font-mono">{formatCostDelta(p.estimatedCost)}</span>
                         </Td>
                         <Td>
                           <ProposalBadge state={p.state} />

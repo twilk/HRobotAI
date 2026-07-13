@@ -1,6 +1,7 @@
 import { AppShell } from '@/components/layout/app-shell'
 import { AiConfigPanel } from '@/components/ai-grafik/ai-config-panel'
 import { ProposalInbox } from '@/components/ai-grafik/proposal-inbox'
+import { CostPanel } from '@/components/ai-grafik/cost-panel'
 import { EmptyState } from '@/components/ui/empty-state'
 import { IconLock } from '@/components/icons'
 import type { Role } from '@/lib/nav'
@@ -38,6 +39,9 @@ export default async function AiGrafikManagerPage() {
       {canManage ? (
         <div className="space-y-10">
           {canEditConfig ? <AiConfigPanel /> : null}
+          {/* Rate WRITES are HR/ADMIN_KLIENTA only (Codex P1-1) — the same `isGlobal` gate as
+              canEditConfig, since both routes share the exact [HR, ADMIN_KLIENTA] roles set. */}
+          <CostPanel canEditRates={canEditConfig} />
           <ProposalInbox canManage />
         </div>
       ) : (

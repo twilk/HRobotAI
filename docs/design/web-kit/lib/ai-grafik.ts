@@ -180,6 +180,13 @@ export interface AiProposal {
   reason?: string | null
   expiresAt?: string | null
   decidedByManagerId?: string | null
+  /**
+   * SP4 Δcost — cost(top feasible candidate) − cost(vacated employee) for this shift, a fixed 2dp
+   * Decimal string (Prisma serializes Decimal as a string over JSON; a plain `number` is tolerated
+   * too). `null` whenever either side's `PositionCostRate` is missing (Codex P1-6/Open-Q) — render it
+   * as "brak stawki" via `lib/koszty.ts`'s `formatCostDelta`, NEVER as "0 zł".
+   */
+  estimatedCost?: string | number | null
   createdAt: string
   updatedAt: string
   candidates: AiProposalCandidate[]
