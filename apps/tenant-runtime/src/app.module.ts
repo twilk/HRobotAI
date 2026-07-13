@@ -20,6 +20,7 @@ import { CostModule } from './cost/cost.module.js'
 import { LeaveModule } from './leave/leave.module.js'
 import { DostepyModule } from './dostepy/dostepy.module.js'
 import { UstawieniaModule } from './ustawienia/ustawienia.module.js'
+import { UsersModule } from './users/users.module.js'
 import { RedisService } from './common/redis/redis.service.js'
 
 @Module({
@@ -55,6 +56,7 @@ import { RedisService } from './common/redis/redis.service.js'
     LeaveModule,
     DostepyModule,
     UstawieniaModule,
+    UsersModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
