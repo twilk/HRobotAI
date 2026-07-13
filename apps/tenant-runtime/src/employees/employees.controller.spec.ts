@@ -14,6 +14,7 @@ import type { JwtPayload } from '../tenant-runtime/keycloak/keycloak-jwt.strateg
 
 const mockService = {
   list: jest.fn(),
+  getById: jest.fn(),
 }
 const client = {} as TenantClient
 const user: JwtPayload = { sub: 'kc-1', iss: 'x', hrobot_roles: [Role.HR], exp: 0 }
@@ -52,6 +53,20 @@ describe('EmployeesController', () => {
     expect(await controller.findAll(client, user, '1.2.3.4')).toEqual([])
   })
 
+  it('delegates findOne to EmployeesService.getById with the actor, id and tenantId', async () => {
+    mockService.getById.mockResolvedValue({ id: 'emp-1' })
+
+    const result = await controller.findOne(client, user, '1.2.3.4', 'tenant-1', 'emp-1')
+
+    expect(result).toEqual({ id: 'emp-1' })
+    expect(mockService.getById).toHaveBeenCalledWith(
+      client,
+      { userId: 'kc-1', roles: [Role.HR], ipAddress: '1.2.3.4' },
+      'emp-1',
+      'tenant-1',
+    )
+  })
+
   // --- RBAC metadata: proves the role gate wired to the route ------------------------------------
 
   describe('@Roles gate metadata', () => {
@@ -61,6 +76,10 @@ describe('EmployeesController', () => {
 
     it('allows every scheduling role to read the roster (scoped in the service)', () => {
       expect(rolesFor('findAll')).toEqual([Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA, Role.PRACOWNIK])
+    })
+
+    it('allows every scheduling role to read a single profile (scoped in the service)', () => {
+      expect(rolesFor('findOne')).toEqual([Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA, Role.PRACOWNIK])
     })
   })
 })

@@ -1,5 +1,6 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
+import { decryptEmployeePesel } from '@hrobot/db'
 import { EncryptionService } from '@hrobot/shared'
 import { AuditService } from '../tenant-runtime/audit/audit.service.js'
 import { isGlobal, managedUnitIds } from '../tenant-runtime/rbac/unit-scope.js'
@@ -61,5 +62,34 @@ export class EmployeesService {
     const units = await managedUnitIds(client, actor.userId)
     const scopeUnits = units.length > 0 ? units : [await this.ownUnitId(client, actor.userId)].filter((u): u is string => !!u)
     return client.employee.findMany({ where: { unitId: { in: scopeUnits } }, orderBy: { hiredAt: 'desc' }, select: SAFE_SELECT })
+  }
+
+  /**
+   * Single-employee profile. Same unit-scoping as `list` — 404 fires first for an unknown id, then
+   * the scope check (403) for one that exists but is outside the actor's unit(s). Only a GLOBAL
+   * actor (HR/ADMIN_KLIENTA) may receive a masked `peselLast4` — everyone else, and any decrypt
+   * failure, gets the SAFE_SELECT projection with no PESEL hint at all. The raw Prisma row is NEVER
+   * spread into the response: it carries `pesel`/`peselHash`/home-address PII columns that must not
+   * leave this method.
+   */
+  async getById(client: TenantClient, actor: EmployeeActor, id: string, tenantId?: string): Promise<Record<string, unknown>> {
+    const emp = await client.employee.findUnique({ where: { id } })
+    if (!emp) throw new NotFoundException(`Employee ${id} not found`)
+    if (!isGlobal(actor.roles)) {
+      const units = await managedUnitIds(client, actor.userId)
+      const inScope = units.length > 0 ? units.includes(emp.unitId) : emp.unitId === (await this.ownUnitId(client, actor.userId))
+      if (!inScope) throw new ForbiddenException('Employee is outside your scope')
+    }
+    const safe: Record<string, unknown> = {}
+    for (const key of Object.keys(SAFE_SELECT)) safe[key] = (emp as Record<string, unknown>)[key]
+    if (isGlobal(actor.roles) && tenantId && emp.pesel) {
+      try {
+        const plain = decryptEmployeePesel(this.encryption, tenantId, emp.pesel)
+        safe.peselLast4 = plain.slice(-4)
+      } catch {
+        // Decryption failure (bad key rotation state, corrupt ciphertext, …) → omit peselLast4, never throw.
+      }
+    }
+    return safe
   }
 }
