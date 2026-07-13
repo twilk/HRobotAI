@@ -29,6 +29,15 @@ export class EmployeesController {
     return this.employees.list(client, this.actor(user, ip))
   }
 
+  // Route ordering is load-bearing: this literal `me` path MUST stay declared BEFORE `@Get(':id')`,
+  // otherwise Nest matches `/employees/me` against the `:id` route and ParseUUIDPipe rejects it (400).
+  // RODO: SAFE_SELECT projection is enforced in EmployeesService.me — never re-add pesel/peselHash here.
+  @Get('me')
+  @Roles(...READ_ROLES)
+  async findMe(@CurrentTenantClient() client: TenantClient, @CurrentUser() user: JwtPayload, @Ip() ip: string): Promise<unknown> {
+    return this.employees.me(client, this.actor(user, ip))
+  }
+
   // RODO: PESEL projection is enforced in EmployeesService.getById (SAFE_SELECT + peselLast4 masking) — never re-add pesel/peselHash here
   @Get(':id')
   @Roles(...READ_ROLES)

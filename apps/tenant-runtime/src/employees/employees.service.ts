@@ -137,6 +137,18 @@ export class EmployeesService {
   }
 
   /**
+   * The caller's OWN employee profile, resolved from their Keycloak subject (no id in the path). Any
+   * READ role may call it — a plain PRACOWNIK uses this to see themselves without needing roster scope.
+   * Returns the SAFE_SELECT projection only (no PESEL/home-address PII, no `peselLast4`); throws 404
+   * when the login has no linked Employee row. The raw Prisma row is NEVER spread into the response.
+   */
+  async me(client: TenantClient, actor: EmployeeActor): Promise<Record<string, unknown>> {
+    const emp = await client.employee.findFirst({ where: { user: { keycloakSub: actor.userId } } })
+    if (!emp) throw new NotFoundException('No employee record for the current user')
+    return this.toSafeEmployee(emp as Record<string, unknown>)
+  }
+
+  /**
    * HR/ADMIN-only partial edit. A new `pesel` (if provided) is encrypted via `@hrobot/db`
    * employeePii before it ever touches the update `data`. Both the audit `before`/`after` snapshots
    * and the returned value pass through `toSafeEmployee` (the SAFE_SELECT allowlist), so no PII —

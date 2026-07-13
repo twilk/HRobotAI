@@ -237,6 +237,46 @@ describe('EmployeesService', () => {
     })
   })
 
+  describe('me (self-resolver)', () => {
+    it("resolves the caller's own Employee via their keycloakSub and returns the SAFE_SELECT projection", async () => {
+      client.employee.findFirst.mockResolvedValue({
+        id: 'e-self',
+        firstName: 'Jan',
+        lastName: 'Nowak',
+        position: 'Kasjer',
+        employmentType: 'UOP',
+        hiredAt: new Date('2021-06-01'),
+        unitId: 'u1',
+        etat: 1,
+        qualifications: [],
+        pesel: 'CIPHER',
+        peselHash: 'HASH',
+        homeAddress: 'ENC-ADDR',
+        homeLat: 52.1,
+        homeLng: 21.0,
+      })
+
+      const profile = await service.me(asClient(client), PRACOWNIK)
+
+      expect(client.employee.findFirst).toHaveBeenCalledWith({ where: { user: { keycloakSub: 'kc-emp' } } })
+      expect(profile.id).toBe('e-self')
+      expect(profile.firstName).toBe('Jan')
+      // RODO: no PESEL/home PII and no peselLast4 hint in the self projection.
+      expect(profile.pesel).toBeUndefined()
+      expect(profile.peselHash).toBeUndefined()
+      expect(profile.homeAddress).toBeUndefined()
+      expect(profile.homeLat).toBeUndefined()
+      expect(profile.homeLng).toBeUndefined()
+      expect(profile.peselLast4).toBeUndefined()
+    })
+
+    it('throws NotFoundException when the login has no linked Employee record', async () => {
+      client.employee.findFirst.mockResolvedValue(null)
+
+      await expect(service.me(asClient(client), PRACOWNIK)).rejects.toThrow(NotFoundException)
+    })
+  })
+
   describe('update', () => {
     it('lets HR update fields and writes an audit entry', async () => {
       client.employee.findUnique.mockResolvedValue({ id: 'e1', unitId: 'u', position: 'old' })

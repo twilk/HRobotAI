@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing'
 import { ExecutionContext } from '@nestjs/common'
+import { PATH_METADATA } from '@nestjs/common/constants'
 import { Reflector } from '@nestjs/core'
 import type { TenantClient } from '@hrobot/db'
 import { Role } from '@hrobot/shared'
@@ -15,6 +16,7 @@ import type { JwtPayload } from '../tenant-runtime/keycloak/keycloak-jwt.strateg
 const mockService = {
   list: jest.fn(),
   getById: jest.fn(),
+  me: jest.fn(),
   update: jest.fn(),
   create: jest.fn(),
 }
@@ -69,6 +71,15 @@ describe('EmployeesController', () => {
     )
   })
 
+  it('delegates findMe to EmployeesService.me with an actor projected from the JWT + IP', async () => {
+    mockService.me.mockResolvedValue({ id: 'emp-self' })
+
+    const result = await controller.findMe(client, user, '1.2.3.4')
+
+    expect(result).toEqual({ id: 'emp-self' })
+    expect(mockService.me).toHaveBeenCalledWith(client, { userId: 'kc-1', roles: [Role.HR], ipAddress: '1.2.3.4' })
+  })
+
   it('delegates update to EmployeesService.update with the actor, id, dto and tenantId', async () => {
     mockService.update.mockResolvedValue({ id: 'emp-1', position: 'new' })
 
@@ -119,6 +130,10 @@ describe('EmployeesController', () => {
       expect(rolesFor('findAll')).toEqual([Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA, Role.PRACOWNIK])
     })
 
+    it('allows every scheduling role to read their own profile via /me (scoped in the service)', () => {
+      expect(rolesFor('findMe')).toEqual([Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA, Role.PRACOWNIK])
+    })
+
     it('allows every scheduling role to read a single profile (scoped in the service)', () => {
       expect(rolesFor('findOne')).toEqual([Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA, Role.PRACOWNIK])
     })
@@ -129,6 +144,25 @@ describe('EmployeesController', () => {
 
     it('restricts create (POST) to HR/ADMIN_KLIENTA only', () => {
       expect(rolesFor('create')).toEqual([Role.HR, Role.ADMIN_KLIENTA])
+    })
+  })
+
+  // --- Route ordering: literal `me` must beat the `:id` param route -------------------------------
+
+  describe('GET route ordering', () => {
+    const proto = EmployeesController.prototype
+    const pathFor = (method: keyof EmployeesController): string =>
+      Reflect.getMetadata(PATH_METADATA, proto[method] as (...args: unknown[]) => unknown) as string
+
+    it('binds findMe to the literal `me` path and findOne to the `:id` param path', () => {
+      expect(pathFor('findMe')).toBe('me')
+      expect(pathFor('findOne')).toBe(':id')
+    })
+
+    it('declares the `me` route BEFORE the `:id` route (Nest matches by declaration order)', () => {
+      const names = Object.getOwnPropertyNames(proto)
+      expect(names.indexOf('findMe')).toBeGreaterThanOrEqual(0)
+      expect(names.indexOf('findMe')).toBeLessThan(names.indexOf('findOne'))
     })
   })
 })
