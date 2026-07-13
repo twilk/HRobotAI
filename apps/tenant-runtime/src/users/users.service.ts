@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
-import type { TenantClient, TenantPrisma } from '@hrobot/db'
+import type { TenantClient } from '@hrobot/db'
+import { TenantPrisma } from '@hrobot/db'
 import { Role } from '@hrobot/shared'
 import { AuditService } from '../tenant-runtime/audit/audit.service.js'
 import { KeycloakAdminService } from '../tenant-runtime/keycloak/keycloak-admin.service.js'
@@ -65,6 +66,11 @@ export class UsersService {
     return typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2002'
   }
 
+  /** Postgres SERIALIZABLE write-skew abort, surfaced by Prisma as P2034 — see {@link guardedAdminMutation}. */
+  private isSerializationFailure(err: unknown): boolean {
+    return typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2034'
+  }
+
   /** Maps a `User` create's P2002 (duplicate `email`/`keycloakSub`) to a clean 409; anything else rethrows. */
   private mapWriteError(err: unknown): never {
     if (this.isUniqueViolation(err)) throw new ConflictException('A user with this email already exists')
@@ -122,18 +128,71 @@ export class UsersService {
   }
 
   /**
-   * LAST-ADMIN guard: the count of ACTIVE users holding a GLOBAL (`unitId: null`) `ADMIN_KLIENTA`
-   * `UserRole` is computed fresh from the DB (never the JWT). Revoking or deactivating the sole
-   * remaining admin would permanently lock the tenant out of its own admin console.
+   * Re-resolves AND re-verifies the actor's REAL current DB state before ANY privileged mutation —
+   * requires `active` AND that the actor's REAL (DB) roles include `ADMIN_KLIENTA`, not just the
+   * cheap JWT-claim check the caller already did. This is what actually closes the JWT-cache window
+   * for EVERY target, not only the self-escalation case handled inline in {@link assignRole}: without
+   * this check, `actor.roles.includes(ADMIN_KLIENTA)` (the untrusted, up-to-~3600s-stale JWT claim)
+   * would be the ONLY ADMIN_KLIENTA check applied whenever the target is someone OTHER than the actor
+   * — letting a demoted admin keep granting/revoking roles or deactivating OTHER users until their
+   * token expires.
    */
-  private async assertNotLastAdmin(client: TenantClient, targetUserId: string): Promise<void> {
-    const admins = await client.userRole.findMany({
-      where: { role: Role.ADMIN_KLIENTA, unitId: null, user: { active: true } },
-      select: { userId: true },
-    })
-    const distinctAdminIds = new Set(admins.map((a) => a.userId))
-    if (distinctAdminIds.size <= 1 && distinctAdminIds.has(targetUserId)) {
-      throw new ConflictException('Cannot remove the last ADMIN_KLIENTA of this tenant')
+  private async requireRealAdmin(
+    client: TenantClient,
+    actor: UsersActor,
+  ): Promise<{ id: string; active: boolean; roles: Array<{ role: Role; unitId: string | null }> }> {
+    const actingUser = await this.resolveActingUser(client, actor)
+    if (!actingUser || !actingUser.active) {
+      throw new ForbiddenException('Actor is not an active user in the current DB state')
+    }
+    if (!actingUser.roles.some((r) => r.role === Role.ADMIN_KLIENTA)) {
+      throw new ForbiddenException('Actor no longer holds ADMIN_KLIENTA in the current DB state')
+    }
+    return actingUser
+  }
+
+  /**
+   * LAST-ADMIN guard + guarded write, wrapped as ONE atomic unit. The plain read-then-decide this
+   * used to be (`findMany` the global admins, then separately call KC + write DB) has a classic
+   * write-skew hole: with exactly 2 active global ADMIN_KLIENTA users, two CONCURRENT revoke/deactivate
+   * calls targeting the two DIFFERENT admins can each read "2 admins left, not the last one" and both
+   * pass the guard before either write commits — leaving the tenant with ZERO admins.
+   *
+   * The `updateMany`/`deleteMany` + `count === 0` optimistic-lock idiom `ai-proposal.service.ts` uses
+   * for its concurrent-state races doesn't directly apply here: that idiom re-asserts a precondition
+   * on the SAME row being written (e.g. `state: DRAFT`), but the last-admin invariant is an AGGREGATE
+   * over MULTIPLE rows (every global `ADMIN_KLIENTA` `UserRole`) spanning potentially different admins
+   * — no single-row `WHERE` predicate can express "count of matching rows across the table > 1".
+   *
+   * Instead, the count-check and `mutate` (the KC call + the DB write) run inside ONE
+   * `SERIALIZABLE` Prisma transaction. Postgres's serializable-snapshot isolation detects the
+   * cross-row read/write conflict between the two concurrent transactions at COMMIT time and aborts
+   * one of them with a serialization failure (Prisma error code `P2034`) — which we translate into a
+   * 409 asking the caller to retry. This is the same "detect the loser, reject, ask for retry" shape
+   * as the single-row idiom, just enforced by the database's SSI machinery rather than a single
+   * `WHERE` clause, because the invariant genuinely spans rows a single `updateMany` cannot see.
+   */
+  private async guardedAdminMutation<T>(client: TenantClient, targetUserId: string, mutate: (tx: TenantClient) => Promise<T>): Promise<T> {
+    try {
+      return await client.$transaction(
+        async (tx) => {
+          const admins = await tx.userRole.findMany({
+            where: { role: Role.ADMIN_KLIENTA, unitId: null, user: { active: true } },
+            select: { userId: true },
+          })
+          const distinctAdminIds = new Set(admins.map((a) => a.userId))
+          if (distinctAdminIds.size <= 1 && distinctAdminIds.has(targetUserId)) {
+            throw new ConflictException('Cannot remove the last ADMIN_KLIENTA of this tenant')
+          }
+          return mutate(tx as unknown as TenantClient)
+        },
+        { isolationLevel: TenantPrisma.TransactionIsolationLevel.Serializable },
+      )
+    } catch (err) {
+      if (this.isSerializationFailure(err)) {
+        throw new ConflictException('Admin roster changed concurrently — please retry')
+      }
+      throw err
     }
   }
 
@@ -181,7 +240,7 @@ export class UsersService {
     await this.grant(client, realm, user.id, kcId, role, unitId)
     await this.keycloak.sendPasswordSetupEmail(realm, kcId)
 
-    await this.writeAudit(client, actor, 'user.invited', user.id, { email, role, unitId })
+    await this.writeAudit(client, actor, 'user.invited', user.id, { role, unitId })
     return user
   }
 
@@ -205,10 +264,7 @@ export class UsersService {
       throw new ForbiddenException('Only ADMIN_KLIENTA may manage roles')
     }
 
-    const actingUser = await this.resolveActingUser(client, actor)
-    if (!actingUser || !actingUser.active) {
-      throw new ForbiddenException('Actor is not an active user in the current DB state')
-    }
+    const actingUser = await this.requireRealAdmin(client, actor)
 
     const target = await client.user.findUnique({ where: { id: targetUserId }, select: { id: true, keycloakSub: true } })
     if (!target) throw new NotFoundException(`User ${targetUserId} not found`)
@@ -227,7 +283,7 @@ export class UsersService {
   /**
    * Revoke `role` (optionally scoped to `unitId`) from `targetUserId`. Same ADMIN_KLIENTA +
    * real-DB-state re-check as {@link assignRole}. A GLOBAL `ADMIN_KLIENTA` revoke is additionally
-   * guarded against removing the tenant's LAST admin (see {@link assertNotLastAdmin}).
+   * guarded against removing the tenant's LAST admin (see {@link guardedAdminMutation}).
    */
   async revokeRole(
     client: TenantClient,
@@ -241,19 +297,16 @@ export class UsersService {
       throw new ForbiddenException('Only ADMIN_KLIENTA may manage roles')
     }
 
-    const actingUser = await this.resolveActingUser(client, actor)
-    if (!actingUser || !actingUser.active) {
-      throw new ForbiddenException('Actor is not an active user in the current DB state')
-    }
+    await this.requireRealAdmin(client, actor)
 
     const target = await client.user.findUnique({ where: { id: targetUserId }, select: { id: true, keycloakSub: true } })
     if (!target) throw new NotFoundException(`User ${targetUserId} not found`)
 
     if (role === Role.ADMIN_KLIENTA && unitId === null) {
-      await this.assertNotLastAdmin(client, target.id)
+      await this.guardedAdminMutation(client, target.id, (tx) => this.revokeInternal(tx, realm, target.id, target.keycloakSub, role, unitId))
+    } else {
+      await this.revokeInternal(client, realm, target.id, target.keycloakSub, role, unitId)
     }
-
-    await this.revokeInternal(client, realm, target.id, target.keycloakSub, role, unitId)
     await this.writeAudit(client, actor, 'role.revoked', target.id, { role, unitId })
   }
 
@@ -268,10 +321,7 @@ export class UsersService {
       throw new ForbiddenException('Only ADMIN_KLIENTA may deactivate users')
     }
 
-    const actingUser = await this.resolveActingUser(client, actor)
-    if (!actingUser || !actingUser.active) {
-      throw new ForbiddenException('Actor is not an active user in the current DB state')
-    }
+    await this.requireRealAdmin(client, actor)
 
     const target = await client.user.findUnique({
       where: { id: targetUserId },
@@ -281,11 +331,14 @@ export class UsersService {
 
     const isAdmin = target.roles.some((r) => r.role === Role.ADMIN_KLIENTA && r.unitId === null)
     if (isAdmin) {
-      await this.assertNotLastAdmin(client, target.id)
+      await this.guardedAdminMutation(client, target.id, async (tx) => {
+        await this.keycloak.setEnabled(realm, target.keycloakSub, false)
+        await tx.user.update({ where: { id: target.id }, data: { active: false } })
+      })
+    } else {
+      await this.keycloak.setEnabled(realm, target.keycloakSub, false)
+      await client.user.update({ where: { id: target.id }, data: { active: false } })
     }
-
-    await this.keycloak.setEnabled(realm, target.keycloakSub, false)
-    await client.user.update({ where: { id: target.id }, data: { active: false } })
 
     await this.writeAudit(client, actor, 'user.deactivated', target.id, {})
   }

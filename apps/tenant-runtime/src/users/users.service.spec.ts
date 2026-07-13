@@ -13,6 +13,7 @@ function makeClient() {
   return {
     user: { create: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
     userRole: { create: jest.fn(), deleteMany: jest.fn(), findMany: jest.fn() },
+    $transaction: jest.fn(),
   }
 }
 type MockClient = ReturnType<typeof makeClient>
@@ -57,6 +58,10 @@ describe('UsersService', () => {
     client = makeClient()
     jest.clearAllMocks()
     keycloak.createUser.mockResolvedValue('kc-new-user')
+    // `guardedAdminMutation` runs its count-check + mutate callback inside `client.$transaction(fn, opts)`;
+    // for these mocks `tx` is just `client` itself, so `tx.userRole.findMany`/`tx.user.update` etc. hit the
+    // same jest mocks the tests already set up on `client`.
+    client.$transaction.mockImplementation(async (fn: (tx: MockClient) => unknown) => fn(client))
   })
 
   describe('invite', () => {
@@ -81,6 +86,20 @@ describe('UsersService', () => {
       expect(keycloak.assignRealmRole).toHaveBeenCalledWith(REALM, 'kc-new-user', Role.MANAGER)
       expect(result.id).toBe('user-1')
       expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'user.invited', entityId: 'user-1' }))
+    })
+
+    it('audits user.invited ids-only — never the invitee email (RODO)', async () => {
+      client.user.create.mockResolvedValue({ id: 'user-1', email: 'new@acme.com', active: true, createdAt: new Date(), roles: [] })
+      client.userRole.create.mockResolvedValue({})
+
+      await service.invite(asClient(client), ADMIN, REALM, 'new@acme.com', Role.MANAGER, null)
+
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'user.invited', payload: { role: Role.MANAGER, unitId: null } }),
+      )
+      const payload = audit.log.mock.calls[0][0].payload
+      expect(payload).not.toHaveProperty('email')
+      expect(JSON.stringify(payload)).not.toContain('new@acme.com')
     })
 
     it('DB-fail-after-KC-create compensates via setEnabled(false), never deletes, and rethrows a 409 for a duplicate email', async () => {
@@ -167,6 +186,14 @@ describe('UsersService', () => {
       expect(client.userRole.create).not.toHaveBeenCalled()
     })
 
+    it('403s a stale JWT whose real DB role was demoted from ADMIN_KLIENTA, even when granting a role to SOMEONE ELSE', async () => {
+      client.user.findFirst.mockResolvedValue({ id: 'admin-db-id', active: true, roles: [{ role: Role.HR, unitId: null }] })
+      await expect(service.assignRole(asClient(client), ADMIN, REALM, 'target-1', Role.MANAGER)).rejects.toThrow(ForbiddenException)
+      expect(client.user.findUnique).not.toHaveBeenCalled()
+      expect(client.userRole.create).not.toHaveBeenCalled()
+      expect(keycloak.assignRealmRole).not.toHaveBeenCalled()
+    })
+
     it('404s an unknown target user', async () => {
       client.user.findUnique.mockResolvedValue(null)
       await expect(service.assignRole(asClient(client), ADMIN, REALM, 'ghost', Role.MANAGER)).rejects.toThrow(NotFoundException)
@@ -236,6 +263,21 @@ describe('UsersService', () => {
       expect(keycloak.removeRealmRole).toHaveBeenCalled()
     })
 
+    it('LAST-ADMIN TOCTOU: a concurrent write-skew detected by Postgres (P2034) is surfaced as a 409, not silently allowed', async () => {
+      client.user.findUnique.mockResolvedValue({ id: 'admin-2', keycloakSub: 'kc-admin-2' })
+      client.userRole.findMany.mockResolvedValue([{ userId: 'admin-2' }, { userId: 'admin-3' }])
+      client.$transaction.mockRejectedValueOnce(Object.assign(new Error('write conflict'), { code: 'P2034' }))
+
+      await expect(service.revokeRole(asClient(client), ADMIN, REALM, 'admin-2', Role.ADMIN_KLIENTA, null)).rejects.toThrow(ConflictException)
+    })
+
+    it('403s a stale JWT whose real DB role was demoted from ADMIN_KLIENTA, even when revoking a role from SOMEONE ELSE', async () => {
+      client.user.findFirst.mockResolvedValue({ id: 'admin-db-id', active: true, roles: [{ role: Role.HR, unitId: null }] })
+      await expect(service.revokeRole(asClient(client), ADMIN, REALM, 'target-1', Role.MANAGER)).rejects.toThrow(ForbiddenException)
+      expect(client.user.findUnique).not.toHaveBeenCalled()
+      expect(keycloak.removeRealmRole).not.toHaveBeenCalled()
+    })
+
     it('403s before any DB/KC call for a non-admin actor', async () => {
       await expect(service.revokeRole(asClient(client), HR, REALM, 'target-1', Role.MANAGER)).rejects.toThrow(ForbiddenException)
       expect(keycloak.removeRealmRole).not.toHaveBeenCalled()
@@ -277,6 +319,21 @@ describe('UsersService', () => {
       client.userRole.findMany.mockResolvedValue([{ userId: 'sole-admin' }])
 
       await expect(service.deactivate(asClient(client), ADMIN, REALM, 'sole-admin')).rejects.toThrow(ConflictException)
+      expect(keycloak.setEnabled).not.toHaveBeenCalled()
+    })
+
+    it('LAST-ADMIN TOCTOU: a concurrent write-skew detected by Postgres (P2034) is surfaced as a 409, not silently allowed', async () => {
+      client.user.findUnique.mockResolvedValue({ id: 'admin-2', keycloakSub: 'kc-admin-2', roles: [{ role: Role.ADMIN_KLIENTA, unitId: null }] })
+      client.userRole.findMany.mockResolvedValue([{ userId: 'admin-2' }, { userId: 'admin-3' }])
+      client.$transaction.mockRejectedValueOnce(Object.assign(new Error('write conflict'), { code: 'P2034' }))
+
+      await expect(service.deactivate(asClient(client), ADMIN, REALM, 'admin-2')).rejects.toThrow(ConflictException)
+    })
+
+    it('403s a stale JWT whose real DB role was demoted from ADMIN_KLIENTA, even when deactivating SOMEONE ELSE', async () => {
+      client.user.findFirst.mockResolvedValue({ id: 'admin-db-id', active: true, roles: [{ role: Role.HR, unitId: null }] })
+      await expect(service.deactivate(asClient(client), ADMIN, REALM, 'target-1')).rejects.toThrow(ForbiddenException)
+      expect(client.user.findUnique).not.toHaveBeenCalled()
       expect(keycloak.setEnabled).not.toHaveBeenCalled()
     })
 
