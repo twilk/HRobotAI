@@ -7,6 +7,7 @@ import {
   maskPesel,
   profileStatusFromHttpStatus,
   type EmployeeEditFormState,
+  type EmployeeProfileData,
 } from './employee-profile'
 
 // This repo has no jsdom/@testing-library/react harness (vitest.config.ts runs `lib/**/*.test.ts`
@@ -92,6 +93,20 @@ describe('formatHiredAt', () => {
 })
 
 describe('buildEmployeePatch', () => {
+  // The loaded profile the form was seeded from. `baseForm` below is the UNCHANGED form for this
+  // profile, so buildEmployeePatch(baseForm, original) must be an empty diff — every field matches.
+  const original: EmployeeProfileData = {
+    id: 'emp-1',
+    firstName: 'Anna',
+    lastName: 'Nowak',
+    position: 'Kierowca',
+    employmentType: 'UMOWA_O_PRACE',
+    hiredAt: '2024-03-01T00:00:00.000Z',
+    unitId: '0276f4fd-43a2-51eb-b450-c48afe912fd9',
+    etat: 1,
+    qualifications: ['Prawo jazdy kat. B', 'Obsługa wózka widłowego'],
+  }
+
   const baseForm: EmployeeEditFormState = {
     firstName: 'Anna',
     lastName: 'Nowak',
@@ -103,46 +118,67 @@ describe('buildEmployeePatch', () => {
     pesel: '',
   }
 
-  it('omits pesel entirely when the field is blank — a normal edit never sends pesel', () => {
-    const body = buildEmployeePatch(baseForm)
-    expect(body).not.toHaveProperty('pesel')
+  it('sends {} for an unchanged form (true partial PATCH — never clobbers concurrent edits)', () => {
+    expect(buildEmployeePatch(baseForm, original)).toEqual({})
   })
 
-  it('includes pesel only when the user typed exactly 11 digits', () => {
-    const body = buildEmployeePatch({ ...baseForm, pesel: '12345678901' })
+  it('changing ONLY firstName sends only { firstName } (not etat/unitId/etc)', () => {
+    const body = buildEmployeePatch({ ...baseForm, firstName: 'Ania' }, original)
+    expect(body).toEqual({ firstName: 'Ania' })
+  })
+
+  it('omits pesel entirely when the field is blank — a normal edit never sends pesel', () => {
+    expect(buildEmployeePatch(baseForm, original)).not.toHaveProperty('pesel')
+  })
+
+  it('includes pesel only when the user typed exactly 11 digits (original never has one)', () => {
+    const body = buildEmployeePatch({ ...baseForm, pesel: '12345678901' }, original)
     expect(body.pesel).toBe('12345678901')
   })
 
   it('omits pesel for a partial / invalid (non-11-digit) value rather than sending it', () => {
-    expect(buildEmployeePatch({ ...baseForm, pesel: '123' })).not.toHaveProperty('pesel')
-    expect(buildEmployeePatch({ ...baseForm, pesel: 'abcdefghijk' })).not.toHaveProperty('pesel')
-    expect(buildEmployeePatch({ ...baseForm, pesel: '  ' })).not.toHaveProperty('pesel')
+    expect(buildEmployeePatch({ ...baseForm, pesel: '123' }, original)).not.toHaveProperty('pesel')
+    expect(buildEmployeePatch({ ...baseForm, pesel: 'abcdefghijk' }, original)).not.toHaveProperty('pesel')
+    expect(buildEmployeePatch({ ...baseForm, pesel: '  ' }, original)).not.toHaveProperty('pesel')
   })
 
-  it('coerces etat from the raw input string to a number', () => {
-    expect(buildEmployeePatch({ ...baseForm, etat: '0.5' }).etat).toBe(0.5)
-    expect(buildEmployeePatch(baseForm).etat).toBe(1)
-    expect(typeof buildEmployeePatch(baseForm).etat).toBe('number')
+  it('coerces a CHANGED etat from the raw input string to a number', () => {
+    const body = buildEmployeePatch({ ...baseForm, etat: '0.5' }, original)
+    expect(body.etat).toBe(0.5)
+    expect(typeof body.etat).toBe('number')
   })
 
-  it('splits comma-separated qualifications into a trimmed string array', () => {
-    const body = buildEmployeePatch(baseForm)
-    expect(body.qualifications).toEqual(['Prawo jazdy kat. B', 'Obsługa wózka widłowego'])
+  it('omits etat when a cleared field (etat: "") would coerce to 0 — not a valid change', () => {
+    expect(buildEmployeePatch({ ...baseForm, etat: '' }, original)).not.toHaveProperty('etat')
+    expect(buildEmployeePatch({ ...baseForm, etat: 'abc' }, original)).not.toHaveProperty('etat')
   })
 
-  it('produces an empty qualifications array for a blank field', () => {
-    expect(buildEmployeePatch({ ...baseForm, qualifications: '' }).qualifications).toEqual([])
+  it('includes changed qualifications as a trimmed string array', () => {
+    const body = buildEmployeePatch({ ...baseForm, qualifications: 'Prawo jazdy kat. B' }, original)
+    expect(body.qualifications).toEqual(['Prawo jazdy kat. B'])
   })
 
-  it('trims firstName/lastName/position', () => {
-    const body = buildEmployeePatch({ ...baseForm, firstName: '  Anna  ', lastName: ' Nowak ' })
-    expect(body.firstName).toBe('Anna')
-    expect(body.lastName).toBe('Nowak')
+  it('omits qualifications when the array is unchanged (order + elements equal)', () => {
+    expect(buildEmployeePatch(baseForm, original)).not.toHaveProperty('qualifications')
   })
 
-  it('passes employmentType and unitId through unchanged', () => {
-    const body = buildEmployeePatch(baseForm)
-    expect(body.employmentType).toBe('UMOWA_O_PRACE')
-    expect(body.unitId).toBe('0276f4fd-43a2-51eb-b450-c48afe912fd9')
+  it('detects clearing all qualifications as a change to an empty array', () => {
+    const body = buildEmployeePatch({ ...baseForm, qualifications: '' }, original)
+    expect(body.qualifications).toEqual([])
+  })
+
+  it('trims firstName/lastName before comparing, so whitespace-only edits are not changes', () => {
+    expect(buildEmployeePatch({ ...baseForm, firstName: '  Anna  ' }, original)).toEqual({})
+  })
+
+  it('includes changed employmentType and unitId, keyed correctly', () => {
+    const body = buildEmployeePatch(
+      { ...baseForm, employmentType: 'B2B', unitId: '053774f2-63fb-565c-b142-77b17f456ec7' },
+      original,
+    )
+    expect(body).toEqual({
+      employmentType: 'B2B',
+      unitId: '053774f2-63fb-565c-b142-77b17f456ec7',
+    })
   })
 })

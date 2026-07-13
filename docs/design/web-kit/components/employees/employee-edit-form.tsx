@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Field, Input } from '@/components/ui/input'
 import { contractLabel } from '@/components/employees/employees-screen'
-import { DEMO_UNIT_NAMES } from '@/lib/demo-locations'
+import { DEMO_UNIT_NAMES, unitName } from '@/lib/demo-locations'
 import { buildEmployeePatch, type EmployeeEditFormState, type EmployeeProfileData } from '@/lib/employee-profile'
 
 /** The 4 real `employmentType` enum values (tenant-runtime `UpdateEmployeeDto`/Prisma schema).
@@ -51,22 +51,63 @@ export function EmployeeEditForm({ profile, onCancel, onSaved }: EmployeeEditFor
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Tied to the component lifetime: an in-flight PATCH can resolve after the App Router has swapped
+  // this mounted EmployeeProfile to a DIFFERENT employee (the id prop changed). Once unmounted we
+  // must NOT call onSaved/setError/setSubmitting — otherwise employee A's save splices into
+  // employee B's card. `cancelledRef` is checked after every await.
+  const cancelledRef = useRef(false)
+  useEffect(() => {
+    cancelledRef.current = false
+    return () => {
+      cancelledRef.current = true
+    }
+  }, [])
+
   function set<K extends keyof EmployeeEditFormState>(key: K, value: EmployeeEditFormState[K]) {
     setForm((f) => ({ ...f, [key]: value }))
   }
 
+  // Unit options for the select. If the current employee's unit isn't one of the known demo units,
+  // synthesize a leading option for it (mirroring unitName()'s short-uuid fallback) so the displayed
+  // selection always matches the REAL unit — otherwise the <select> would show a misleading default
+  // and a save could silently reassign the employee to the wrong unit.
+  const unitOptions =
+    form.unitId in DEMO_UNIT_NAMES
+      ? UNIT_OPTIONS
+      : [{ id: form.unitId, label: unitName(form.unitId) }, ...UNIT_OPTIONS]
+
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    // Defensive double-submit guard beyond the disabled attribute.
+    if (submitting) return
+
+    // Explicit client-side validation: <form noValidate> makes required/min/max decorative, and
+    // Number('') === 0 would let a cleared Etat silently PATCH etat to 0. Block those here.
+    const firstName = form.firstName.trim()
+    const lastName = form.lastName.trim()
+    const position = form.position.trim()
+    const etat = Number(form.etat)
+    if (!firstName || !lastName || !position) {
+      setError('Imię, nazwisko i stanowisko są wymagane.')
+      return
+    }
+    if (form.etat.trim() === '' || !Number.isFinite(etat) || etat < 0 || etat > 1) {
+      setError('Etat musi być liczbą w zakresie 0–1.')
+      return
+    }
+
     setSubmitting(true)
     setError(null)
     try {
       const res = await fetch(`/api/employees/${profile.id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(buildEmployeePatch(form)),
+        body: JSON.stringify(buildEmployeePatch(form, profile)),
       })
+      if (cancelledRef.current) return
       if (res.status >= 200 && res.status < 300) {
         const updated = (await res.json()) as EmployeeProfileData
+        if (cancelledRef.current) return
         onSaved(updated)
         return
       }
@@ -84,9 +125,10 @@ export function EmployeeEditForm({ profile, onCancel, onSaved }: EmployeeEditFor
       }
       setError('Coś poszło nie tak. Spróbuj ponownie.')
     } catch {
+      if (cancelledRef.current) return
       setError('Brak połączenia. Sprawdź internet i spróbuj ponownie.')
     } finally {
-      setSubmitting(false)
+      if (!cancelledRef.current) setSubmitting(false)
     }
   }
 
@@ -151,7 +193,7 @@ export function EmployeeEditForm({ profile, onCancel, onSaved }: EmployeeEditFor
             onChange={(e) => set('unitId', e.target.value)}
             className={selectClass}
           >
-            {UNIT_OPTIONS.map((u) => (
+            {unitOptions.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.label}
               </option>

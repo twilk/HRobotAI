@@ -93,47 +93,83 @@ export interface EmployeeEditFormState {
   pesel: string
 }
 
-/** Body sent to `PATCH /api/employees/:id` — mirrors the backend's partial `UpdateEmployeeDto`. */
+/**
+ * Body sent to `PATCH /api/employees/:id` — a TRUE partial of the backend's `UpdateEmployeeDto`.
+ * Every key is optional because `buildEmployeePatch` emits ONLY the fields that actually changed
+ * from the loaded profile (the backend writes only the keys present, so re-sending unchanged fields
+ * would clobber a concurrent edit by another HR user — see buildEmployeePatch).
+ */
 export interface EmployeePatchBody {
-  firstName: string
-  lastName: string
-  position: string
-  employmentType: string
-  unitId: string
-  etat: number
-  qualifications: string[]
+  firstName?: string
+  lastName?: string
+  position?: string
+  employmentType?: string
+  unitId?: string
+  etat?: number
+  qualifications?: string[]
   pesel?: string
 }
 
 const PESEL_RE = /^\d{11}$/
 
+/** Parse the raw etat input to a finite number, or null when blank/NaN (a cleared field). */
+function parseEtat(raw: string): number | null {
+  const trimmed = raw.trim()
+  if (trimmed === '') return null
+  const n = Number(trimmed)
+  return Number.isFinite(n) ? n : null
+}
+
+/** True when two qualification arrays differ (length, or any element by position). */
+function qualificationsDiffer(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return true
+  return a.some((q, i) => q !== b[i])
+}
+
 /**
- * Pure builder for the PATCH body from the edit form's controlled-input state. Sends the full
- * editable set (simpler to reason about than a diff against the original) EXCEPT `pesel`, which is
- * write-only and RODO-sensitive:
- * - a blank pesel field (the normal case — user didn't touch it) is omitted entirely, so a routine
- *   edit never sends/overwrites PESEL;
- * - pesel is included ONLY when the user typed exactly 11 digits (matches the backend's DTO
- *   validation); anything else (partial input, non-digits) is also omitted rather than sent invalid,
- *   letting the backend's 400 apply only to genuinely-submitted values.
- * `etat` is coerced from the raw input string to a number (Prisma Decimal field).
+ * Pure builder for the PATCH body — a DIFF against the loaded `original` profile. The backend
+ * `UpdateEmployeeDto` is a true partial (only present keys are written), so emitting only genuinely
+ * changed fields avoids clobbering a field another HR user changed between page-load and save.
+ * - firstName/lastName/position: trimmed, included only when the trimmed value !== original;
+ * - employmentType/unitId: included only when !== original;
+ * - etat: coerced to a number; included only when it parses to a finite number AND differs from the
+ *   original (a cleared/NaN etat is NOT a valid change — omitted, belt-and-suspenders with the
+ *   form's client-side validation);
+ * - qualifications: split from the comma-separated field; included only when the array differs;
+ * - pesel: write-only/RODO — the original never carries a pesel, so a valid new pesel is always a
+ *   change; included ONLY when the field is exactly 11 digits, omitted otherwise (blank, partial,
+ *   non-digits) so a routine edit never sends/overwrites PESEL.
  */
-export function buildEmployeePatch(form: EmployeeEditFormState): EmployeePatchBody {
-  const body: EmployeePatchBody = {
-    firstName: form.firstName.trim(),
-    lastName: form.lastName.trim(),
-    position: form.position.trim(),
-    employmentType: form.employmentType,
-    unitId: form.unitId,
-    etat: Number(form.etat),
-    qualifications: form.qualifications
-      .split(',')
-      .map((q) => q.trim())
-      .filter(Boolean),
-  }
+export function buildEmployeePatch(
+  form: EmployeeEditFormState,
+  original: EmployeeProfileData,
+): EmployeePatchBody {
+  const body: EmployeePatchBody = {}
+
+  const firstName = form.firstName.trim()
+  if (firstName !== original.firstName) body.firstName = firstName
+
+  const lastName = form.lastName.trim()
+  if (lastName !== original.lastName) body.lastName = lastName
+
+  const position = form.position.trim()
+  if (position !== original.position) body.position = position
+
+  if (form.employmentType !== original.employmentType) body.employmentType = form.employmentType
+
+  if (form.unitId !== original.unitId) body.unitId = form.unitId
+
+  const etat = parseEtat(form.etat)
+  if (etat !== null && etat !== Number(original.etat)) body.etat = etat
+
+  const qualifications = form.qualifications
+    .split(',')
+    .map((q) => q.trim())
+    .filter(Boolean)
+  if (qualificationsDiffer(qualifications, original.qualifications)) body.qualifications = qualifications
+
   const pesel = form.pesel.trim()
-  if (PESEL_RE.test(pesel)) {
-    body.pesel = pesel
-  }
+  if (PESEL_RE.test(pesel)) body.pesel = pesel
+
   return body
 }
