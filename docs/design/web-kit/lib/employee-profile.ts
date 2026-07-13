@@ -110,6 +110,14 @@ export interface EmployeePatchBody {
   pesel?: string
 }
 
+/** The 4 real `employmentType` enum values (tenant-runtime `CreateEmployeeDto`/`UpdateEmployeeDto`/
+ *  Prisma schema). Shared by the edit form's select (Task 3b) and the create form's select/validation
+ *  (Task 4b) so both stay in lockstep with the backend enum — a single source of truth instead of two
+ *  copies drifting apart. */
+export const EMPLOYMENT_TYPES = ['UMOWA_O_PRACE', 'UMOWA_ZLECENIE', 'UMOWA_O_DZIELO', 'B2B'] as const
+
+export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number]
+
 const PESEL_RE = /^\d{11}$/
 
 /** Parse the raw etat input to a finite number, or null when blank/NaN (a cleared field). */
@@ -170,6 +178,113 @@ export function buildEmployeePatch(
 
   const pesel = form.pesel.trim()
   if (PESEL_RE.test(pesel)) body.pesel = pesel
+
+  return body
+}
+
+/**
+ * Controlled-input state for the HR/ADMIN "Dodaj pracownika" create form
+ * (components/employees/employee-add-dialog.tsx, Task 4b). Unlike the edit form, EVERY field starts
+ * blank/default here — there is no `original` profile to seed from, this is a brand-new employee.
+ * `etat`/`qualifications` need the same string→typed coercion as the edit form, done by
+ * `buildEmployeeCreate` below. `pesel` is required (not write-only-optional like the edit form,
+ * because the backend's `CreateEmployeeDto` requires it on every new employee).
+ */
+export interface EmployeeCreateFormState {
+  firstName: string
+  lastName: string
+  position: string
+  employmentType: string
+  unitId: string
+  /** `type="date"` input value, e.g. "2026-07-13". */
+  hiredAt: string
+  /** Raw text-input value for the etat number field; blank = "omit, let the backend default apply". */
+  etat: string
+  /** Comma-separated qualifications, e.g. "Prawo jazdy kat. B, Obsługa wózka widłowego". */
+  qualifications: string
+  pesel: string
+}
+
+/** Body sent to `POST /api/employees` — the backend's `CreateEmployeeDto`. */
+export interface EmployeeCreateBody {
+  firstName: string
+  lastName: string
+  position: string
+  employmentType: EmploymentType | string
+  unitId: string
+  pesel: string
+  hiredAt: string
+  etat?: number
+  qualifications?: string[]
+}
+
+/**
+ * Pure validator + builder for the `POST /api/employees` body — mirrors `buildEmployeePatch`'s
+ * coercion rules but for a full CREATE (every required field must be present, not just "changed").
+ * Returns `{ error }` with a Polish message for the FIRST validation failure encountered (so the
+ * caller can show one clear message rather than a list), or the ready-to-POST body otherwise.
+ *
+ * Required: firstName/lastName/position (trimmed, non-empty), employmentType (one of the 4 real
+ * enum values), unitId (non-empty — the raw select value, a uuid in practice), pesel (exactly 11
+ * digits), hiredAt (non-empty AND a parseable date — catches an accidentally-cleared date input).
+ * Optional: etat (if the field is non-blank, must be a finite number in 0..1; omitted entirely when
+ * blank so the backend's own default applies — mirrors buildEmployeePatch's "cleared ⇒ omit" rule),
+ * qualifications (split on commas, trimmed, empties dropped; omitted entirely when the result is empty
+ * so the backend doesn't receive a pointless `[]`).
+ */
+export function buildEmployeeCreate(
+  form: EmployeeCreateFormState,
+): EmployeeCreateBody | { error: string } {
+  const firstName = form.firstName.trim()
+  const lastName = form.lastName.trim()
+  const position = form.position.trim()
+  if (!firstName || !lastName || !position) {
+    return { error: 'Imię, nazwisko i stanowisko są wymagane.' }
+  }
+
+  if (!(EMPLOYMENT_TYPES as readonly string[]).includes(form.employmentType)) {
+    return { error: 'Wybierz typ umowy.' }
+  }
+
+  const unitId = form.unitId.trim()
+  if (!unitId) {
+    return { error: 'Wybierz jednostkę organizacyjną.' }
+  }
+
+  const pesel = form.pesel.trim()
+  if (!PESEL_RE.test(pesel)) {
+    return { error: 'PESEL musi się składać z dokładnie 11 cyfr.' }
+  }
+
+  const hiredAt = form.hiredAt.trim()
+  if (!hiredAt || Number.isNaN(new Date(hiredAt).getTime())) {
+    return { error: 'Data zatrudnienia jest wymagana.' }
+  }
+
+  const body: EmployeeCreateBody = {
+    firstName,
+    lastName,
+    position,
+    employmentType: form.employmentType,
+    unitId,
+    pesel,
+    hiredAt,
+  }
+
+  const etatRaw = form.etat.trim()
+  if (etatRaw !== '') {
+    const etat = Number(etatRaw)
+    if (!Number.isFinite(etat) || etat < 0 || etat > 1) {
+      return { error: 'Etat musi być liczbą w zakresie 0–1.' }
+    }
+    body.etat = etat
+  }
+
+  const qualifications = form.qualifications
+    .split(',')
+    .map((q) => q.trim())
+    .filter(Boolean)
+  if (qualifications.length > 0) body.qualifications = qualifications
 
   return body
 }

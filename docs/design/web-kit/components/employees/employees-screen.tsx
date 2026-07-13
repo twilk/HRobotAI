@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { EmployeesTable, type Employee } from '@/components/employees/employees-table'
 import { EmployeesEmpty } from '@/components/employees/employees-empty'
+import { EmployeeAddDialog } from '@/components/employees/employee-add-dialog'
 import { IconPlus, IconSearch } from '@/components/icons'
 import { unitName } from '@/lib/demo-locations'
 
@@ -44,34 +45,62 @@ function toEmployee(e: ApiEmployee): Employee {
   }
 }
 
+export interface EmployeesScreenProps {
+  /** HR/ADMIN_KLIENTA session (computed server-side in app/(tenant)/pracownicy/page.tsx from the
+   *  real `hrobot_roles` claim, mirroring the [id] profile page's `canManage`). Gates the "Dodaj
+   *  pracownika" affordance (Task 4b) — a MANAGER/PRACOWNIK never sees the button or the form. */
+  canManage?: boolean
+}
+
 /**
  * Real employee roster: fetches the tenant-runtime roster through the same-origin /api/employees
  * proxy (cookie-authenticated), so Pracownicy shows the SAME people as Grafik — not a static mock.
  */
-export function EmployeesScreen() {
+export function EmployeesScreen({ canManage }: EmployeesScreenProps) {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [addedMessage, setAddedMessage] = useState<string | null>(null)
 
+  // Tied to the component's lifetime: a re-fetch triggered after a create can resolve after unmount
+  // (mirrors employee-edit-form.tsx's cancelledRef guard).
+  const cancelledRef = useRef(false)
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const res = await fetch('/api/employees', { cache: 'no-store' })
-        if (!res.ok) throw new Error(`Nie udało się pobrać pracowników (HTTP ${res.status}).`)
-        const rows = (await res.json()) as ApiEmployee[]
-        if (!cancelled) setEmployees(rows.map(toEmployee))
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
+    cancelledRef.current = false
     return () => {
-      cancelled = true
+      cancelledRef.current = true
     }
   }, [])
+
+  const fetchEmployees = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/employees', { cache: 'no-store' })
+      if (!res.ok) throw new Error(`Nie udało się pobrać pracowników (HTTP ${res.status}).`)
+      const rows = (await res.json()) as ApiEmployee[]
+      if (!cancelledRef.current) setEmployees(rows.map(toEmployee))
+    } catch (err) {
+      if (!cancelledRef.current) setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      if (!cancelledRef.current) setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchEmployees()
+  }, [fetchEmployees])
+
+  function handleCreated() {
+    setAdding(false)
+    setAddedMessage('Dodano pracownika.')
+    // Re-fetch rather than optimistically prepending the 201 response — this keeps the roster's
+    // sort order/derived fields (unit name, contract label) consistent with a real GET, and is the
+    // one source of truth the rest of this screen already trusts.
+    fetchEmployees()
+  }
 
   const unitCount = useMemo(() => new Set(employees.map((e) => e.unit)).size, [employees])
   const filtered = useMemo(() => {
@@ -89,7 +118,16 @@ export function EmployeesScreen() {
         {error}
       </div>
     )
-  if (employees.length === 0) return <EmployeesEmpty />
+  if (employees.length === 0)
+    return (
+      <div className="max-w-[1120px] mx-auto">
+        {canManage && adding ? (
+          <EmployeeAddDialog onCancel={() => setAdding(false)} onCreated={handleCreated} />
+        ) : (
+          <EmployeesEmpty canManage={canManage} onAdd={() => setAdding(true)} />
+        )}
+      </div>
+    )
 
   return (
     <div className="max-w-[1120px] mx-auto">
@@ -111,12 +149,31 @@ export function EmployeesScreen() {
               className="h-10 pl-9 pr-3 w-[230px] rounded-sm border border-line-strong bg-card text-sm text-ink focus:outline-none focus:border-accent"
             />
           </div>
-          <Button className="h-10 px-3.5 text-sm">
-            <IconPlus className="w-[17px] h-[17px]" strokeWidth={1.8} />
-            Dodaj pracownika
-          </Button>
+          {/* "Dodaj pracownika" ONLY for an HR/ADMIN_KLIENTA session (canManage, computed
+              server-side in app/(tenant)/pracownicy/page.tsx from the real hrobot_roles claim) — a
+              MANAGER/PRACOWNIK never sees this button at all. */}
+          {canManage ? (
+            <Button className="h-10 px-3.5 text-sm" onClick={() => setAdding(true)}>
+              <IconPlus className="w-[17px] h-[17px]" strokeWidth={1.8} />
+              Dodaj pracownika
+            </Button>
+          ) : null}
         </div>
       </div>
+
+      {addedMessage ? (
+        <div
+          role="status"
+          className="mb-4 rounded-lg border border-verified/30 bg-verified/[0.06] px-4 py-3 text-[13.5px] text-ink"
+        >
+          {addedMessage}
+        </div>
+      ) : null}
+
+      {canManage && adding ? (
+        <EmployeeAddDialog onCancel={() => setAdding(false)} onCreated={handleCreated} />
+      ) : null}
+
       <EmployeesTable employees={filtered} />
     </div>
   )

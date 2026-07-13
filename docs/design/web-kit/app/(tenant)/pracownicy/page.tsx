@@ -11,10 +11,13 @@ export default async function PracownicyPage() {
   const tenant = { name: '4Mobility sp. z o.o.', slug: '4mobility.hrobot.ai' }
   const user = session?.user ?? { name: 'Użytkownik', role: '—', initials: '?' }
   const roles: Role[] = session?.roles ?? []
+  // Only HR/ADMIN_KLIENTA may create employees (tenant-runtime POST /employees 403s everyone else) —
+  // mirror the same gate the [id] profile page uses for "Edytuj".
+  const canManage = roles.some((r) => r === 'HR' || r === 'ADMIN_KLIENTA')
 
   return (
     <AppShell activeHref="/pracownicy" title="Pracownicy" tenant={tenant} user={user} roles={roles}>
-      <EmployeesScreen />
+      <EmployeesScreen canManage={canManage} />
     </AppShell>
   )
 }

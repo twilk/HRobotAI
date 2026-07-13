@@ -5,12 +5,12 @@ import { Button } from '@/components/ui/button'
 import { Field, Input } from '@/components/ui/input'
 import { contractLabel } from '@/components/employees/employees-screen'
 import { DEMO_UNIT_NAMES, unitName } from '@/lib/demo-locations'
-import { buildEmployeePatch, type EmployeeEditFormState, type EmployeeProfileData } from '@/lib/employee-profile'
-
-/** The 4 real `employmentType` enum values (tenant-runtime `UpdateEmployeeDto`/Prisma schema).
- *  Labelled with the exact same `contractLabel` map employees-screen.tsx and the read-only profile
- *  card already use, so the select's wording matches what's shown elsewhere. */
-const EMPLOYMENT_TYPES = ['UMOWA_O_PRACE', 'UMOWA_ZLECENIE', 'UMOWA_O_DZIELO', 'B2B'] as const
+import {
+  buildEmployeePatch,
+  EMPLOYMENT_TYPES,
+  type EmployeeEditFormState,
+  type EmployeeProfileData,
+} from '@/lib/employee-profile'
 
 /** Organizational units for the unitId select. `Unit` has no list endpoint yet (same gap as
  *  lib/demo-locations.ts's location map), so this reuses the exact same DEMO_UNIT_NAMES record the

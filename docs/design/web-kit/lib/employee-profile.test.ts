@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildEmployeeCreate,
   buildEmployeePatch,
   employeeInitials,
   etatLabel,
   formatHiredAt,
   maskPesel,
   profileStatusFromHttpStatus,
+  type EmployeeCreateFormState,
   type EmployeeEditFormState,
   type EmployeeProfileData,
 } from './employee-profile'
@@ -180,5 +182,114 @@ describe('buildEmployeePatch', () => {
       employmentType: 'B2B',
       unitId: '053774f2-63fb-565c-b142-77b17f456ec7',
     })
+  })
+})
+
+describe('buildEmployeeCreate', () => {
+  // A fully-filled, valid "Dodaj pracownika" form — every other case below mutates ONE field off
+  // this baseline so each test isolates exactly the validation rule it's checking.
+  const validForm: EmployeeCreateFormState = {
+    firstName: 'Anna',
+    lastName: 'Nowak',
+    position: 'Kierowca',
+    employmentType: 'UMOWA_O_PRACE',
+    unitId: '0276f4fd-43a2-51eb-b450-c48afe912fd9',
+    hiredAt: '2026-07-13',
+    etat: '1',
+    qualifications: 'Prawo jazdy kat. B, Obsługa wózka widłowego',
+    pesel: '12345678901',
+  }
+
+  it('builds the full POST body for a valid, fully-filled form', () => {
+    expect(buildEmployeeCreate(validForm)).toEqual({
+      firstName: 'Anna',
+      lastName: 'Nowak',
+      position: 'Kierowca',
+      employmentType: 'UMOWA_O_PRACE',
+      unitId: '0276f4fd-43a2-51eb-b450-c48afe912fd9',
+      pesel: '12345678901',
+      hiredAt: '2026-07-13',
+      etat: 1,
+      qualifications: ['Prawo jazdy kat. B', 'Obsługa wózka widłowego'],
+    })
+  })
+
+  it('trims firstName/lastName/position before sending', () => {
+    const body = buildEmployeeCreate({ ...validForm, firstName: '  Anna  ', lastName: ' Nowak ' })
+    expect('error' in body).toBe(false)
+    if (!('error' in body)) {
+      expect(body.firstName).toBe('Anna')
+      expect(body.lastName).toBe('Nowak')
+    }
+  })
+
+  it('errors when firstName is blank/whitespace-only', () => {
+    expect(buildEmployeeCreate({ ...validForm, firstName: '' })).toHaveProperty('error')
+    expect(buildEmployeeCreate({ ...validForm, firstName: '   ' })).toHaveProperty('error')
+  })
+
+  it('errors when lastName is blank', () => {
+    expect(buildEmployeeCreate({ ...validForm, lastName: '' })).toHaveProperty('error')
+  })
+
+  it('errors when position is blank', () => {
+    expect(buildEmployeeCreate({ ...validForm, position: '' })).toHaveProperty('error')
+  })
+
+  it('errors when employmentType is not one of the 4 real enum values', () => {
+    expect(buildEmployeeCreate({ ...validForm, employmentType: '' })).toHaveProperty('error')
+    expect(buildEmployeeCreate({ ...validForm, employmentType: 'NOT_A_TYPE' })).toHaveProperty('error')
+  })
+
+  it('errors when unitId is blank (no unit selected)', () => {
+    expect(buildEmployeeCreate({ ...validForm, unitId: '' })).toHaveProperty('error')
+    expect(buildEmployeeCreate({ ...validForm, unitId: '   ' })).toHaveProperty('error')
+  })
+
+  it('errors when hiredAt is blank', () => {
+    expect(buildEmployeeCreate({ ...validForm, hiredAt: '' })).toHaveProperty('error')
+  })
+
+  it('errors when hiredAt does not parse as a date', () => {
+    expect(buildEmployeeCreate({ ...validForm, hiredAt: 'not-a-date' })).toHaveProperty('error')
+  })
+
+  it('errors when pesel is missing entirely', () => {
+    expect(buildEmployeeCreate({ ...validForm, pesel: '' })).toHaveProperty('error')
+  })
+
+  it('errors when pesel is not exactly 11 digits (too short, too long, non-numeric)', () => {
+    expect(buildEmployeeCreate({ ...validForm, pesel: '123' })).toHaveProperty('error')
+    expect(buildEmployeeCreate({ ...validForm, pesel: '123456789012' })).toHaveProperty('error')
+    expect(buildEmployeeCreate({ ...validForm, pesel: 'abcdefghijk' })).toHaveProperty('error')
+  })
+
+  it('errors when etat is provided but out of the 0..1 range', () => {
+    expect(buildEmployeeCreate({ ...validForm, etat: '1.5' })).toHaveProperty('error')
+    expect(buildEmployeeCreate({ ...validForm, etat: '-0.1' })).toHaveProperty('error')
+  })
+
+  it('errors when etat is provided but not a finite number', () => {
+    expect(buildEmployeeCreate({ ...validForm, etat: 'abc' })).toHaveProperty('error')
+  })
+
+  it('omits etat entirely when the field is left blank — the backend default applies', () => {
+    const body = buildEmployeeCreate({ ...validForm, etat: '' })
+    expect('error' in body).toBe(false)
+    expect(body).not.toHaveProperty('etat')
+  })
+
+  it('splits qualifications on commas and trims each entry', () => {
+    const body = buildEmployeeCreate({ ...validForm, qualifications: ' Prawo jazdy kat. B ,  Spawanie ' })
+    expect('error' in body).toBe(false)
+    if (!('error' in body)) {
+      expect(body.qualifications).toEqual(['Prawo jazdy kat. B', 'Spawanie'])
+    }
+  })
+
+  it('omits qualifications entirely when the field is blank — no pointless empty array', () => {
+    const body = buildEmployeeCreate({ ...validForm, qualifications: '' })
+    expect('error' in body).toBe(false)
+    expect(body).not.toHaveProperty('qualifications')
   })
 })
