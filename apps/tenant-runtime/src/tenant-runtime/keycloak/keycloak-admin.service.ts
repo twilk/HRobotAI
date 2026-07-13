@@ -89,10 +89,14 @@ export class KeycloakAdminService {
    * stored as User.keycloakSub.
    *
    * KC ignores any id in the POST body, so the kcId MUST be read back: primarily from the
-   * Location header of the 201 response; a 409 (already exists, e.g. a retried invite) carries
-   * no Location, so this falls back to an exact-email lookup.
+   * Location header of the 201 response (`created: true` — this call FRESHLY made the KC user);
+   * a 409 (already exists, e.g. a retried invite OR — see `UsersService.invite`'s Fix 1(a)
+   * pre-check — someone else's unrelated pre-existing email) carries no Location, so this falls
+   * back to an exact-email lookup and reports `created: false`. Callers MUST NOT treat the two as
+   * interchangeable: `created: false` means the returned `kcId` belongs to a user this call did
+   * NOT create, so it must never be disabled/deleted as invite-failure compensation (see Fix 1(b)).
    */
-  async createUser(realm: string, email: string): Promise<string> {
+  async createUser(realm: string, email: string): Promise<{ kcId: string; created: boolean }> {
     const token = await this.getAdminToken()
     const base = this.realmBase(realm)
 
@@ -104,6 +108,7 @@ export class KeycloakAdminService {
     let kcId = ((createResp.headers as { get(name: string): string | null }).get('Location') ?? '')
       .split('/')
       .pop() ?? ''
+    const created = kcId !== ''
 
     if (!kcId) {
       const lookupResp = await this.kc(
@@ -118,7 +123,7 @@ export class KeycloakAdminService {
     if (!kcId) {
       throw new Error(`keycloak createUser: could not resolve kcId for ${email} in realm ${realm}`)
     }
-    return kcId
+    return { kcId, created }
   }
 
   /**

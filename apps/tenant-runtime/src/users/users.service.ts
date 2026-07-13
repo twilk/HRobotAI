@@ -216,15 +216,23 @@ export class UsersService {
    * call — same JWT-cache-window posture as every other privileged mutation in this class, so a
    * demoted admin holding a still-valid ADMIN_KLIENTA JWT cannot use it to invite new users.
    *
-   * Steps: (1) create the Keycloak login → `kcId`; (2) create the tenant `User` row (`id` is
+   * Steps: (0) [FIX 1(a)] reject BEFORE touching Keycloak at all if a tenant `User` already exists
+   * for `email` — `KeycloakAdminService.createUser`'s 409-tolerant fallback would otherwise resolve
+   * to that EXISTING (unrelated) user's `kcId`, and reaching the create/compensate flow below with
+   * that `kcId` could disable a currently-active, unrelated login (see step (3) below); (1) create
+   * the Keycloak login → `{ kcId, created }`; (2) create the tenant `User` row (`id` is
    * APP-SUPPLIED — `randomUUID()`, since `User.id` has no Prisma `@default` — with
    * `keycloakSub: kcId` read back from Keycloak's `Location` header, never trusted from the request
    * body); (3) GRANT the initial role (see {@link grant}); (4) best-effort email the password-setup
    * link (`KeycloakAdminService.sendPasswordSetupEmail` already swallows its own failures).
    *
    * If step (2) fails AFTER the KC user was already created, the KC user is DISABLED (never
-   * hard-deleted — LOCKED DECISION) and the failure is logged for reconciliation; a dedicated
-   * reconciliation job/endpoint is out of scope for this stage.
+   * hard-deleted — LOCKED DECISION) and the failure is logged for reconciliation — but [FIX 1(b)]
+   * ONLY when `created` is `true`, i.e. THIS call actually just created that KC user itself. If
+   * `createUser` instead resolved an EXISTING kcId (`created: false` — the 409 fallback path; should
+   * be rare after step (0), but still possible under a genuine concurrent double-invite), the
+   * compensation is skipped: that kcId is not this call's to disable. A dedicated reconciliation
+   * job/endpoint is out of scope for this stage.
    */
   async invite(
     client: TenantClient,
@@ -239,7 +247,12 @@ export class UsersService {
     }
     await this.requireRealAdmin(client, actor)
 
-    const kcId = await this.keycloak.createUser(realm, email)
+    const existing = await client.user.findFirst({ where: { email } })
+    if (existing) {
+      throw new ConflictException('Użytkownik o tym adresie e-mail już istnieje')
+    }
+
+    const { kcId, created } = await this.keycloak.createUser(realm, email)
 
     let user: UserRow
     try {
@@ -248,12 +261,19 @@ export class UsersService {
         select: SAFE_USER_SELECT,
       })
     } catch (err) {
-      await this.keycloak.setEnabled(realm, kcId, false).catch((compErr: unknown) => {
+      if (created) {
+        await this.keycloak.setEnabled(realm, kcId, false).catch((compErr: unknown) => {
+          this.logger.error(
+            { compErr, kcId, realm, email },
+            'invite: compensating setEnabled(false) failed after a DB User-create failure — this Keycloak user needs manual reconciliation',
+          )
+        })
+      } else {
         this.logger.error(
-          { compErr, kcId, realm, email },
-          'invite: compensating setEnabled(false) failed after a DB User-create failure — this Keycloak user needs manual reconciliation',
+          { kcId, realm, email },
+          'invite: DB User-create failed after createUser() resolved a PRE-EXISTING Keycloak user (created:false) — not disabling it, it is not this call\'s user',
         )
-      })
+      }
       this.mapWriteError(err)
     }
 

@@ -59,9 +59,9 @@ describe('KeycloakAdminService', () => {
   })
 
   describe('createUser', () => {
-    it('reads the kcId from the Location header of a 201', async () => {
-      const kcId = await service.createUser(REALM, 'new@acme.com')
-      expect(kcId).toBe('kc-user-1')
+    it('reads the kcId from the Location header of a 201 and reports created:true', async () => {
+      const result = await service.createUser(REALM, 'new@acme.com')
+      expect(result).toEqual({ kcId: 'kc-user-1', created: true })
 
       const createCalls = callsTo((url, init) => init.method === 'POST' && /\/users$/.test(url))
       expect(createCalls).toHaveLength(1)
@@ -72,14 +72,14 @@ describe('KeycloakAdminService', () => {
       })
     })
 
-    it('falls back to an exact-email lookup when a 409 carries no Location (retried invite)', async () => {
+    it('falls back to an exact-email lookup when a 409 carries no Location (retried invite), and reports created:false', async () => {
       mockFetch.mockImplementation((url: string, init: FetchInit = {}) => {
         if (init.method === 'POST' && /\/users$/.test(url)) return res({ status: 409 })
         return happyPathFetch(url, init)
       })
 
-      const kcId = await service.createUser(REALM, 'existing@acme.com')
-      expect(kcId).toBe('kc-user-1')
+      const result = await service.createUser(REALM, 'existing@acme.com')
+      expect(result).toEqual({ kcId: 'kc-user-1', created: false })
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/users?email=existing%40acme.com&exact=true'),
         expect.objectContaining({ method: 'GET' }),

@@ -41,7 +41,7 @@ describe('UsersService', () => {
   beforeEach(async () => {
     audit = { log: jest.fn().mockResolvedValue(undefined) }
     keycloak = {
-      createUser: jest.fn().mockResolvedValue('kc-new-user'),
+      createUser: jest.fn().mockResolvedValue({ kcId: 'kc-new-user', created: true }),
       assignRealmRole: jest.fn().mockResolvedValue(undefined),
       removeRealmRole: jest.fn().mockResolvedValue(undefined),
       setEnabled: jest.fn().mockResolvedValue(undefined),
@@ -59,7 +59,7 @@ describe('UsersService', () => {
     service = module.get(UsersService)
     client = makeClient()
     jest.clearAllMocks()
-    keycloak.createUser.mockResolvedValue('kc-new-user')
+    keycloak.createUser.mockResolvedValue({ kcId: 'kc-new-user', created: true })
     // `guardedAdminMutation` runs its count-check + mutate callback inside `client.$transaction(fn, opts)`;
     // for these mocks `tx` is just `client` itself, so `tx.userRole.findMany`/`tx.user.update` etc. hit the
     // same jest mocks the tests already set up on `client`.
@@ -71,7 +71,14 @@ describe('UsersService', () => {
 
   describe('invite', () => {
     beforeEach(() => {
-      client.user.findFirst.mockResolvedValue({ id: 'admin-db-id', active: true, roles: [{ role: Role.ADMIN_KLIENTA, unitId: null }] })
+      // `resolveActingUser` (via `requireRealAdmin`) AND Fix 1(a)'s pre-existing-email check both go
+      // through `client.user.findFirst` — the actor lookup is keyed by `keycloakSub`, the duplicate-
+      // email check by `email`, so a single mock that only recognizes the actor's `keycloakSub` filter
+      // and defaults to "no existing user" for every other call keeps both paths independently testable.
+      client.user.findFirst.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+        if ('keycloakSub' in where) return { id: 'admin-db-id', active: true, roles: [{ role: Role.ADMIN_KLIENTA, unitId: null }] }
+        return null
+      })
     })
 
     it('happy path: creates the KC user, the tenant User (keycloakSub=kcId), GRANTs the role in order, and emails the setup link', async () => {
@@ -79,7 +86,7 @@ describe('UsersService', () => {
       client.userRole.create.mockResolvedValue({})
 
       const calls: string[] = []
-      keycloak.createUser.mockImplementation(async () => { calls.push('kc.createUser'); return 'kc-new-user' })
+      keycloak.createUser.mockImplementation(async () => { calls.push('kc.createUser'); return { kcId: 'kc-new-user', created: true } })
       client.user.create.mockImplementation(async () => { calls.push('db.user.create'); return { id: 'user-1', email: 'new@acme.com', active: true, createdAt: new Date(), roles: [] } })
       client.userRole.create.mockImplementation(async () => { calls.push('db.userRole.create') })
       keycloak.assignRealmRole.mockImplementation(async () => { calls.push('kc.assignRealmRole') })
@@ -138,6 +145,31 @@ describe('UsersService', () => {
 
       expect(client.userRole.create).toHaveBeenCalledWith({ data: { userId: 'user-1', role: Role.MANAGER, unitId: null } })
       expect(keycloak.sendPasswordSetupEmail).not.toHaveBeenCalled()
+    })
+
+    it('FIX 1(a): 409s BEFORE any Keycloak call when a tenant User already exists for the email, and never disables anyone', async () => {
+      client.user.findFirst.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+        if ('keycloakSub' in where) return { id: 'admin-db-id', active: true, roles: [{ role: Role.ADMIN_KLIENTA, unitId: null }] }
+        if ('email' in where) return { id: 'existing-user-id', email: 'dup@acme.com' }
+        return null
+      })
+
+      await expect(service.invite(asClient(client), ADMIN, REALM, 'dup@acme.com', Role.MANAGER)).rejects.toThrow(ConflictException)
+
+      expect(keycloak.createUser).not.toHaveBeenCalled()
+      expect(client.user.create).not.toHaveBeenCalled()
+      expect(keycloak.setEnabled).not.toHaveBeenCalled()
+    })
+
+    it('FIX 1(b): when createUser resolves an EXISTING kcId (created:false) and the DB write then fails, setEnabled(false) is NOT called', async () => {
+      keycloak.createUser.mockResolvedValue({ kcId: 'kc-existing-unrelated-user', created: false })
+      client.user.create.mockRejectedValue(p2002)
+
+      await expect(service.invite(asClient(client), ADMIN, REALM, 'dup@acme.com', Role.MANAGER)).rejects.toThrow(ConflictException)
+
+      expect(keycloak.setEnabled).not.toHaveBeenCalled()
+      expect(client.userRole.create).not.toHaveBeenCalled()
+      expect(keycloak.assignRealmRole).not.toHaveBeenCalled()
     })
 
     it('403s BEFORE any Keycloak call for a non-admin actor', async () => {
