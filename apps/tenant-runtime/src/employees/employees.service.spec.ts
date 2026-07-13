@@ -196,6 +196,31 @@ describe('EmployeesService', () => {
       expect(profile.peselLast4).toBe('1359')
     })
 
+    it('still resolves (peselLast4 omitted) when decrypt throws for a global actor', async () => {
+      client.employee.findUnique.mockResolvedValue({
+        id: 'e1',
+        firstName: 'Anna',
+        lastName: 'Kowalska',
+        position: 'Kasjer',
+        employmentType: 'UOP',
+        hiredAt: new Date('2020-01-01'),
+        unitId: 'u9',
+        etat: 1,
+        qualifications: [],
+        pesel: 'CORRUPT',
+      })
+      encryption.decrypt.mockImplementation(() => {
+        throw new Error('DecryptionError: bad ciphertext')
+      })
+
+      const profile = await service.getById(asClient(client), HR, 'e1', 'tenant-1')
+
+      expect(profile.id).toBe('e1')
+      expect(profile.firstName).toBe('Anna')
+      expect(profile.peselLast4).toBeUndefined()
+      expect(profile.pesel).toBeUndefined()
+    })
+
     it('does not include peselLast4 for a non-global in-scope reader', async () => {
       client.employee.findUnique.mockResolvedValue({
         id: 'e4',

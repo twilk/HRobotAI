@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common'
+import { ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
 import { decryptEmployeePesel } from '@hrobot/db'
 import { EncryptionService } from '@hrobot/shared'
@@ -34,6 +34,8 @@ const SAFE_SELECT = {
 
 @Injectable()
 export class EmployeesService {
+  private readonly logger = new Logger(EmployeesService.name)
+
   constructor(
     private readonly audit: AuditService,
     private readonly encryption: EncryptionService,
@@ -51,6 +53,18 @@ export class EmployeesService {
   }
 
   /**
+   * Unit IDs a non-global actor may see: their managed unit(s) if they manage any, otherwise their
+   * own unit. Empty when they manage nothing and have no own Employee record — callers must treat
+   * `[]` as "see nothing" (a `where: { unitId: { in: [] } }` matches zero rows), never as a bypass.
+   */
+  private async resolveScopeUnits(client: TenantClient, actor: EmployeeActor): Promise<string[]> {
+    const units = await managedUnitIds(client, actor.userId)
+    if (units.length > 0) return units
+    const own = await this.ownUnitId(client, actor.userId)
+    return own ? [own] : []
+  }
+
+  /**
    * Role-scoped employee roster. HR/ADMIN see everyone; a MANAGER sees their managed unit(s); a plain
    * PRACOWNIK sees their own unit. PESEL-free for every role — the single-employee profile (Task 2)
    * is the only place a masked `peselLast4` may appear.
@@ -59,8 +73,7 @@ export class EmployeesService {
     if (isGlobal(actor.roles)) {
       return client.employee.findMany({ orderBy: { hiredAt: 'desc' }, select: SAFE_SELECT })
     }
-    const units = await managedUnitIds(client, actor.userId)
-    const scopeUnits = units.length > 0 ? units : [await this.ownUnitId(client, actor.userId)].filter((u): u is string => !!u)
+    const scopeUnits = await this.resolveScopeUnits(client, actor)
     return client.employee.findMany({ where: { unitId: { in: scopeUnits } }, orderBy: { hiredAt: 'desc' }, select: SAFE_SELECT })
   }
 
@@ -76,8 +89,7 @@ export class EmployeesService {
     const emp = await client.employee.findUnique({ where: { id } })
     if (!emp) throw new NotFoundException(`Employee ${id} not found`)
     if (!isGlobal(actor.roles)) {
-      const units = await managedUnitIds(client, actor.userId)
-      const inScope = units.length > 0 ? units.includes(emp.unitId) : emp.unitId === (await this.ownUnitId(client, actor.userId))
+      const inScope = (await this.resolveScopeUnits(client, actor)).includes(emp.unitId)
       if (!inScope) throw new ForbiddenException('Employee is outside your scope')
     }
     const safe: Record<string, unknown> = {}
@@ -88,6 +100,7 @@ export class EmployeesService {
         safe.peselLast4 = plain.slice(-4)
       } catch {
         // Decryption failure (bad key rotation state, corrupt ciphertext, …) → omit peselLast4, never throw.
+        this.logger.warn(`peselLast4 decrypt failed for employee ${id}`)
       }
     }
     return safe
