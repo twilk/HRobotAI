@@ -9,17 +9,15 @@ import { Badge } from '@/components/ui/badge'
 import { IconCheck, IconClose, IconSearch, IconSparkles, IconShieldCheck } from '@/components/icons'
 import {
   aiProposalApi,
-  fetchMyEmployeeId,
   aiProposalActions,
   proposalStateLabel,
-  isMineToConsent,
   shiftLabelOf,
   buildProposalEnrichMaps,
   enrichProposalsWith,
   AiGrafikApiError,
   type EnrichedProposal,
-  type AiProposal,
   type AiProposalState,
+  type ProposalActionKind,
   type VacatedShift,
 } from '@/lib/ai-grafik'
 import { isoDate, addDays, mondayOf } from '@/lib/grafik'
@@ -58,18 +56,23 @@ function defaultScanRange(): { from: string; to: string } {
   return { from: isoDate(monday), to: isoDate(addDays(monday, 6)) }
 }
 
-type Action = 'approve' | 'reject' | 'accept' | 'decline'
+// aiProposalActions(state, 'manager') only ever yields 'approve'/'reject', but its return type is the
+// broader ProposalActionKind (shared with the employee-consent actions used by ai-consent-section.tsx)
+// — accept that wider type here rather than narrowing/casting at the call site.
+type Action = ProposalActionKind
 
 /**
- * AI proposal inbox (Task 1.5) — mirrors components/swaps/swap-workspace.tsx: ~4s polling, per-state
- * action buttons, a `run(id, action)` dispatcher, state badges. Three sections:
+ * AI proposal MANAGER inbox — mirrors components/swaps/swap-workspace.tsx: ~4s polling, per-state
+ * action buttons, a `run(id, action)` dispatcher, state badges. Manager-only (rendered from
+ * app/(tenant)/ai-grafik-manager/page.tsx, gated to canManage there); two sections:
  *
- *   A. "Skrzynka managera" (canManage only) — proposals in PENDING_MANAGER get Approve/Reject;
- *      DRAFT/ESCALATED proposals are listed with their status only (no action wired for those yet).
- *   B. "Twoja propozycja zmiany" — the current caller's own active PENDING consent request, if any
- *      (isMineToConsent). Visible to EVERY role, including a plain PRACOWNIK.
- *   C. "Wykrywanie wypadnięć" (canManage only) — scan a date range for vacated shifts, then create a
- *      replacement proposal per shift. This is what seeds the manager inbox in the demo.
+ *   A. "Skrzynka managera" — proposals in PENDING_MANAGER get Approve/Reject; DRAFT/ESCALATED
+ *      proposals are listed with their status only (no action wired for those yet).
+ *   B. "Wykrywanie wypadnięć" — scan a date range for vacated shifts, then create a replacement
+ *      proposal per shift. This is what seeds the manager inbox in the demo.
+ *
+ * The employee consent section ("a shift change is proposed to you") moved to
+ * components/ai-grafik/ai-consent-section.tsx, rendered on /zamiany — the PRACOWNIK-visible page.
  *
  * The backend never returns employee names (ids only); lib/ai-grafik.ts's aiProposalApi enriches
  * every proposal client-side. NEVER display PESEL/home — the backend already omits them everywhere
@@ -77,7 +80,6 @@ type Action = 'approve' | 'reject' | 'accept' | 'decline'
  */
 export function ProposalInbox({ canManage }: { canManage: boolean }) {
   const [managerInbox, setManagerInbox] = useState<EnrichedProposal[]>([])
-  const [myConsent, setMyConsent] = useState<EnrichedProposal[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   // In-flight action keys (`${id}:${action}`, or `create:${shiftId}`) — a Set rather than a single
@@ -106,31 +108,22 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
 
   const refresh = useCallback(async () => {
     try {
-      const meId = await fetchMyEmployeeId()
-      if (cancelledRef.current) return
-
-      // RAW lists (no per-call enrichment fetch) — the id→name/id→shift-label maps are built ONCE
+      // RAW list (no per-call enrichment fetch) — the id→name/id→shift-label maps are built ONCE
       // below and reused across every sub-list, instead of each list re-fetching /api/employees +
-      // /api/grafik/shifts on its own (was up to 4x per refresh tick; now exactly once).
-      const [mineRaw, managerRaw] = await Promise.all([
-        aiProposalApi.listProposalsRaw({ mine: true }),
-        canManage
-          ? Promise.all([
-              aiProposalApi.listProposalsRaw({ state: 'PENDING_MANAGER' }),
-              aiProposalApi.listProposalsRaw({ state: 'DRAFT' }),
-              aiProposalApi.listProposalsRaw({ state: 'ESCALATED' }),
-            ]).then(([pendingManager, draft, escalated]) => [...pendingManager, ...draft, ...escalated])
-          : Promise.resolve<AiProposal[]>([]),
-      ])
+      // /api/grafik/shifts on its own.
+      const managerRaw = canManage
+        ? await Promise.all([
+            aiProposalApi.listProposalsRaw({ state: 'PENDING_MANAGER' }),
+            aiProposalApi.listProposalsRaw({ state: 'DRAFT' }),
+            aiProposalApi.listProposalsRaw({ state: 'ESCALATED' }),
+          ]).then(([pendingManager, draft, escalated]) => [...pendingManager, ...draft, ...escalated])
+        : []
       if (cancelledRef.current) return
 
       const maps = await buildProposalEnrichMaps()
       if (cancelledRef.current) return
 
-      const mine = enrichProposalsWith(mineRaw, maps)
-      const manager = enrichProposalsWith(managerRaw, maps)
-      setMyConsent(mine.filter((p) => isMineToConsent(p, meId)))
-      setManagerInbox(manager)
+      setManagerInbox(enrichProposalsWith(managerRaw, maps))
       setError(null)
     } catch (e) {
       if (!cancelledRef.current) setError(actionErrorMessage(e))
@@ -167,12 +160,6 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
             break
           case 'reject':
             await aiProposalApi.managerDecision(id, false)
-            break
-          case 'accept':
-            await aiProposalApi.consent(id, true)
-            break
-          case 'decline':
-            await aiProposalApi.consent(id, false)
             break
         }
         await refresh()
@@ -263,58 +250,6 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
           {error}
         </div>
       )}
-
-      {/* Sekcja B: zgoda pracownika — widoczna dla każdej roli, w tym PRACOWNIKA */}
-      <section className="mb-8">
-        <h2 className="font-display font-bold text-[17px] text-navy mb-2.5">
-          Twoja propozycja zmiany — wymaga zgody
-        </h2>
-        {myConsent.length === 0 ? (
-          <EmptyRow text="Nie masz obecnie żadnej propozycji zastępstwa oczekującej na Twoją zgodę." />
-        ) : (
-          <Table>
-            <thead>
-              <tr>
-                <Th>Zmiana do objęcia</Th>
-                <Th>Status</Th>
-                <Th className="text-right pr-4">Twoja decyzja</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {myConsent.map((p) => {
-                const actions = aiProposalActions(p.state, 'employee')
-                return (
-                  <tr key={p.id}>
-                    <Td>
-                      <ShiftCell label={p.shiftLabel} sub={p.reason ?? 'Propozycja AI'} />
-                    </Td>
-                    <Td>
-                      <ProposalBadge state={p.state} />
-                    </Td>
-                    <Td className="text-right pr-4">
-                      <div className="inline-flex items-center gap-2 justify-end">
-                        {actions.map((a) => (
-                          <Button
-                            key={a.action}
-                            variant={a.action === 'decline' ? 'ghost' : 'primary'}
-                            className="h-8 px-3 text-[13px]"
-                            onClick={() => void run(p.id, a.action)}
-                            disabled={busy.has(`${p.id}:${a.action}`)}
-                          >
-                            {a.action === 'accept' && <IconCheck className="w-4 h-4" strokeWidth={2} />}
-                            {a.action === 'decline' && <IconClose className="w-4 h-4" strokeWidth={2} />}
-                            {a.label}
-                          </Button>
-                        ))}
-                      </div>
-                    </Td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </Table>
-        )}
-      </section>
 
       {canManage && (
         <>
