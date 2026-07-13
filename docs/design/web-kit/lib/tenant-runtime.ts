@@ -51,7 +51,12 @@ async function resolveAuthorization(req: Request): Promise<ResolvedAuth | null> 
   return null
 }
 
-const METHODS_WITH_BODY = new Set(['POST', 'PUT', 'PATCH'])
+// DELETE is included because `DELETE /uzytkownicy/:userId/roles` (revokeRole) carries its
+// `{role, unitId}` selector as the request BODY, not a path/query param (mirrors the DTO
+// `RoleAssignmentDto` shared with the POST grant route) — see UsersController.revokeRole. Every
+// prior DELETE proxied here (grafik shifts/demands/templates) sends no body, so including DELETE is a
+// pure superset: `req.text()` on a bodyless DELETE just resolves to `''`, forwarded as an empty string.
+const METHODS_WITH_BODY = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
 /**
  * Forward `req` to `${TENANT_RUNTIME_URL}/${backendPath}${search}`, preserving method/body and

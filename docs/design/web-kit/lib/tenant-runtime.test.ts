@@ -330,6 +330,21 @@ describe('proxyToTenantRuntime — forwarding', () => {
     expect(init.headers).toMatchObject({ 'content-type': 'application/json' })
   })
 
+  it('forwards a DELETE body with a JSON content-type (e.g. uzytkownicy revokeRole)', async () => {
+    const fetchFn = mockFetch(200, {})
+    const req = new Request('http://localhost/api/uzytkownicy/u1/roles', {
+      method: 'DELETE',
+      headers: { authorization: 'Bearer t' },
+      body: JSON.stringify({ role: 'MANAGER', unitId: 'unit-1' }),
+    })
+    const res = await proxyToTenantRuntime(req, 'uzytkownicy/u1/roles')
+    expect(res.status).toBe(200)
+    const init = fetchFn.mock.calls[0][1] as RequestInit
+    expect(init.method).toBe('DELETE')
+    expect(init.body).toBe(JSON.stringify({ role: 'MANAGER', unitId: 'unit-1' }))
+    expect(init.headers).toMatchObject({ 'content-type': 'application/json' })
+  })
+
   it('passes the upstream status + body through unchanged (e.g. INFEASIBLE / validation errors)', async () => {
     mockFetch(200, { status: 'INFEASIBLE', unmet: [{ demandId: 'd1', reason: 'no qualified staff' }] })
     const req = new Request('http://localhost/api/grafik/solve', {
