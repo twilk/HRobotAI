@@ -59,6 +59,11 @@ export interface EmployeesScreenProps {
 export function EmployeesScreen({ canManage }: EmployeesScreenProps) {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
+  // Distinct from `loading`: a post-create re-fetch must NOT trip the full-screen "Ładowanie…"
+  // early-return (which would unmount the header/search/table, drop scroll + focus, and re-announce
+  // the success banner). `refreshing` keeps the current roster on screen with only a subtle inline
+  // hint while the background GET runs.
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [adding, setAdding] = useState(false)
@@ -74,8 +79,11 @@ export function EmployeesScreen({ canManage }: EmployeesScreenProps) {
     }
   }, [])
 
-  const fetchEmployees = useCallback(async () => {
-    setLoading(true)
+  // `initial` = the mount fetch (blank screen → full-screen spinner is fine). Any later refetch
+  // (e.g. after a create) sets `refreshing` instead, so the current roster stays mounted.
+  const fetchEmployees = useCallback(async ({ initial }: { initial?: boolean } = {}) => {
+    if (initial) setLoading(true)
+    else setRefreshing(true)
     setError(null)
     try {
       const res = await fetch('/api/employees', { cache: 'no-store' })
@@ -85,12 +93,15 @@ export function EmployeesScreen({ canManage }: EmployeesScreenProps) {
     } catch (err) {
       if (!cancelledRef.current) setError(err instanceof Error ? err.message : String(err))
     } finally {
-      if (!cancelledRef.current) setLoading(false)
+      if (!cancelledRef.current) {
+        if (initial) setLoading(false)
+        else setRefreshing(false)
+      }
     }
   }, [])
 
   useEffect(() => {
-    fetchEmployees()
+    fetchEmployees({ initial: true })
   }, [fetchEmployees])
 
   function handleCreated() {
@@ -98,7 +109,8 @@ export function EmployeesScreen({ canManage }: EmployeesScreenProps) {
     setAddedMessage('Dodano pracownika.')
     // Re-fetch rather than optimistically prepending the 201 response — this keeps the roster's
     // sort order/derived fields (unit name, contract label) consistent with a real GET, and is the
-    // one source of truth the rest of this screen already trusts.
+    // one source of truth the rest of this screen already trusts. Uses `refreshing` (not `loading`)
+    // so the success banner + current table stay on screen instead of flashing the full spinner.
     fetchEmployees()
   }
 
@@ -136,6 +148,7 @@ export function EmployeesScreen({ canManage }: EmployeesScreenProps) {
           <h1 className="font-display font-extrabold text-[26px] tracking-tightish text-navy leading-tight">Pracownicy</h1>
           <p className="text-muted text-sm mt-1.5 whitespace-nowrap">
             {employees.length} osób · {unitCount} {unitCount === 1 ? 'jednostka organizacyjna' : 'jednostki organizacyjne'}
+            {refreshing ? <span className="text-muted-2"> · Odświeżanie…</span> : null}
           </p>
         </div>
         <div className="flex items-center gap-2.5">
@@ -174,7 +187,11 @@ export function EmployeesScreen({ canManage }: EmployeesScreenProps) {
         <EmployeeAddDialog onCancel={() => setAdding(false)} onCreated={handleCreated} />
       ) : null}
 
-      <EmployeesTable employees={filtered} />
+      {/* Subtle dimming while a background refresh runs — the table stays mounted (scroll/focus kept),
+          just visually de-emphasised, instead of being replaced by the full-screen spinner. */}
+      <div className={refreshing ? 'opacity-60 transition-opacity' : 'transition-opacity'} aria-busy={refreshing}>
+        <EmployeesTable employees={filtered} />
+      </div>
     </div>
   )
 }

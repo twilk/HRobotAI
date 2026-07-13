@@ -118,6 +118,25 @@ export const EMPLOYMENT_TYPES = ['UMOWA_O_PRACE', 'UMOWA_ZLECENIE', 'UMOWA_O_DZI
 
 export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number]
 
+/** Shared Tailwind class for the raw `<select>` elements in both the edit and create forms — kept
+ *  here (not copy-pasted per form) so the two selects can never visually drift apart. */
+export const employeeSelectClass =
+  'w-full h-11 px-[13px] rounded-sm border border-line-strong bg-card text-[14.5px] text-ink focus:outline-none focus:border-accent'
+
+/**
+ * Map an HTTP status from a mutating `/api/employees` call (PATCH edit / POST create) to the Polish
+ * error message both forms show. The 403/409 branches were character-identical across the two forms;
+ * only the 400 wording differs, so callers pass their own via `opts.badRequest`. The
+ * network/throw-path message ("Brak połączenia…") stays in each form's catch block — that's not an
+ * HTTP status, so it isn't this helper's job.
+ */
+export function mutationErrorMessage(status: number, opts?: { badRequest?: string }): string {
+  if (status === 400) return opts?.badRequest ?? 'Nieprawidłowe dane. Sprawdź formularz i spróbuj ponownie.'
+  if (status === 403) return 'Brak uprawnień.'
+  if (status === 409) return 'Pracownik z tym numerem PESEL już istnieje.'
+  return 'Coś poszło nie tak. Spróbuj ponownie.'
+}
+
 const PESEL_RE = /^\d{11}$/
 
 /** Parse the raw etat input to a finite number, or null when blank/NaN (a cleared field). */
@@ -257,8 +276,11 @@ export function buildEmployeeCreate(
   }
 
   const hiredAt = form.hiredAt.trim()
-  if (!hiredAt || Number.isNaN(new Date(hiredAt).getTime())) {
+  if (!hiredAt) {
     return { error: 'Data zatrudnienia jest wymagana.' }
+  }
+  if (Number.isNaN(new Date(hiredAt).getTime())) {
+    return { error: 'Podaj prawidłową datę zatrudnienia.' }
   }
 
   const body: EmployeeCreateBody = {

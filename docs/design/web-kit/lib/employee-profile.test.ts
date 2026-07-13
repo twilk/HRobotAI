@@ -6,6 +6,7 @@ import {
   etatLabel,
   formatHiredAt,
   maskPesel,
+  mutationErrorMessage,
   profileStatusFromHttpStatus,
   type EmployeeCreateFormState,
   type EmployeeEditFormState,
@@ -246,12 +247,14 @@ describe('buildEmployeeCreate', () => {
     expect(buildEmployeeCreate({ ...validForm, unitId: '   ' })).toHaveProperty('error')
   })
 
-  it('errors when hiredAt is blank', () => {
-    expect(buildEmployeeCreate({ ...validForm, hiredAt: '' })).toHaveProperty('error')
+  it('errors with the "wymagana" message when hiredAt is blank', () => {
+    const body = buildEmployeeCreate({ ...validForm, hiredAt: '' })
+    expect(body).toEqual({ error: 'Data zatrudnienia jest wymagana.' })
   })
 
-  it('errors when hiredAt does not parse as a date', () => {
-    expect(buildEmployeeCreate({ ...validForm, hiredAt: 'not-a-date' })).toHaveProperty('error')
+  it('errors with a distinct "prawidłową datę" message when hiredAt is entered but unparseable', () => {
+    const body = buildEmployeeCreate({ ...validForm, hiredAt: 'not-a-date' })
+    expect(body).toEqual({ error: 'Podaj prawidłową datę zatrudnienia.' })
   })
 
   it('errors when pesel is missing entirely', () => {
@@ -291,5 +294,34 @@ describe('buildEmployeeCreate', () => {
     const body = buildEmployeeCreate({ ...validForm, qualifications: '' })
     expect('error' in body).toBe(false)
     expect(body).not.toHaveProperty('qualifications')
+  })
+})
+
+describe('mutationErrorMessage', () => {
+  it('maps 403 to the shared "Brak uprawnień." message regardless of caller', () => {
+    expect(mutationErrorMessage(403)).toBe('Brak uprawnień.')
+    expect(mutationErrorMessage(403, { badRequest: 'x' })).toBe('Brak uprawnień.')
+  })
+
+  it('maps 409 to the shared PESEL-conflict message', () => {
+    expect(mutationErrorMessage(409)).toBe('Pracownik z tym numerem PESEL już istnieje.')
+  })
+
+  it('uses the caller-supplied 400 wording (each form phrases its own bad-request hint)', () => {
+    expect(mutationErrorMessage(400, { badRequest: 'Nieprawidłowe dane, sprawdź PESEL/etat.' })).toBe(
+      'Nieprawidłowe dane, sprawdź PESEL/etat.',
+    )
+    expect(
+      mutationErrorMessage(400, { badRequest: 'Nieprawidłowe dane — sprawdź PESEL, etat i wymagane pola.' }),
+    ).toBe('Nieprawidłowe dane — sprawdź PESEL, etat i wymagane pola.')
+  })
+
+  it('falls back to a generic 400 message when no badRequest wording is supplied', () => {
+    expect(mutationErrorMessage(400)).toBe('Nieprawidłowe dane. Sprawdź formularz i spróbuj ponownie.')
+  })
+
+  it('folds any other status (500, 502, unexpected 2xx) into the generic retry message', () => {
+    expect(mutationErrorMessage(500)).toBe('Coś poszło nie tak. Spróbuj ponownie.')
+    expect(mutationErrorMessage(502)).toBe('Coś poszło nie tak. Spróbuj ponownie.')
   })
 })

@@ -8,6 +8,8 @@ import { DEMO_UNIT_NAMES, unitName } from '@/lib/demo-locations'
 import {
   buildEmployeePatch,
   EMPLOYMENT_TYPES,
+  employeeSelectClass,
+  mutationErrorMessage,
   type EmployeeEditFormState,
   type EmployeeProfileData,
 } from '@/lib/employee-profile'
@@ -16,9 +18,6 @@ import {
  *  lib/demo-locations.ts's location map), so this reuses the exact same DEMO_UNIT_NAMES record the
  *  read-only card's `unitName()` lookup is built from — the only real source of unit ids in web-kit. */
 const UNIT_OPTIONS = Object.entries(DEMO_UNIT_NAMES).map(([id, label]) => ({ id, label }))
-
-const selectClass =
-  'w-full h-11 px-[13px] rounded-sm border border-line-strong bg-card text-[14.5px] text-ink focus:outline-none focus:border-accent'
 
 export interface EmployeeEditFormProps {
   profile: EmployeeProfileData
@@ -111,19 +110,7 @@ export function EmployeeEditForm({ profile, onCancel, onSaved }: EmployeeEditFor
         onSaved(updated)
         return
       }
-      if (res.status === 400) {
-        setError('Nieprawidłowe dane, sprawdź PESEL/etat.')
-        return
-      }
-      if (res.status === 403) {
-        setError('Brak uprawnień.')
-        return
-      }
-      if (res.status === 409) {
-        setError('Pracownik z tym numerem PESEL już istnieje.')
-        return
-      }
-      setError('Coś poszło nie tak. Spróbuj ponownie.')
+      setError(mutationErrorMessage(res.status, { badRequest: 'Nieprawidłowe dane, sprawdź PESEL/etat.' }))
     } catch {
       if (cancelledRef.current) return
       setError('Brak połączenia. Sprawdź internet i spróbuj ponownie.')
@@ -177,7 +164,7 @@ export function EmployeeEditForm({ profile, onCancel, onSaved }: EmployeeEditFor
             id="ee-employment-type"
             value={form.employmentType}
             onChange={(e) => set('employmentType', e.target.value)}
-            className={selectClass}
+            className={employeeSelectClass}
           >
             {EMPLOYMENT_TYPES.map((t) => (
               <option key={t} value={t}>
@@ -191,7 +178,7 @@ export function EmployeeEditForm({ profile, onCancel, onSaved }: EmployeeEditFor
             id="ee-unit"
             value={form.unitId}
             onChange={(e) => set('unitId', e.target.value)}
-            className={selectClass}
+            className={employeeSelectClass}
           >
             {unitOptions.map((u) => (
               <option key={u.id} value={u.id}>
