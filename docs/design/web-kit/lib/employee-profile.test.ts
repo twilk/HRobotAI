@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { etatLabel, formatHiredAt, maskPesel, profileStatusFromHttpStatus } from './employee-profile'
+import {
+  employeeInitials,
+  etatLabel,
+  formatHiredAt,
+  maskPesel,
+  profileStatusFromHttpStatus,
+} from './employee-profile'
 
 // This repo has no jsdom/@testing-library/react harness (vitest.config.ts runs `lib/**/*.test.ts`
 // under environment: 'node' only), so component rendering isn't unit-tested anywhere in this repo.
@@ -56,6 +62,16 @@ describe('etatLabel', () => {
   it('accepts a string (Prisma Decimal may serialize as a string over JSON)', () => {
     expect(etatLabel('1.0')).toBe('1 etatu')
     expect(etatLabel('0.5')).toBe('0,5 etatu')
+  })
+})
+
+describe('employeeInitials', () => {
+  it('builds two-letter initials from first + last name', () => {
+    expect(employeeInitials({ firstName: 'Anna', lastName: 'Nowak' })).toBe('AN')
+  })
+
+  it('uppercases lowercase names', () => {
+    expect(employeeInitials({ firstName: 'jan', lastName: 'kowalski' })).toBe('JK')
   })
 })
 

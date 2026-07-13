@@ -8,8 +8,10 @@ import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { IconArrowRight, IconLock, IconUser } from '@/components/icons'
 import { unitName } from '@/lib/demo-locations'
+import { cn } from '@/lib/cn'
 import { contractLabel } from '@/components/employees/employees-screen'
 import {
+  employeeInitials,
   etatLabel,
   formatHiredAt,
   maskPesel,
@@ -42,6 +44,10 @@ export function EmployeeProfile({ id }: EmployeeProfileProps) {
 
   useEffect(() => {
     let cancelled = false
+    // Reset before fetching so a changed `id` (without a remount) never briefly shows the previous
+    // employee's card — including their masked PESEL row — while the new request is in flight.
+    setData(null)
+    setStatus('loading')
     ;(async () => {
       try {
         const res = await fetch(`/api/employees/${id}`, { cache: 'no-store' })
@@ -70,7 +76,7 @@ export function EmployeeProfile({ id }: EmployeeProfileProps) {
 
   if (status === 'forbidden') {
     return (
-      <EmptyState icon={IconLock} title="Brak dostępu do tego pracownika">
+      <EmptyState icon={IconLock} title="Brak dostępu do tego pracownika" actions={<BackToRoster />}>
         Ten pracownik jest poza Twoim zakresem (inna jednostka organizacyjna). Poproś HR lub Admina
         klienta o dostęp, jeśli to potrzebne.
       </EmptyState>
@@ -79,7 +85,7 @@ export function EmployeeProfile({ id }: EmployeeProfileProps) {
 
   if (status === 'not-found') {
     return (
-      <EmptyState icon={IconUser} title="Nie znaleziono pracownika">
+      <EmptyState icon={IconUser} title="Nie znaleziono pracownika" actions={<BackToRoster />}>
         Ten pracownik nie istnieje albo został usunięty.
       </EmptyState>
     )
@@ -87,11 +93,14 @@ export function EmployeeProfile({ id }: EmployeeProfileProps) {
 
   if (status === 'error' || !data) {
     return (
-      <div
-        className="max-w-[640px] mx-auto rounded-lg border border-error/30 bg-error/[0.05] px-4 py-3 text-[13.5px] text-ink"
-        role="alert"
-      >
-        Nie udało się pobrać profilu pracownika.
+      <div className="max-w-[640px] mx-auto">
+        <BackToRoster className="mb-4" />
+        <div
+          className="rounded-lg border border-error/30 bg-error/[0.05] px-4 py-3 text-[13.5px] text-ink"
+          role="alert"
+        >
+          Nie udało się pobrać profilu pracownika.
+        </div>
       </div>
     )
   }
@@ -100,18 +109,12 @@ export function EmployeeProfile({ id }: EmployeeProfileProps) {
 
   return (
     <div className="max-w-[640px] mx-auto">
-      <Link
-        href="/pracownicy"
-        className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent-ink mb-4"
-      >
-        <IconArrowRight className="w-[15px] h-[15px] rotate-180" strokeWidth={2} />
-        Wróć do listy
-      </Link>
+      <BackToRoster className="mb-4" />
 
       <Card className="p-5">
         <div className="flex items-center gap-[14px] mb-1 pb-4 border-b border-line">
           <span className="grid place-items-center w-11 h-11 rounded-lg bg-gradient-to-b from-navy-700 to-navy text-white text-[13px] font-semibold shrink-0">
-            {initials(data)}
+            {employeeInitials(data)}
           </span>
           <div>
             <h1 className="font-display font-extrabold text-[20px] tracking-tightish text-navy leading-tight">
@@ -161,8 +164,18 @@ export function EmployeeProfile({ id }: EmployeeProfileProps) {
   )
 }
 
-function initials(e: Pick<EmployeeProfileData, 'firstName' | 'lastName'>): string {
-  return (e.firstName.charAt(0) + e.lastName.charAt(0)).toUpperCase()
+/** Back-to-roster link, shown in every state (success + 403/404/error) so a user always has an
+ *  in-app path back to the list — critical for the RBAC/unknown-id cases that land on 403/404. */
+function BackToRoster({ className }: { className?: string }) {
+  return (
+    <Link
+      href="/pracownicy"
+      className={cn('inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent-ink', className)}
+    >
+      <IconArrowRight className="w-[15px] h-[15px] rotate-180" strokeWidth={2} />
+      Wróć do listy
+    </Link>
+  )
 }
 
 function Row({ label, value }: { label: string; value: ReactNode }) {

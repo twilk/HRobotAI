@@ -65,3 +65,9 @@ export function formatHiredAt(hiredAt: string): string {
   if (Number.isNaN(d.getTime())) return hiredAt
   return `${d.getUTCDate()} ${MONTHS_PL[d.getUTCMonth()]} ${d.getUTCFullYear()}`
 }
+
+/** Two-letter avatar initials from first+last name ("Anna Nowak" → "AN"). Shared by the roster table
+ *  and the profile card so the avatar tile matches in both places. */
+export function employeeInitials(e: { firstName: string; lastName: string }): string {
+  return (e.firstName.charAt(0) + e.lastName.charAt(0)).toUpperCase()
+}
