@@ -71,3 +71,69 @@ export function formatHiredAt(hiredAt: string): string {
 export function employeeInitials(e: { firstName: string; lastName: string }): string {
   return (e.firstName.charAt(0) + e.lastName.charAt(0)).toUpperCase()
 }
+
+/**
+ * Controlled-input state for the HR/ADMIN edit form (components/employees/employee-edit-form.tsx).
+ * All fields are strings (raw input values) — `etat` and `qualifications` need coercion before they
+ * match the backend `UpdateEmployeeDto` shape, done by `buildEmployeePatch` below. `pesel` is ALWAYS
+ * initialised blank (never prefilled from the loaded profile — the backend never returns it either),
+ * and stays blank unless the HR/ADMIN user deliberately types a new one.
+ */
+export interface EmployeeEditFormState {
+  firstName: string
+  lastName: string
+  position: string
+  employmentType: string
+  unitId: string
+  /** Raw text-input value for the etat number field (e.g. "1", "0.5", "" while clearing). */
+  etat: string
+  /** Comma-separated qualifications, e.g. "Prawo jazdy kat. B, Obsługa wózka widłowego". */
+  qualifications: string
+  /** Blank unless the user typed a replacement PESEL; never prefilled. */
+  pesel: string
+}
+
+/** Body sent to `PATCH /api/employees/:id` — mirrors the backend's partial `UpdateEmployeeDto`. */
+export interface EmployeePatchBody {
+  firstName: string
+  lastName: string
+  position: string
+  employmentType: string
+  unitId: string
+  etat: number
+  qualifications: string[]
+  pesel?: string
+}
+
+const PESEL_RE = /^\d{11}$/
+
+/**
+ * Pure builder for the PATCH body from the edit form's controlled-input state. Sends the full
+ * editable set (simpler to reason about than a diff against the original) EXCEPT `pesel`, which is
+ * write-only and RODO-sensitive:
+ * - a blank pesel field (the normal case — user didn't touch it) is omitted entirely, so a routine
+ *   edit never sends/overwrites PESEL;
+ * - pesel is included ONLY when the user typed exactly 11 digits (matches the backend's DTO
+ *   validation); anything else (partial input, non-digits) is also omitted rather than sent invalid,
+ *   letting the backend's 400 apply only to genuinely-submitted values.
+ * `etat` is coerced from the raw input string to a number (Prisma Decimal field).
+ */
+export function buildEmployeePatch(form: EmployeeEditFormState): EmployeePatchBody {
+  const body: EmployeePatchBody = {
+    firstName: form.firstName.trim(),
+    lastName: form.lastName.trim(),
+    position: form.position.trim(),
+    employmentType: form.employmentType,
+    unitId: form.unitId,
+    etat: Number(form.etat),
+    qualifications: form.qualifications
+      .split(',')
+      .map((q) => q.trim())
+      .filter(Boolean),
+  }
+  const pesel = form.pesel.trim()
+  if (PESEL_RE.test(pesel)) {
+    body.pesel = pesel
+  }
+  return body
+}

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildEmployeePatch,
   employeeInitials,
   etatLabel,
   formatHiredAt,
   maskPesel,
   profileStatusFromHttpStatus,
+  type EmployeeEditFormState,
 } from './employee-profile'
 
 // This repo has no jsdom/@testing-library/react harness (vitest.config.ts runs `lib/**/*.test.ts`
@@ -86,5 +88,61 @@ describe('formatHiredAt', () => {
 
   it('falls back to the raw string when unparsable, rather than throwing', () => {
     expect(formatHiredAt('not-a-date')).toBe('not-a-date')
+  })
+})
+
+describe('buildEmployeePatch', () => {
+  const baseForm: EmployeeEditFormState = {
+    firstName: 'Anna',
+    lastName: 'Nowak',
+    position: 'Kierowca',
+    employmentType: 'UMOWA_O_PRACE',
+    unitId: '0276f4fd-43a2-51eb-b450-c48afe912fd9',
+    etat: '1',
+    qualifications: 'Prawo jazdy kat. B, Obsługa wózka widłowego',
+    pesel: '',
+  }
+
+  it('omits pesel entirely when the field is blank — a normal edit never sends pesel', () => {
+    const body = buildEmployeePatch(baseForm)
+    expect(body).not.toHaveProperty('pesel')
+  })
+
+  it('includes pesel only when the user typed exactly 11 digits', () => {
+    const body = buildEmployeePatch({ ...baseForm, pesel: '12345678901' })
+    expect(body.pesel).toBe('12345678901')
+  })
+
+  it('omits pesel for a partial / invalid (non-11-digit) value rather than sending it', () => {
+    expect(buildEmployeePatch({ ...baseForm, pesel: '123' })).not.toHaveProperty('pesel')
+    expect(buildEmployeePatch({ ...baseForm, pesel: 'abcdefghijk' })).not.toHaveProperty('pesel')
+    expect(buildEmployeePatch({ ...baseForm, pesel: '  ' })).not.toHaveProperty('pesel')
+  })
+
+  it('coerces etat from the raw input string to a number', () => {
+    expect(buildEmployeePatch({ ...baseForm, etat: '0.5' }).etat).toBe(0.5)
+    expect(buildEmployeePatch(baseForm).etat).toBe(1)
+    expect(typeof buildEmployeePatch(baseForm).etat).toBe('number')
+  })
+
+  it('splits comma-separated qualifications into a trimmed string array', () => {
+    const body = buildEmployeePatch(baseForm)
+    expect(body.qualifications).toEqual(['Prawo jazdy kat. B', 'Obsługa wózka widłowego'])
+  })
+
+  it('produces an empty qualifications array for a blank field', () => {
+    expect(buildEmployeePatch({ ...baseForm, qualifications: '' }).qualifications).toEqual([])
+  })
+
+  it('trims firstName/lastName/position', () => {
+    const body = buildEmployeePatch({ ...baseForm, firstName: '  Anna  ', lastName: ' Nowak ' })
+    expect(body.firstName).toBe('Anna')
+    expect(body.lastName).toBe('Nowak')
+  })
+
+  it('passes employmentType and unitId through unchanged', () => {
+    const body = buildEmployeePatch(baseForm)
+    expect(body.employmentType).toBe('UMOWA_O_PRACE')
+    expect(body.unitId).toBe('0276f4fd-43a2-51eb-b450-c48afe912fd9')
   })
 })
