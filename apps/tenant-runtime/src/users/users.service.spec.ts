@@ -12,7 +12,7 @@ const REALM = 'hrobot-acme'
 function makeClient() {
   return {
     user: { create: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
-    userRole: { create: jest.fn(), deleteMany: jest.fn(), findMany: jest.fn() },
+    userRole: { create: jest.fn(), deleteMany: jest.fn(), findMany: jest.fn(), count: jest.fn() },
     $transaction: jest.fn(),
   }
 }
@@ -64,9 +64,16 @@ describe('UsersService', () => {
     // for these mocks `tx` is just `client` itself, so `tx.userRole.findMany`/`tx.user.update` etc. hit the
     // same jest mocks the tests already set up on `client`.
     client.$transaction.mockImplementation(async (fn: (tx: MockClient) => unknown) => fn(client))
+    // Default: no sibling unit-scoped grant of the same role survives — `revokeInternal` proceeds
+    // to remove the KC mapping, matching the pre-existing (single-unit) test expectations below.
+    client.userRole.count.mockResolvedValue(0)
   })
 
   describe('invite', () => {
+    beforeEach(() => {
+      client.user.findFirst.mockResolvedValue({ id: 'admin-db-id', active: true, roles: [{ role: Role.ADMIN_KLIENTA, unitId: null }] })
+    })
+
     it('happy path: creates the KC user, the tenant User (keycloakSub=kcId), GRANTs the role in order, and emails the setup link', async () => {
       client.user.create.mockResolvedValue({ id: 'user-1', email: 'new@acme.com', active: true, createdAt: new Date(), roles: [] })
       client.userRole.create.mockResolvedValue({})
@@ -135,6 +142,22 @@ describe('UsersService', () => {
 
     it('403s BEFORE any Keycloak call for a non-admin actor', async () => {
       await expect(service.invite(asClient(client), HR, REALM, 'new@acme.com', Role.MANAGER)).rejects.toThrow(ForbiddenException)
+      expect(keycloak.createUser).not.toHaveBeenCalled()
+      expect(client.user.create).not.toHaveBeenCalled()
+    })
+
+    it('403s a stale JWT whose real DB role was demoted from ADMIN_KLIENTA, BEFORE any Keycloak call', async () => {
+      client.user.findFirst.mockResolvedValue({ id: 'admin-db-id', active: true, roles: [{ role: Role.HR, unitId: null }] })
+
+      await expect(service.invite(asClient(client), ADMIN, REALM, 'new@acme.com', Role.MANAGER)).rejects.toThrow(ForbiddenException)
+      expect(keycloak.createUser).not.toHaveBeenCalled()
+      expect(client.user.create).not.toHaveBeenCalled()
+    })
+
+    it('403s a stale JWT whose real DB user is no longer active, BEFORE any Keycloak call', async () => {
+      client.user.findFirst.mockResolvedValue({ id: 'admin-db-id', active: false, roles: [{ role: Role.ADMIN_KLIENTA, unitId: null }] })
+
+      await expect(service.invite(asClient(client), ADMIN, REALM, 'new@acme.com', Role.MANAGER)).rejects.toThrow(ForbiddenException)
       expect(keycloak.createUser).not.toHaveBeenCalled()
       expect(client.user.create).not.toHaveBeenCalled()
     })
@@ -283,6 +306,46 @@ describe('UsersService', () => {
     it('403s before any DB/KC call for a non-admin actor', async () => {
       await expect(service.revokeRole(asClient(client), HR, REALM, 'target-1', Role.MANAGER)).rejects.toThrow(ForbiddenException)
       expect(keycloak.removeRealmRole).not.toHaveBeenCalled()
+    })
+
+    it('SIBLING-AWARE: does NOT remove the KC realm-role mapping when the same role survives in another unit', async () => {
+      client.userRole.count.mockResolvedValue(1) // MANAGER still held in another unit (e.g. unit-B)
+
+      await service.revokeRole(asClient(client), ADMIN, REALM, 'target-1', Role.MANAGER, 'unit-A')
+
+      expect(client.userRole.count).toHaveBeenCalledWith({ where: { userId: 'target-1', role: Role.MANAGER, unitId: { not: 'unit-A' } } })
+      expect(keycloak.removeRealmRole).not.toHaveBeenCalled()
+      expect(client.userRole.deleteMany).toHaveBeenCalledWith({ where: { userId: 'target-1', role: Role.MANAGER, unitId: 'unit-A' } })
+    })
+
+    it('SIBLING-AWARE: DOES remove the KC realm-role mapping when no sibling unit-scoped grant remains', async () => {
+      client.userRole.count.mockResolvedValue(0)
+
+      await service.revokeRole(asClient(client), ADMIN, REALM, 'target-1', Role.MANAGER, 'unit-A')
+
+      expect(keycloak.removeRealmRole).toHaveBeenCalledWith(REALM, 'kc-target-1', Role.MANAGER)
+    })
+
+    it('a user holding the same role in two units, revoked from one: KC mapping and the surviving row stay intact, and reconcile finds nothing to fix', async () => {
+      client.userRole.count.mockResolvedValue(1) // the unit-B row survives the unit-A revoke
+
+      await service.revokeRole(asClient(client), ADMIN, REALM, 'target-1', Role.MANAGER, 'unit-A')
+
+      expect(keycloak.removeRealmRole).not.toHaveBeenCalled()
+      expect(client.userRole.deleteMany).toHaveBeenCalledTimes(1)
+
+      // Reconcile afterwards: KC still reports MANAGER (mapping was never touched) and the DB still
+      // has the surviving unit-B row — they agree, so reconcile must report nothing and must NOT
+      // delete the surviving legitimate row.
+      client.user.findMany.mockResolvedValue([{ id: 'target-1', keycloakSub: 'kc-target-1', roles: [{ role: Role.MANAGER }] }])
+      keycloak.getUserRealmRoles.mockResolvedValue(['MANAGER'])
+
+      const result = await service.reconcile(asClient(client), ADMIN, REALM, { fix: true })
+
+      expect(result.findings).toEqual([])
+      expect(result.fixedCount).toBe(0)
+      // Only the revoke's own scoped delete happened — reconcile issued no further deleteMany calls.
+      expect(client.userRole.deleteMany).toHaveBeenCalledTimes(1)
     })
   })
 

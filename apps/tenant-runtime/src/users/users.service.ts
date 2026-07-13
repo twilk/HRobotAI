@@ -44,7 +44,7 @@ const ROLE_RANK: Record<Role, number> = {
  * JWT-cache inconsistency window: a Keycloak access token is valid (and its `hrobot_roles` claim
  * trusted by `RbacGuard`) for up to its configured lifetime (~3600s) after issuance, even if the
  * underlying Keycloak realm-role mapping or `User.active` flag changes moments later. Every
- * PRIVILEGED mutation here (`assignRole`/`revokeRole`/`deactivate`) re-resolves the actor's REAL
+ * PRIVILEGED mutation here (`invite`/`assignRole`/`revokeRole`/`deactivate`) re-resolves the actor's REAL
  * current DB state (see {@link resolveActingUser}) instead of trusting the JWT alone — this is the
  * one corner of tenant-runtime where that re-check happens; elsewhere (e.g. `RbacGuard`,
  * `TenantContextInterceptor`), `User.active` is still silently ignored.
@@ -106,9 +106,23 @@ export class UsersService {
    * FIRST (the `hrobot_roles` claim disappears on the user's *next* token), THEN the `UserRole` row
    * is deleted. If the `UserRole` delete fails after a successful KC removal, the dangling row
    * carries no matching JWT claim — safe to leave for reconciliation.
+   *
+   * SIBLING-AWARE KC removal: the schema's `@@unique([userId, role, unitId])` explicitly allows the
+   * SAME role to be held in MULTIPLE different units by one user (e.g. `MANAGER` in unit A AND unit
+   * B) — but the Keycloak realm-role mapping (and the `hrobot_roles` JWT claim `RbacGuard` trusts) is
+   * per-ROLE, not per-unit; there is only ONE `MANAGER` mapping per user in Keycloak regardless of
+   * how many units grant it. So before stripping that mapping we check whether any OTHER unit-scoped
+   * `UserRole` row for this exact (user, role) still survives; only when none remain is it safe to
+   * remove the KC mapping. Skipping this check would (a) prematurely revoke a still-legitimate claim
+   * for the surviving unit-scoped grant, and (b) desync KC vs DB so that {@link reconcile}'s `fix`
+   * path — which compares KC role NAMES against DB role NAMES, not unit-scoped rows — would see the
+   * surviving row as a false 'db_only' finding and delete it too.
    */
   private async revokeInternal(client: TenantClient, realm: string, userId: string, kcId: string, role: Role, unitId: string | null): Promise<void> {
-    await this.keycloak.removeRealmRole(realm, kcId, role)
+    const siblingCount = await client.userRole.count({ where: { userId, role, unitId: { not: unitId } } })
+    if (siblingCount === 0) {
+      await this.keycloak.removeRealmRole(realm, kcId, role)
+    }
     await client.userRole.deleteMany({ where: { userId, role, unitId } })
   }
 
@@ -197,8 +211,13 @@ export class UsersService {
   }
 
   /**
-   * Invite a new tenant user: (1) create the Keycloak login → `kcId`; (2) create the tenant `User`
-   * row (`id` is APP-SUPPLIED — `randomUUID()`, since `User.id` has no Prisma `@default` — with
+   * Invite a new tenant user. ADMIN_KLIENTA-only (cheap JWT check — 403 before any DB/KC call),
+   * re-verified against the actor's REAL DB state ({@link requireRealAdmin}) before any Keycloak
+   * call — same JWT-cache-window posture as every other privileged mutation in this class, so a
+   * demoted admin holding a still-valid ADMIN_KLIENTA JWT cannot use it to invite new users.
+   *
+   * Steps: (1) create the Keycloak login → `kcId`; (2) create the tenant `User` row (`id` is
+   * APP-SUPPLIED — `randomUUID()`, since `User.id` has no Prisma `@default` — with
    * `keycloakSub: kcId` read back from Keycloak's `Location` header, never trusted from the request
    * body); (3) GRANT the initial role (see {@link grant}); (4) best-effort email the password-setup
    * link (`KeycloakAdminService.sendPasswordSetupEmail` already swallows its own failures).
@@ -218,6 +237,7 @@ export class UsersService {
     if (!actor.roles.includes(Role.ADMIN_KLIENTA)) {
       throw new ForbiddenException('Only ADMIN_KLIENTA may invite users')
     }
+    await this.requireRealAdmin(client, actor)
 
     const kcId = await this.keycloak.createUser(realm, email)
 
