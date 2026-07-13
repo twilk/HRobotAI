@@ -23,6 +23,7 @@ export const config = {
     '/dashboard/:path*',
     '/pracownicy/:path*',
     '/grafik/:path*',
+    '/ai-grafik-manager/:path*',
     '/zamiany/:path*',
     '/wnioski/:path*',
     '/dostepy/:path*',

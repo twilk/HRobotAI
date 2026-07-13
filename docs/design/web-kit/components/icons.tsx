@@ -148,3 +148,9 @@ export const IconGlobe = (p: IconProps) => (
     <path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18" />
   </Icon>
 )
+export const IconSparkles = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 3l1.8 4.9L18.7 9.7l-4.9 1.8L12 16.4l-1.8-4.9L5.3 9.7l4.9-1.8L12 3Z" />
+    <path d="M18.5 15.5l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7.7-1.9Z" />
+  </Icon>
+)

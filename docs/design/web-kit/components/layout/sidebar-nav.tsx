@@ -43,13 +43,27 @@ export function SidebarNav({ activeHref, roles, tenant }: SidebarNavProps) {
                     'flex items-center gap-[11px] px-3 py-[9px] my-px rounded-lg text-sm font-medium border-l-2 border-transparent transition-colors',
                     active
                       ? 'bg-accent-navy/10 text-white border-l-accent-navy'
-                      : 'text-nav-text hover:bg-white/[0.04] hover:text-[#DCE3EE]',
+                      : item.highlight
+                        ? 'bg-gradient-to-r from-accent-navy/[0.14] to-transparent text-[#E4EAF3] border-l-accent-navy/70 hover:from-accent-navy/25 hover:text-white'
+                        : 'text-nav-text hover:bg-white/[0.04] hover:text-[#DCE3EE]',
                   )}
                 >
-                  <Icon className={cn('w-[18px] h-[18px] shrink-0', active ? 'text-accent-navy' : 'text-[#7E8DA6]')} />
+                  <Icon
+                    className={cn(
+                      'w-[18px] h-[18px] shrink-0',
+                      active || item.highlight ? 'text-accent-navy' : 'text-[#7E8DA6]',
+                    )}
+                  />
                   {item.label}
                   {item.tag ? (
-                    <span className="ml-auto font-mono text-[10px] text-nav-dim border border-white/10 px-1.5 rounded-full">
+                    <span
+                      className={cn(
+                        'ml-auto font-mono text-[10px] px-1.5 rounded-full border',
+                        item.highlight
+                          ? 'text-accent-navy border-accent-navy/40 bg-accent-navy/10'
+                          : 'text-nav-dim border-white/10',
+                      )}
+                    >
                       {item.tag}
                     </span>
                   ) : null}
