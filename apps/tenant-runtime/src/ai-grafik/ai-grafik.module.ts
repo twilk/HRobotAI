@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { ShiftSwapModule } from '../shift-swap/shift-swap.module.js'
 import { AiGrafikController } from './ai-grafik.controller.js'
 import { AiConfigService } from './ai-config.service.js'
+import { ReplacementService } from './replacement.service.js'
 
 /**
  * AI-scheduling ("Grafik AI") module (M2 §AI). Task 0.3 ships the per-unit config surface
@@ -13,6 +14,6 @@ import { AiConfigService } from './ai-config.service.js'
 @Module({
   imports: [ShiftSwapModule],
   controllers: [AiGrafikController],
-  providers: [AiConfigService],
+  providers: [AiConfigService, ReplacementService],
 })
 export class AiGrafikModule {}
