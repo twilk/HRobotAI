@@ -10,6 +10,9 @@ import {
   AiProposalType,
   AiProposalState,
   ConsentState,
+  LeaveStatus,
+  AccessType,
+  AccessStatus,
 } from '@hrobot/shared'
 
 // Guards the hand-maintained duplication between the TS domain enums in @hrobot/shared and the
@@ -57,6 +60,21 @@ describe('enum parity: @hrobot/shared TS enums == Prisma enum blocks', () => {
   it('tenant ConsentState', () => {
     expect(prismaEnumValues(tenantSchema, 'ConsentState')).toEqual(
       [...Object.values(ConsentState)].sort(),
+    )
+  })
+  it('tenant LeaveStatus', () => {
+    expect(prismaEnumValues(tenantSchema, 'LeaveStatus')).toEqual(
+      [...Object.values(LeaveStatus)].sort(),
+    )
+  })
+  it('tenant AccessType', () => {
+    expect(prismaEnumValues(tenantSchema, 'AccessType')).toEqual(
+      [...Object.values(AccessType)].sort(),
+    )
+  })
+  it('tenant AccessStatus', () => {
+    expect(prismaEnumValues(tenantSchema, 'AccessStatus')).toEqual(
+      [...Object.values(AccessStatus)].sort(),
     )
   })
   it('control-plane TenantStatus', () => {

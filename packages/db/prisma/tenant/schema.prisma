@@ -46,9 +46,9 @@ enum SwapState {
   CANCELLED
 }
 
-/// Lifecycle of a leave request (urlop) (M2 leave support). APPROVED is the default: the seed and
-/// most callers create already-decided leave; PENDING/REJECTED/CANCELLED exist for a future
-/// request/approval flow. Only APPROVED leave feeds the grafik solver as an H3 hard constraint.
+/// Lifecycle of a leave request (urlop) (M2 leave support). PENDING is the default: leave enters an
+/// approval flow (see `nextLeaveState` in @hrobot/shared) and only becomes APPROVED/REJECTED/CANCELLED
+/// via an explicit decision. Only APPROVED leave feeds the grafik solver as an H3 hard constraint.
 enum LeaveStatus {
   PENDING
   APPROVED
@@ -88,15 +88,31 @@ enum ConsentState {
   EXPIRED
 }
 
+/// Kind of physical/logical access grant (Dostępy). Mirrors the TS `AccessType` const-object.
+enum AccessType {
+  CARD
+  KEY
+  PERMISSION
+}
+
+/// Lifecycle status of an AccessGrant. Mirrors the TS `AccessStatus` const-object.
+enum AccessStatus {
+  ACTIVE
+  REVOKED
+  LOST
+}
+
 model User {
-  id           String               @id
-  email        String               @unique
-  keycloakSub  String               @unique @map("keycloak_sub")
-  active       Boolean              @default(true)
-  createdAt    DateTime             @default(now()) @map("created_at")
-  roles        UserRole[]
-  managedUnits OrganizationalUnit[] @relation("UnitManager")
-  employee     Employee?
+  id             String               @id
+  email          String               @unique
+  keycloakSub    String               @unique @map("keycloak_sub")
+  active         Boolean              @default(true)
+  createdAt      DateTime             @default(now()) @map("created_at")
+  roles          UserRole[]
+  managedUnits   OrganizationalUnit[] @relation("UnitManager")
+  employee       Employee?
+  leaveDecisions LeaveRequest[]       @relation("LeaveDecider")
+  accessIssued   AccessGrant[]        @relation("AccessIssuer")
 
   @@map("users")
 }
@@ -168,6 +184,7 @@ model Employee {
   leaves         LeaveRequest[]
   aiProposalsVacated    AiProposal[]          @relation("AiProposalVacated")
   aiProposalCandidacies AiProposalCandidate[] @relation("AiProposalCandidateEmp")
+  accessGrants   AccessGrant[]
 
   @@map("employees")
 }
@@ -184,6 +201,7 @@ model Lokalizacja {
   lng     Float?
   demands ShiftDemand[]
   shifts  Shift[]
+  accessGrants AccessGrant[]
 
   @@map("lokalizacje")
 }
@@ -262,6 +280,21 @@ model AuditLog {
   @@map("audit_log")
 }
 
+/// Singleton tenant-wide company settings (Ustawienia). Uniqueness of the single row is enforced by
+/// a manual partial-unique index (`company_settings_singleton`) appended to the generated migration
+/// SQL, since Prisma has no native "singleton table" construct.
+model CompanySettings {
+  id          String   @id @default(uuid())
+  companyName String   @map("company_name")
+  timezone    String   @default("Europe/Warsaw")
+  region      String   @default("EU-Central")
+  locale      String   @default("pl-PL")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("company_settings")
+}
+
 /// A worker-initiated shift-swap request (M2 #3). A 1:1 swap (both target fields set) or a
 /// "give away shift" (target fields null). Never mutates `Shift` until APPROVED; the state
 /// machine (apps/tenant-runtime src/shift-swap) drives transitions and performs the atomic
@@ -297,9 +330,14 @@ model LeaveRequest {
   employee   Employee    @relation(fields: [employeeId], references: [id])
   startDate  DateTime    @map("start_date") @db.Date
   endDate    DateTime    @map("end_date") @db.Date
-  status     LeaveStatus @default(APPROVED)
+  status     LeaveStatus @default(PENDING)
   /// Leave kind (URLOP_WYPOCZYNKOWY, URLOP_NA_ZADANIE, …). Free-form string, not over-modelled.
   type       String
+  /// Manager/HR who took the approve/reject/cancel decision (set on decision only).
+  decidedByUserId String? @map("decided_by_user_id")
+  decidedBy       User?   @relation("LeaveDecider", fields: [decidedByUserId], references: [id])
+  decidedAt       DateTime? @map("decided_at")
+  reason          String?
   createdAt  DateTime    @default(now()) @map("created_at")
   updatedAt  DateTime    @updatedAt @map("updated_at")
 
@@ -371,4 +409,31 @@ model AiProposalCandidate {
   @@unique([proposalId, employeeId])
   @@index([proposalId, rank])
   @@map("ai_proposal_candidate")
+}
+
+/// A physical/logical access grant for an employee (Dostępy): a card, key, or standalone permission.
+/// `identifier` (e.g. card/key serial) is PII/security-sensitive. At most one ACTIVE grant may exist
+/// per (type, identifier) pair — enforced by a partial unique index (`access_grant_active_identifier`)
+/// appended to the generated migration SQL, since a re-issued/lost card's identifier may be reused
+/// once the prior grant is REVOKED/LOST.
+model AccessGrant {
+  id             String       @id @default(uuid())
+  employeeId     String       @map("employee_id")
+  employee       Employee     @relation(fields: [employeeId], references: [id])
+  type           AccessType
+  label          String
+  identifier     String?
+  lokalizacjaId  String?      @map("lokalizacja_id")
+  lokalizacja    Lokalizacja? @relation(fields: [lokalizacjaId], references: [id], onDelete: SetNull)
+  status         AccessStatus @default(ACTIVE)
+  issuedByUserId String?      @map("issued_by_user_id")
+  issuedBy       User?        @relation("AccessIssuer", fields: [issuedByUserId], references: [id], onDelete: SetNull)
+  issuedAt       DateTime     @default(now()) @map("issued_at")
+  revokedAt      DateTime?    @map("revoked_at")
+  notes          String?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  @@index([employeeId])
+  @@map("access_grant")
 }

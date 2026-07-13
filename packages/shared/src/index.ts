@@ -3,3 +3,4 @@ export { EncryptionService, DecryptionError, hmacBlindIndex, blindIndexEquals } 
 export type { EncryptionKeyring } from './encryption.js'
 export * from './grafik/index.js'
 export * from './ai-grafik.js'
+export * from './leave.js'
