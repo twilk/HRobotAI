@@ -141,9 +141,11 @@ export class EmployeesService {
    * READ role may call it — a plain PRACOWNIK uses this to see themselves without needing roster scope.
    * Returns the SAFE_SELECT projection only (no PESEL/home-address PII, no `peselLast4`); throws 404
    * when the login has no linked Employee row. The raw Prisma row is NEVER spread into the response.
+   * `select: SAFE_SELECT` is applied at the query itself (defense-in-depth) so PII never leaves the
+   * DB in the first place — `toSafeEmployee` remains the gate regardless.
    */
   async me(client: TenantClient, actor: EmployeeActor): Promise<Record<string, unknown>> {
-    const emp = await client.employee.findFirst({ where: { user: { keycloakSub: actor.userId } } })
+    const emp = await client.employee.findFirst({ where: { user: { keycloakSub: actor.userId } }, select: SAFE_SELECT })
     if (!emp) throw new NotFoundException('No employee record for the current user')
     return this.toSafeEmployee(emp as Record<string, unknown>)
   }

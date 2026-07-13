@@ -258,7 +258,21 @@ describe('EmployeesService', () => {
 
       const profile = await service.me(asClient(client), PRACOWNIK)
 
-      expect(client.employee.findFirst).toHaveBeenCalledWith({ where: { user: { keycloakSub: 'kc-emp' } } })
+      // select allowlist is defense-in-depth: PII columns must never even be fetched from the DB.
+      expect(client.employee.findFirst).toHaveBeenCalledWith({
+        where: { user: { keycloakSub: 'kc-emp' } },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          position: true,
+          employmentType: true,
+          hiredAt: true,
+          unitId: true,
+          etat: true,
+          qualifications: true,
+        },
+      })
       expect(profile.id).toBe('e-self')
       expect(profile.firstName).toBe('Jan')
       // RODO: no PESEL/home PII and no peselLast4 hint in the self projection.

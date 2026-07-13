@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Field, Input } from '@/components/ui/input'
-import { employeeSelectClass, mutationErrorMessage } from '@/lib/employee-profile'
+import { employeeSelectClass } from '@/lib/employee-profile'
 import {
   aiGrafikApi,
   autonomyLabel,
@@ -12,6 +12,18 @@ import {
   AiGrafikApiError,
   type AutonomyLevel,
 } from '@/lib/ai-grafik'
+
+/**
+ * Surface the backend's already-humanized message (`AiGrafikApiError#message`, populated by
+ * `lib/ai-grafik.ts`'s `humanizeError`) rather than the employee-domain `mutationErrorMessage`
+ * helper — that helper's 409 branch is PESEL-collision copy, which is nonsensical on a screen with
+ * no employee/PESEL concept. Non-API failures (the fetch itself throwing, e.g. offline) fall back
+ * to a generic connectivity message.
+ */
+function configErrorMessage(err: unknown): string {
+  if (err instanceof AiGrafikApiError) return err.message || 'Coś poszło nie tak. Spróbuj ponownie.'
+  return 'Brak połączenia z serwerem. Spróbuj ponownie.'
+}
 
 /** Editable form state — all strings so the inputs stay controlled; parsed on submit. */
 interface FormState {
@@ -57,13 +69,7 @@ export function AiConfigPanel() {
         quietHoursEnd: cfg.quietHoursEnd ?? '',
       })
     } catch (err) {
-      if (!cancelledRef.current) {
-        setError(
-          err instanceof AiGrafikApiError
-            ? mutationErrorMessage(err.status)
-            : 'Brak połączenia z serwerem. Spróbuj ponownie.',
-        )
-      }
+      if (!cancelledRef.current) setError(configErrorMessage(err))
     } finally {
       if (!cancelledRef.current) setLoading(false)
     }
@@ -107,13 +113,7 @@ export function AiConfigPanel() {
       })
       if (!cancelledRef.current) setSaved(true)
     } catch (err) {
-      if (!cancelledRef.current) {
-        setSaveError(
-          err instanceof AiGrafikApiError
-            ? mutationErrorMessage(err.status, { badRequest: 'Nieprawidłowe dane. Sprawdź formularz.' })
-            : 'Brak połączenia z serwerem. Spróbuj ponownie.',
-        )
-      }
+      if (!cancelledRef.current) setSaveError(configErrorMessage(err))
     } finally {
       if (!cancelledRef.current) setSaving(false)
     }

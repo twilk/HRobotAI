@@ -151,5 +151,23 @@ describe('AiConfigService', () => {
         data: { consentTtlHours: 6 },
       })
     })
+
+    it('recovers from a P2002 race on the null-default create by re-reading and updating instead of throwing', async () => {
+      // Both callers see no existing default row and race to `create` it; this actor loses the race.
+      client.aiSchedulingConfig.findFirst
+        .mockResolvedValueOnce(null) // `before` lookup
+        .mockResolvedValueOnce({ id: 'cfg-default', unitId: null }) // re-read after P2002
+      client.aiSchedulingConfig.create.mockRejectedValue({ code: 'P2002' })
+      client.aiSchedulingConfig.update.mockResolvedValue({ id: 'cfg-default', unitId: null, consentTtlHours: 6 })
+
+      const result = await service.upsertConfig(asClient(client), HR, { consentTtlHours: 6 })
+
+      expect(client.aiSchedulingConfig.update).toHaveBeenCalledWith({
+        where: { id: 'cfg-default' },
+        data: { consentTtlHours: 6 },
+      })
+      expect(result).toEqual({ id: 'cfg-default', unitId: null, consentTtlHours: 6 })
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'ai_config.updated', entityId: 'cfg-default' }))
+    })
   })
 })

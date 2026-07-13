@@ -16,10 +16,10 @@ export class UpdateAiConfigDto {
   @IsOptional() @IsUUID() unitId?: string
 
   /** Quiet-hours window start, "HH:MM" 24h. */
-  @IsOptional() @Matches(/^\d{2}:\d{2}$/, { message: 'quietHoursStart must be HH:MM' }) quietHoursStart?: string
+  @IsOptional() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'quietHoursStart must be HH:MM' }) quietHoursStart?: string
 
   /** Quiet-hours window end, "HH:MM" 24h. */
-  @IsOptional() @Matches(/^\d{2}:\d{2}$/, { message: 'quietHoursEnd must be HH:MM' }) quietHoursEnd?: string
+  @IsOptional() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'quietHoursEnd must be HH:MM' }) quietHoursEnd?: string
 
   /** Consent time-to-live in hours (1h .. 168h = 7 days). */
   @IsOptional() @IsInt() @Min(1) @Max(168) consentTtlHours?: number

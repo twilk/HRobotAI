@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable } from '@nestjs/common'
+import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
 import { AutonomyLevel } from '@hrobot/shared'
 import { AuditService } from '../tenant-runtime/audit/audit.service.js'
@@ -75,10 +75,25 @@ export class AiConfigService {
     let after: { id: string }
     if (key === null) {
       // Nullable default row: `AiSchedulingConfigWhereUniqueInput.unitId` is non-null, so upsert can't
-      // key on it — fall back to update-by-id (existing) or create (first write).
-      after = before
-        ? await client.aiSchedulingConfig.update({ where: { id: before.id }, data })
-        : await client.aiSchedulingConfig.create({ data: { ...data, unitId: null } })
+      // key on it — fall back to update-by-id (existing) or create (first write). Two concurrent
+      // first-writes can race: the loser's `create` hits the partial unique index
+      // (`ai_config_single_default`) and throws P2002 — re-read the now-existing row and update it
+      // instead of surfacing a raw 500 (mirrors the P2002 idiom in employees.service.ts).
+      if (before) {
+        after = await client.aiSchedulingConfig.update({ where: { id: before.id }, data })
+      } else {
+        try {
+          after = await client.aiSchedulingConfig.create({ data: { ...data, unitId: null } })
+        } catch (err: unknown) {
+          if (typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2002') {
+            const existing = await client.aiSchedulingConfig.findFirst({ where: { unitId: null } })
+            if (!existing) throw new ConflictException('AI config default already exists')
+            after = await client.aiSchedulingConfig.update({ where: { id: existing.id }, data })
+          } else {
+            throw err
+          }
+        }
+      }
     } else {
       after = await client.aiSchedulingConfig.upsert({ where: { unitId: key }, update: data, create: { ...data, unitId: key } })
     }

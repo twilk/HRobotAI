@@ -43,4 +43,10 @@ describe('validateQuietHours', () => {
     expect(validateQuietHours('22:60', '06:00')).toBe(false)
     expect(validateQuietHours('abc', 'def')).toBe(false)
   })
+
+  it('enforces a real 24h range, not just digit-shape', () => {
+    expect(validateQuietHours('25:70', '06:00')).toBe(false)
+    expect(validateQuietHours('99:99', '06:00')).toBe(false)
+    expect(validateQuietHours('08:30', '17:45')).toBe(true)
+  })
 })
