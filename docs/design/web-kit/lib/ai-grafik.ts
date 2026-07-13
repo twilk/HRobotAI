@@ -107,3 +107,315 @@ export const aiGrafikApi = {
     })
   },
 }
+
+// --- AI proposal inbox (Task 1.5): manager approval + employee consent -----------------------------
+//
+// Same proxy plumbing as `aiGrafikApi` above (aiFetch/AiGrafikApiError), extended to the
+// `/ai-grafik/proposals*` + `/ai-grafik/replacements/scan` routes
+// (apps/tenant-runtime/src/ai-grafik/ai-grafik.controller.ts). The backend returns raw ids only
+// (shiftId, vacatedEmployeeId, candidate.employeeId) — never employee names/PII — so this module
+// enriches them the same way lib/swaps.ts does: fetch `/api/employees` + `/api/grafik/shifts` once
+// per refresh and build id→label maps. IDS ONLY in the backend contract; enrichment is client-side.
+
+/** Lifecycle state of an AI proposal — parity with `packages/shared/src/ai-grafik.ts` `AiProposalState`. */
+export type AiProposalState =
+  | 'DRAFT'
+  | 'PENDING_EMPLOYEE_CONSENT'
+  | 'EMPLOYEE_AGREED'
+  | 'PENDING_MANAGER'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'ESCALATED'
+  | 'CANCELLED'
+
+export const AI_TERMINAL_STATES: AiProposalState[] = ['APPROVED', 'REJECTED', 'CANCELLED', 'ESCALATED']
+
+/** Kind of AI proposal — parity with the Prisma `AiProposalType` enum. */
+export type AiProposalType = 'REPLACEMENT' | 'ADHOC' | 'CAPACITY'
+
+/** Per-candidate consent status — parity with the Prisma `ConsentState` enum. */
+export type ConsentState = 'NOT_ASKED' | 'PENDING' | 'GRANTED' | 'DECLINED' | 'EXPIRED'
+
+/** Polish labels for each proposal lifecycle state, for badges/legends. */
+const PROPOSAL_STATE_LABEL: Record<AiProposalState, string> = {
+  DRAFT: 'Szkic',
+  PENDING_EMPLOYEE_CONSENT: 'Czeka na zgodę pracownika',
+  EMPLOYEE_AGREED: 'Pracownik się zgodził',
+  PENDING_MANAGER: 'Czeka na managera',
+  APPROVED: 'Zatwierdzona',
+  REJECTED: 'Odrzucona',
+  ESCALATED: 'Eskalowana',
+  CANCELLED: 'Anulowana',
+}
+
+/** Human-readable Polish label for a proposal state; echoes the raw value for an unknown state. */
+export function proposalStateLabel(state: AiProposalState): string {
+  return PROPOSAL_STATE_LABEL[state] ?? state
+}
+
+/** A raw candidate row as returned by the tenant-runtime (ids only — no employee name). */
+export interface AiProposalCandidate {
+  id: string
+  employeeId: string
+  rank: number
+  feasible: boolean
+  reason?: string | null
+  score?: number | null
+  consentState: ConsentState
+  consentRequestedAt?: string | null
+  consentAt?: string | null
+}
+
+/** A raw AiProposal row as returned by the tenant-runtime `/ai-grafik/proposals*` routes (ids only). */
+export interface AiProposal {
+  id: string
+  type: AiProposalType
+  state: AiProposalState
+  shiftId: string
+  vacatedEmployeeId: string
+  activeCandidateId: string | null
+  reason?: string | null
+  expiresAt?: string | null
+  decidedByManagerId?: string | null
+  createdAt: string
+  updatedAt: string
+  candidates: AiProposalCandidate[]
+}
+
+/** {@link AiProposalCandidate} projected onto the UI with the candidate's resolved employee name. */
+export interface EnrichedCandidate extends AiProposalCandidate {
+  employeeName: string
+}
+
+/** {@link AiProposal} projected onto the UI: candidates + the vacated employee + the shift, all named. */
+export interface EnrichedProposal extends Omit<AiProposal, 'candidates'> {
+  candidates: EnrichedCandidate[]
+  vacatedEmployeeName: string
+  shiftLabel: string
+}
+
+/** One APPROVED-leave interval covering a {@link VacatedShift}'s employee (RODO-safe). */
+export interface VacatedShiftLeave {
+  id: string
+  startDate: string
+  endDate: string
+  status: string
+  employeeId: string
+}
+
+/**
+ * A vacated shift as returned by `POST /ai-grafik/replacements/scan` — a RODO-safe employee
+ * projection (id/unitId/firstName/lastName/position, no PESEL/home) plus the APPROVED leave(s)
+ * covering the shift's date. Already carries a human-readable name, unlike the proposal contract.
+ */
+export interface VacatedShift {
+  id: string
+  date: string
+  start: string
+  end: string
+  role: string
+  employeeId: string
+  lokalizacjaId: string
+  employee: {
+    id: string
+    unitId: string
+    firstName: string
+    lastName: string
+    position: string | null
+    leaves: VacatedShiftLeave[]
+  }
+}
+
+/** Filter for {@link aiProposalApi.listProposals}. */
+export interface ListProposalsParams {
+  mine?: boolean
+  state?: AiProposalState
+}
+
+/** One action the current caller may take on a proposal, keyed to {@link aiProposalApi}'s mutations. */
+export type ProposalActionKind = 'approve' | 'reject' | 'accept' | 'decline'
+
+export interface ProposalAction {
+  action: ProposalActionKind
+  label: string
+}
+
+/**
+ * Actions offered for a proposal, given its state and the caller's relationship to it. A manager only
+ * gets approve/reject while the proposal awaits their review (PENDING_MANAGER); the active consent
+ * candidate only gets accept/decline while it awaits THEIR consent (PENDING_EMPLOYEE_CONSENT). Every
+ * other state (including all terminal ones) offers nothing — the backend state machine has the final
+ * say regardless; this is purely which buttons the UI shows.
+ */
+export function aiProposalActions(
+  state: AiProposalState,
+  mineRole: 'manager' | 'employee' | null,
+): ProposalAction[] {
+  if (mineRole === 'manager' && state === 'PENDING_MANAGER') {
+    return [
+      { action: 'approve', label: 'Zatwierdź' },
+      { action: 'reject', label: 'Odrzuć' },
+    ]
+  }
+  if (mineRole === 'employee' && state === 'PENDING_EMPLOYEE_CONSENT') {
+    return [
+      { action: 'accept', label: 'Akceptuj' },
+      { action: 'decline', label: 'Odrzuć' },
+    ]
+  }
+  return []
+}
+
+/**
+ * True iff `myEmployeeId` is the proposal's ACTIVE candidate, still PENDING, while the proposal itself
+ * awaits employee consent. Mirrors `AiProposalService`'s own `isMyActivePending` gate so the UI's
+ * "does this need MY consent" question matches the server's — the server always has the final say on
+ * any actual mutation.
+ */
+export function isMineToConsent(
+  proposal: Pick<AiProposal, 'state' | 'activeCandidateId' | 'candidates'>,
+  myEmployeeId: string | null,
+): boolean {
+  if (myEmployeeId == null) return false
+  if (proposal.state !== 'PENDING_EMPLOYEE_CONSENT') return false
+  const active = proposal.candidates.find((c) => c.id === proposal.activeCandidateId)
+  return active != null && active.employeeId === myEmployeeId && active.consentState === 'PENDING'
+}
+
+// --- enrichment: backend ids → UI labels/names (mirrors lib/swaps.ts) ------------------------------
+
+interface EmployeeLite {
+  id: string
+  firstName: string
+  lastName: string
+}
+interface ShiftLite {
+  id: string
+  date: string
+  start: string
+  end: string
+  role: string
+}
+
+interface ProposalEnrichMaps {
+  empName: Map<string, string>
+  shiftLabel: Map<string, string>
+}
+
+const WEEKDAY_SHORT_PL = ['nd', 'pon', 'wt', 'śr', 'czw', 'pt', 'sob'] as const
+
+/**
+ * "pon 13.07 · 06:00–14:00 · RECEPCJA" from a shift row (date is UTC `YYYY-MM-DD[...]`). Exported so
+ * callers with an inline shift shape (e.g. {@link VacatedShift}, which already carries date/start/
+ * end/role — no id lookup needed) can reuse the exact same formatting instead of re-deriving it.
+ */
+export function shiftLabelOf(s: ShiftLite): string {
+  const iso = s.date.slice(0, 10)
+  const d = new Date(`${iso}T00:00:00.000Z`)
+  const wd = WEEKDAY_SHORT_PL[d.getUTCDay()]
+  const dd = iso.slice(8, 10)
+  const mm = iso.slice(5, 7)
+  return `${wd} ${dd}.${mm} · ${s.start}–${s.end} · ${s.role}`
+}
+
+/** Fetch the roster + shifts once (same-origin proxy) and build the id→name / id→shift-label maps. */
+async function buildProposalEnrichMaps(): Promise<ProposalEnrichMaps> {
+  const [emps, shifts] = await Promise.all([
+    aiFetch<EmployeeLite[]>('/api/employees'),
+    aiFetch<ShiftLite[]>('/api/grafik/shifts'),
+  ])
+  const empName = new Map<string, string>()
+  for (const e of emps) empName.set(e.id, `${e.firstName} ${e.lastName}`.trim())
+  const shiftLabel = new Map<string, string>()
+  for (const s of shifts) shiftLabel.set(s.id, shiftLabelOf(s))
+  return { empName, shiftLabel }
+}
+
+/** Project a raw backend proposal row onto the {@link EnrichedProposal} shape the UI renders. */
+function enrichProposal(row: AiProposal, maps: ProposalEnrichMaps): EnrichedProposal {
+  const { candidates, ...rest } = row
+  return {
+    ...rest,
+    candidates: candidates.map((c) => ({
+      ...c,
+      employeeName: maps.empName.get(c.employeeId) ?? c.employeeId.slice(0, 8),
+    })),
+    vacatedEmployeeName: maps.empName.get(row.vacatedEmployeeId) ?? row.vacatedEmployeeId.slice(0, 8),
+    shiftLabel: maps.shiftLabel.get(row.shiftId) ?? row.shiftId.slice(0, 8),
+  }
+}
+
+async function enrichProposals(rows: AiProposal[]): Promise<EnrichedProposal[]> {
+  if (rows.length === 0) return []
+  const maps = await buildProposalEnrichMaps()
+  return rows.map((r) => enrichProposal(r, maps))
+}
+
+/**
+ * The caller's own Employee id via `GET /employees/me`, or null when they have no employee record
+ * (the backend 404s in that case — e.g. an ADMIN_KLIENTA/HR/MANAGER actor with no Employee row).
+ */
+export async function fetchMyEmployeeId(): Promise<string | null> {
+  try {
+    const me = await aiFetch<{ id: string }>('/api/employees/me')
+    return me.id
+  } catch (err) {
+    if (err instanceof AiGrafikApiError && (err.status === 404 || err.status === 403)) return null
+    throw err
+  }
+}
+
+/**
+ * The AI proposal client — real fetches against `/api/ai-grafik/*`, enriched with employee names +
+ * shift labels client-side. The backend RBAC + `AiProposalService` state machine have the final say;
+ * illegal actions surface as {@link AiGrafikApiError}.
+ */
+export const aiProposalApi = {
+  listProposals: async (params: ListProposalsParams = {}): Promise<EnrichedProposal[]> => {
+    const qs = new URLSearchParams()
+    if (params.mine) qs.set('mine', 'true')
+    if (params.state) qs.set('state', params.state)
+    const query = qs.toString()
+    const rows = await aiFetch<AiProposal[]>(`/api/ai-grafik/proposals${query ? `?${query}` : ''}`)
+    return enrichProposals(rows)
+  },
+
+  getProposal: async (id: string): Promise<EnrichedProposal> => {
+    const row = await aiFetch<AiProposal>(`/api/ai-grafik/proposals/${id}`)
+    return enrichProposal(row, await buildProposalEnrichMaps())
+  },
+
+  /** The asked employee's answer to their consent request. */
+  consent: async (id: string, accept: boolean): Promise<EnrichedProposal> => {
+    const row = await aiFetch<AiProposal>(`/api/ai-grafik/proposals/${id}/consent`, {
+      method: 'POST',
+      body: JSON.stringify({ accept }),
+    })
+    return enrichProposal(row, await buildProposalEnrichMaps())
+  },
+
+  /** A manager's verdict on a PENDING_MANAGER proposal; `approve` runs the transactional commit. */
+  managerDecision: async (id: string, approve: boolean): Promise<EnrichedProposal> => {
+    const row = await aiFetch<AiProposal>(`/api/ai-grafik/proposals/${id}/manager-decision`, {
+      method: 'POST',
+      body: JSON.stringify({ approve }),
+    })
+    return enrichProposal(row, await buildProposalEnrichMaps())
+  },
+
+  /** Manager: detect vacated shifts (assigned employee on APPROVED leave) in `[from, to]`. Read-only. */
+  scan: (from: string, to: string): Promise<VacatedShift[]> =>
+    aiFetch<VacatedShift[]>('/api/ai-grafik/replacements/scan', {
+      method: 'POST',
+      body: JSON.stringify({ from, to }),
+    }),
+
+  /** Manager: create a replacement proposal for a vacated shift (ranks candidates, autonomy-gated). */
+  createForShift: async (shiftId: string, reason?: string): Promise<EnrichedProposal> => {
+    const row = await aiFetch<AiProposal>(`/api/ai-grafik/proposals/for-shift/${shiftId}`, {
+      method: 'POST',
+      body: JSON.stringify(reason ? { reason } : {}),
+    })
+    return enrichProposal(row, await buildProposalEnrichMaps())
+  },
+}

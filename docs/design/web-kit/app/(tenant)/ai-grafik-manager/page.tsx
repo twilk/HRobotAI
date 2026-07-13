@@ -1,12 +1,15 @@
 import { AppShell } from '@/components/layout/app-shell'
 import { AiConfigPanel } from '@/components/ai-grafik/ai-config-panel'
+import { ProposalInbox } from '@/components/ai-grafik/proposal-inbox'
 import type { Role } from '@/lib/nav'
 import { getSession } from '@/lib/session'
 
-// Server shell (identity/AppShell); the config editor is a Client Component that reads/writes the
-// tenant-wide AI scheduling policy from the REAL tenant-runtime ai-grafik API through the
-// /api/ai-grafik/* proxy. Only scheduling roles (MANAGER/HR/ADMIN_KLIENTA) may manage the policy;
-// a plain PRACOWNIK gets a "brak dostępu" note. Identity comes from the real Keycloak session.
+// Server shell (identity/AppShell); the config editor + proposal inbox are Client Components that
+// read/write the REAL tenant-runtime ai-grafik API through the /api/ai-grafik/* proxy. Only
+// scheduling roles (MANAGER/HR/ADMIN_KLIENTA) may manage the tenant-wide config AND see the manager
+// approval inbox + vacated-shift scan; a plain PRACOWNIK still reaches this page (Task 1.5) to see —
+// and act on — THEIR OWN pending consent request, if any. Identity comes from the real Keycloak
+// session.
 export default async function AiGrafikManagerPage() {
   const session = await getSession()
   const tenant = { name: '4Mobility sp. z o.o.', slug: '4mobility.hrobot.ai' }
@@ -17,14 +20,12 @@ export default async function AiGrafikManagerPage() {
   return (
     <AppShell activeHref="/ai-grafik-manager" title="AI Grafik Manager" tenant={tenant} user={user} roles={roles}>
       {canManage ? (
-        <AiConfigPanel />
-      ) : (
-        <div
-          className="max-w-[720px] mx-auto rounded-lg border border-line-strong bg-card px-4 py-3 text-[13.5px] text-muted"
-          role="note"
-        >
-          Brak dostępu — konfiguracją AI Grafik Managera zarządzają role Menedżer, HR i Admin klienta.
+        <div className="space-y-10">
+          <AiConfigPanel />
+          <ProposalInbox canManage />
         </div>
+      ) : (
+        <ProposalInbox canManage={false} />
       )}
     </AppShell>
   )
