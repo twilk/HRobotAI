@@ -56,6 +56,38 @@ enum LeaveStatus {
   CANCELLED
 }
 
+enum AutonomyLevel {
+  SUGGEST_ONLY
+  AUTO_NOTIFY
+  AUTO_ASK_CONSENT
+  AUTO_COMMIT_ON_APPROVAL
+}
+
+enum AiProposalType {
+  REPLACEMENT
+  ADHOC
+  CAPACITY
+}
+
+enum AiProposalState {
+  DRAFT
+  PENDING_EMPLOYEE_CONSENT
+  EMPLOYEE_AGREED
+  PENDING_MANAGER
+  APPROVED
+  REJECTED
+  ESCALATED
+  CANCELLED
+}
+
+enum ConsentState {
+  NOT_ASKED
+  PENDING
+  GRANTED
+  DECLINED
+  EXPIRED
+}
+
 model User {
   id           String               @id
   email        String               @unique
@@ -91,6 +123,7 @@ model OrganizationalUnit {
   manager       User?                @relation("UnitManager", fields: [managerUserId], references: [id])
   roles         UserRole[]
   employees     Employee[]
+  aiConfig      AiSchedulingConfig[]
 
   @@map("organizational_units")
 }
@@ -133,6 +166,8 @@ model Employee {
   swapsRequested ShiftSwapRequest[] @relation("SwapRequester")
   swapsTargeted  ShiftSwapRequest[] @relation("SwapTarget")
   leaves         LeaveRequest[]
+  aiProposalsVacated    AiProposal[]          @relation("AiProposalVacated")
+  aiProposalCandidacies AiProposalCandidate[] @relation("AiProposalCandidateEmp")
 
   @@map("employees")
 }
@@ -209,6 +244,7 @@ model Shift {
   updatedAt     DateTime     @updatedAt @map("updated_at")
   swapsAsRequesterShift ShiftSwapRequest[] @relation("SwapRequesterShift")
   swapsAsTargetShift    ShiftSwapRequest[] @relation("SwapTargetShift")
+  aiProposals           AiProposal[]
 
   @@map("shifts")
 }
@@ -269,4 +305,70 @@ model LeaveRequest {
 
   @@index([employeeId, startDate, endDate])
   @@map("leave_requests")
+}
+
+/// Per-unit (or global, when unitId is null) configuration for the AI Grafik Manager's autonomy
+/// level and guardrails. `@@unique([unitId])` alone does not prevent multiple unit-less "default"
+/// rows in Postgres (NULL is never equal to NULL for uniqueness purposes) — a partial unique index
+/// on `unit_id IS NULL` is appended to the generated migration SQL to enforce a single default.
+model AiSchedulingConfig {
+  id              String             @id @default(uuid())
+  unitId          String?            @map("unit_id")
+  unit            OrganizationalUnit? @relation(fields: [unitId], references: [id])
+  autonomyLevel   AutonomyLevel      @default(SUGGEST_ONLY) @map("autonomy_level")
+  quietHoursStart String?            @map("quiet_hours_start")
+  quietHoursEnd   String?            @map("quiet_hours_end")
+  consentTtlHours Int                @default(24) @map("consent_ttl_hours")
+  budgetWeeklyCap Decimal?           @map("budget_weekly_cap")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  @@unique([unitId])
+  @@map("ai_scheduling_config")
+}
+
+/// An AI-generated proposal to fill a vacated shift (replacement), place an ad-hoc assignment, or
+/// address a capacity gap. Never mutates `Shift` directly — the state machine (a later phase) drives
+/// consent/approval transitions and performs the atomic assignment only on APPROVED.
+model AiProposal {
+  id                  String                 @id @default(uuid())
+  type                AiProposalType         @default(REPLACEMENT)
+  state               AiProposalState        @default(DRAFT)
+  shiftId             String                 @map("shift_id")
+  shift               Shift                  @relation(fields: [shiftId], references: [id])
+  vacatedEmployeeId   String                 @map("vacated_employee_id")
+  vacatedEmployee     Employee               @relation("AiProposalVacated", fields: [vacatedEmployeeId], references: [id])
+  activeCandidateId   String?                @map("active_candidate_id")
+  reason              String?
+  estimatedCost       Decimal?               @map("estimated_cost")
+  decidedByManagerId  String?                @map("decided_by_manager_id")
+  expiresAt           DateTime?              @map("expires_at")
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
+  candidates          AiProposalCandidate[]
+
+  @@index([state])
+  @@index([shiftId])
+  @@map("ai_proposal")
+}
+
+/// A ranked candidate employee for an AiProposal, with feasibility/score and per-candidate consent
+/// tracking (an employee must GRANT consent before being committed to the vacated shift).
+model AiProposalCandidate {
+  id                 String       @id @default(uuid())
+  proposalId         String       @map("proposal_id")
+  proposal           AiProposal   @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  employeeId         String       @map("employee_id")
+  employee           Employee     @relation("AiProposalCandidateEmp", fields: [employeeId], references: [id])
+  rank               Int
+  feasible           Boolean
+  reason             String?
+  score              Decimal?
+  consentState       ConsentState @default(NOT_ASKED) @map("consent_state")
+  consentRequestedAt DateTime?    @map("consent_requested_at")
+  consentAt          DateTime?    @map("consent_at")
+
+  @@unique([proposalId, employeeId])
+  @@index([proposalId, rank])
+  @@map("ai_proposal_candidate")
 }
