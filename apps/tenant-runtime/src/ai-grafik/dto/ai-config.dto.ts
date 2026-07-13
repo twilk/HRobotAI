@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsOptional, IsUUID, Matches, Max, Min } from 'class-validator'
+import { IsEnum, IsInt, IsNumber, IsOptional, IsUUID, Matches, Max, Min } from 'class-validator'
 import { AutonomyLevel } from '@hrobot/shared'
 
 /**
@@ -23,4 +23,12 @@ export class UpdateAiConfigDto {
 
   /** Consent time-to-live in hours (1h .. 168h = 7 days). */
   @IsOptional() @IsInt() @Min(1) @Max(168) consentTtlHours?: number
+
+  /**
+   * (Codex P1-2) Weekly budget cap in money units, matching `PositionCostRate.currency` (nullable
+   * Decimal on the schema). Omit to leave untouched; a real number sets/replaces the cap. Money
+   * arrives over the wire as a JSON number and is written into the Prisma `Decimal` column as-is —
+   * mirrors the `etat` convention (employee.dto.ts).
+   */
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) budgetWeeklyCap?: number
 }

@@ -52,7 +52,7 @@ describe('AiConfigService', () => {
       const result = await service.getConfig(asClient(client), HR)
 
       expect(client.aiSchedulingConfig.findFirst).toHaveBeenCalledWith({ where: { unitId: null } })
-      expect(result).toEqual({ autonomyLevel: AutonomyLevel.SUGGEST_ONLY, consentTtlHours: 24, unitId: null })
+      expect(result).toEqual({ autonomyLevel: AutonomyLevel.SUGGEST_ONLY, consentTtlHours: 24, unitId: null, budgetWeeklyCap: null })
     })
 
     it('throws ForbiddenException for a MANAGER reading a unit outside their managed set', async () => {
@@ -68,7 +68,7 @@ describe('AiConfigService', () => {
 
       const result = await service.getConfig(asClient(client), MANAGER, 'unit-A')
 
-      expect(result).toEqual({ autonomyLevel: AutonomyLevel.SUGGEST_ONLY, consentTtlHours: 24, unitId: 'unit-A' })
+      expect(result).toEqual({ autonomyLevel: AutonomyLevel.SUGGEST_ONLY, consentTtlHours: 24, unitId: 'unit-A', budgetWeeklyCap: null })
     })
   })
 
@@ -168,6 +168,74 @@ describe('AiConfigService', () => {
       })
       expect(result).toEqual({ id: 'cfg-default', unitId: null, consentTtlHours: 6 })
       expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'ai_config.updated', entityId: 'cfg-default' }))
+    })
+
+    it('(P1-2) writes budgetWeeklyCap through the same upsert path as any other field', async () => {
+      client.aiSchedulingConfig.findFirst.mockResolvedValue(null)
+      const after = { id: 'cfg-A', unitId: 'unit-A', budgetWeeklyCap: 5000 }
+      client.aiSchedulingConfig.upsert.mockResolvedValue(after)
+
+      const result = await service.upsertConfig(asClient(client), HR, { unitId: 'unit-A', budgetWeeklyCap: 5000 })
+
+      expect(result).toBe(after)
+      expect(client.aiSchedulingConfig.upsert).toHaveBeenCalledWith({
+        where: { unitId: 'unit-A' },
+        update: { budgetWeeklyCap: 5000 },
+        create: { budgetWeeklyCap: 5000, unitId: 'unit-A' },
+      })
+    })
+  })
+
+  describe('getEffectiveBudgetCap (Codex P1-3 fallback semantics)', () => {
+    it("uses the unit's own cap when it has one set", async () => {
+      client.aiSchedulingConfig.findFirst.mockResolvedValueOnce({ budgetWeeklyCap: { toString: () => '4000' } })
+
+      const result = await service.getEffectiveBudgetCap(asClient(client), 'unit-A')
+
+      expect(result).toEqual({ cap: '4000', source: 'unit' })
+      expect(client.aiSchedulingConfig.findFirst).toHaveBeenCalledWith({ where: { unitId: 'unit-A' } })
+      // Fell back is NOT reached — only one lookup when the unit row already has a cap.
+      expect(client.aiSchedulingConfig.findFirst).toHaveBeenCalledTimes(1)
+    })
+
+    it("falls back to the tenant-wide (null-row) cap when the unit has no row at all", async () => {
+      client.aiSchedulingConfig.findFirst
+        .mockResolvedValueOnce(null) // unit row
+        .mockResolvedValueOnce({ budgetWeeklyCap: { toString: () => '9000' } }) // global row
+
+      const result = await service.getEffectiveBudgetCap(asClient(client), 'unit-A')
+
+      expect(result).toEqual({ cap: '9000', source: 'global' })
+      expect(client.aiSchedulingConfig.findFirst).toHaveBeenNthCalledWith(1, { where: { unitId: 'unit-A' } })
+      expect(client.aiSchedulingConfig.findFirst).toHaveBeenNthCalledWith(2, { where: { unitId: null } })
+    })
+
+    it("falls back to the tenant-wide cap when the unit row exists but its cap is null", async () => {
+      client.aiSchedulingConfig.findFirst
+        .mockResolvedValueOnce({ budgetWeeklyCap: null }) // unit row, no cap
+        .mockResolvedValueOnce({ budgetWeeklyCap: { toString: () => '9000' } }) // global row
+
+      const result = await service.getEffectiveBudgetCap(asClient(client), 'unit-A')
+
+      expect(result).toEqual({ cap: '9000', source: 'global' })
+    })
+
+    it('reports "no cap" (source: none) when neither the unit nor the global row has one', async () => {
+      client.aiSchedulingConfig.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(null)
+
+      const result = await service.getEffectiveBudgetCap(asClient(client), 'unit-A')
+
+      expect(result).toEqual({ cap: null, source: 'none' })
+    })
+
+    it('goes straight to the global row for the tenant-wide view (unitId null) — never a unit lookup', async () => {
+      client.aiSchedulingConfig.findFirst.mockResolvedValueOnce({ budgetWeeklyCap: { toString: () => '12000' } })
+
+      const result = await service.getEffectiveBudgetCap(asClient(client), null)
+
+      expect(result).toEqual({ cap: '12000', source: 'global' })
+      expect(client.aiSchedulingConfig.findFirst).toHaveBeenCalledWith({ where: { unitId: null } })
+      expect(client.aiSchedulingConfig.findFirst).toHaveBeenCalledTimes(1)
     })
   })
 })

@@ -17,6 +17,18 @@ export interface DefaultAiConfig {
   autonomyLevel: (typeof AutonomyLevel)['SUGGEST_ONLY']
   consentTtlHours: number
   unitId: string | null
+  /** (Codex P1-2) No row yet ⇒ no cap has ever been set for this unit. */
+  budgetWeeklyCap: null
+}
+
+/** Which config row (if any) an effective budget cap was resolved from. */
+export type BudgetCapSource = 'unit' | 'global' | 'none'
+
+/** The effective weekly budget cap for a unit (or the tenant-wide view when `unitId` is `null`). */
+export interface EffectiveBudgetCap {
+  /** `null` when neither the unit nor the global row has a cap set ("brak capu"). */
+  cap: string | null
+  source: BudgetCapSource
 }
 
 /**
@@ -36,7 +48,7 @@ export class AiConfigService {
 
   /** The synthetic default a caller sees before any config row has been persisted for `unitId`. */
   private defaultConfig(unitId: string | null): DefaultAiConfig {
-    return { autonomyLevel: AutonomyLevel.SUGGEST_ONLY, consentTtlHours: 24, unitId }
+    return { autonomyLevel: AutonomyLevel.SUGGEST_ONLY, consentTtlHours: 24, unitId, budgetWeeklyCap: null }
   }
 
   /**
@@ -101,5 +113,23 @@ export class AiConfigService {
     // Config carries no PII → before/after snapshots are audited verbatim.
     await this.writeAudit(client, actor, after.id, { before, after })
     return after
+  }
+
+  /**
+   * (Codex P1-3) Resolve the weekly budget cap that actually applies to `unitId`: the unit's OWN
+   * `AiSchedulingConfig` row wins when it has a cap set; otherwise fall back to the tenant-wide
+   * default (the `unitId = null` row); otherwise there is no cap at all. `unitId: null` means the
+   * tenant-wide/HR view — it goes straight to the global row. Callers (CostService) MUST use this
+   * instead of comparing a unit's cost to the global cap directly, and must not treat a missing row
+   * as "cap = 0".
+   */
+  async getEffectiveBudgetCap(client: TenantClient, unitId: string | null): Promise<EffectiveBudgetCap> {
+    if (unitId) {
+      const unitRow = await client.aiSchedulingConfig.findFirst({ where: { unitId } })
+      if (unitRow?.budgetWeeklyCap != null) return { cap: unitRow.budgetWeeklyCap.toString(), source: 'unit' }
+    }
+    const globalRow = await client.aiSchedulingConfig.findFirst({ where: { unitId: null } })
+    if (globalRow?.budgetWeeklyCap != null) return { cap: globalRow.budgetWeeklyCap.toString(), source: 'global' }
+    return { cap: null, source: 'none' }
   }
 }
