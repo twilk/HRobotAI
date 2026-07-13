@@ -231,6 +231,11 @@ export class AiProposalService {
     const vacatedRate = rateByKey.get(pairKey(vacatedEmp.position, vacatedEmp.employmentType as EmploymentType))
     if (!candidateRate || !vacatedRate) return null
 
+    // FIX 3: mirror CostService.weekCost's currencyConflict guard — never subtract across mismatched
+    // currencies (e.g. PLN − EUR). A misleading number is worse than no number: return null (the
+    // same "ambiguous → null" contract this method already uses for missing employees/rates).
+    if (candidateRate.currency !== vacatedRate.currency) return null
+
     const candidateCost = this.cost.shiftCost(candidateRate, shift)
     const vacatedCost = this.cost.shiftCost(vacatedRate, shift)
     return candidateCost.sub(vacatedCost)

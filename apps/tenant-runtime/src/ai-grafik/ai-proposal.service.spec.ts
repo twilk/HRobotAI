@@ -334,6 +334,24 @@ describe('AiProposalService.createReplacement — Δcost hook (Codex P1-6)', () 
     expect(data.estimatedCost).toBeUndefined()
   })
 
+  it('FIX 3: leaves estimatedCost unset (never a mismatched-currency subtraction) when the candidate and vacated rates are in different currencies', async () => {
+    const client = makeClient()
+    client.employee.findMany.mockResolvedValue([
+      employeeRow('c1', 'Kasjer', EmploymentType.UMOWA_O_PRACE),
+      employeeRow(VACATED, 'Kucharz', EmploymentType.B2B),
+    ])
+    const { service, cost } = makeService({ ranked: [feasible('c1', 1)], autonomyLevel: AutonomyLevel.SUGGEST_ONLY })
+    ;(cost.findRatesForPairs as jest.Mock).mockResolvedValue([
+      { ...costRateRow('Kasjer', EmploymentType.UMOWA_O_PRACE, '20'), currency: 'EUR' },
+      { ...costRateRow('Kucharz', EmploymentType.B2B, '15'), currency: 'PLN' },
+    ])
+
+    await service.createReplacement(as(client), HR, SHIFT_ID)
+
+    const data = client.aiProposal.create.mock.calls[0][0].data
+    expect(data.estimatedCost).toBeUndefined()
+  })
+
   it('never computes Δcost (no employee/rate lookups) when there is no feasible candidate', async () => {
     const client = makeClient()
     const { service, cost } = makeService({ ranked: [infeasible('a')] })
