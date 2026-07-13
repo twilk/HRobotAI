@@ -16,5 +16,7 @@ import { AiProposalService } from './ai-proposal.service.js'
   imports: [ShiftSwapModule],
   controllers: [AiGrafikController],
   providers: [AiConfigService, ReplacementService, AiProposalService],
+  // Exported so LeaveModule's approve auto-scan tie-in can reuse the replacement/proposal seams.
+  exports: [ReplacementService, AiProposalService],
 })
 export class AiGrafikModule {}

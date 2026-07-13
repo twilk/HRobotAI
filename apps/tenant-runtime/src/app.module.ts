@@ -16,6 +16,7 @@ import { OnboardingModule } from './onboarding/onboarding.module.js'
 import { GrafikModule } from './grafik/grafik.module.js'
 import { ShiftSwapModule } from './shift-swap/shift-swap.module.js'
 import { AiGrafikModule } from './ai-grafik/ai-grafik.module.js'
+import { LeaveModule } from './leave/leave.module.js'
 import { RedisService } from './common/redis/redis.service.js'
 
 @Module({
@@ -47,6 +48,7 @@ import { RedisService } from './common/redis/redis.service.js'
     GrafikModule,
     ShiftSwapModule,
     AiGrafikModule,
+    LeaveModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
