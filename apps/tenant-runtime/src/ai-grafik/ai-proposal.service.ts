@@ -308,62 +308,77 @@ export class AiProposalService {
 
     const now = new Date()
     if (accept) {
-      await client.aiProposalCandidate.update({
-        where: { id: active.id },
-        data: { consentState: ConsentState.GRANTED, consentAt: now },
-      })
       // employee_accept → EMPLOYEE_AGREED, then submit_to_manager → PENDING_MANAGER (both validated).
       const agreed = nextProposalState(proposal.state, AiProposalAction.EmployeeAccept)
       const pendingManager = nextProposalState(agreed, AiProposalAction.SubmitToManager)
-      const updated = await client.aiProposal.update({
-        where: { id: proposal.id },
-        data: { state: pendingManager },
-        include: { candidates: true },
+
+      // Both writes happen atomically; the proposal flip is an optimistic-locked updateMany (guarded
+      // on the state we read above) so a concurrent expire/escalate can't be silently clobbered.
+      await client.$transaction(async (tx) => {
+        await tx.aiProposalCandidate.update({
+          where: { id: active.id },
+          data: { consentState: ConsentState.GRANTED, consentAt: now },
+        })
+        const flipped = await tx.aiProposal.updateMany({
+          where: { id: proposal.id, state: AiProposalState.PENDING_EMPLOYEE_CONSENT },
+          data: { state: pendingManager },
+        })
+        if (flipped.count === 0) throw new ConflictException('Proposal changed concurrently')
       })
+
       await this.writeAudit(client, actor, 'ai_proposal.consented', proposal.id, {
         shiftId: proposal.shiftId,
         candidateId: active.id,
         employeeId: active.employeeId,
         state: pendingManager,
       })
-      return updated
+      return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: { candidates: true } })
     }
 
     // Decline: mark this candidate DECLINED, then promote the next feasible untouched candidate.
-    await client.aiProposalCandidate.update({
-      where: { id: active.id },
-      data: { consentState: ConsentState.DECLINED },
-    })
     const next = proposal.candidates
       .filter((c) => c.feasible && c.consentState === ConsentState.NOT_ASKED && c.id !== active.id)
       .sort((a, b) => a.rank - b.rank)[0]
 
     if (next) {
-      await client.aiProposalCandidate.update({
-        where: { id: next.id },
-        data: { consentState: ConsentState.PENDING, consentRequestedAt: now },
-      })
       // Self-loop: stays PENDING_EMPLOYEE_CONSENT, just re-pointed at the promoted candidate.
       const stay = nextProposalState(proposal.state, AiProposalAction.EmployeeDeclineNext)
-      return client.aiProposal.update({
-        where: { id: proposal.id },
-        data: { state: stay, activeCandidateId: next.id },
-        include: { candidates: true },
+      await client.$transaction(async (tx) => {
+        await tx.aiProposalCandidate.update({
+          where: { id: active.id },
+          data: { consentState: ConsentState.DECLINED },
+        })
+        await tx.aiProposalCandidate.update({
+          where: { id: next.id },
+          data: { consentState: ConsentState.PENDING, consentRequestedAt: now },
+        })
+        const flipped = await tx.aiProposal.updateMany({
+          where: { id: proposal.id, state: AiProposalState.PENDING_EMPLOYEE_CONSENT },
+          data: { state: stay, activeCandidateId: next.id },
+        })
+        if (flipped.count === 0) throw new ConflictException('Proposal changed concurrently')
       })
+      return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: { candidates: true } })
     }
 
     // No candidate left to ask — escalate to a human.
     const escalated = nextProposalState(proposal.state, AiProposalAction.EmployeeDeclineLast)
-    const updated = await client.aiProposal.update({
-      where: { id: proposal.id },
-      data: { state: escalated },
-      include: { candidates: true },
+    await client.$transaction(async (tx) => {
+      await tx.aiProposalCandidate.update({
+        where: { id: active.id },
+        data: { consentState: ConsentState.DECLINED },
+      })
+      const flipped = await tx.aiProposal.updateMany({
+        where: { id: proposal.id, state: AiProposalState.PENDING_EMPLOYEE_CONSENT },
+        data: { state: escalated },
+      })
+      if (flipped.count === 0) throw new ConflictException('Proposal changed concurrently')
     })
     await this.writeAudit(client, actor, 'ai_proposal.escalated', proposal.id, {
       shiftId: proposal.shiftId,
       reason: 'ALL_CANDIDATES_DECLINED',
     })
-    return updated
+    return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: { candidates: true } })
   }
 
   /**
@@ -445,9 +460,12 @@ export class AiProposalService {
       })
       if (reassigned.count === 0) throw new ConflictException('shift changed concurrently')
 
+      // Derived through the pure machine (same idiom as every other transition) rather than
+      // hardcoded — behaviorally identical (PENDING_MANAGER + ManagerApprove → APPROVED).
+      const approved = nextProposalState(AiProposalState.PENDING_MANAGER, AiProposalAction.ManagerApprove)
       const flipped = await tx.aiProposal.updateMany({
         where: { id: proposal.id, state: AiProposalState.PENDING_MANAGER },
-        data: { state: AiProposalState.APPROVED, decidedByManagerId: actor.userId },
+        data: { state: approved, decidedByManagerId: actor.userId },
       })
       if (flipped.count === 0) throw new ConflictException('proposal changed concurrently')
 

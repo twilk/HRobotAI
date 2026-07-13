@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { BadRequestException, Inject, Injectable } from '@nestjs/common'
 import type { TenantClient, TenantPrisma } from '@hrobot/db'
 import {
   SWAP_FEASIBILITY_VALIDATOR,
@@ -11,9 +11,40 @@ import type { AiConfigActor } from './ai-config.service.js'
  * A vacated shift with its assigned employee and that employee's APPROVED leaves pre-loaded — the
  * shape {@link ReplacementService.findVacatedShifts} returns so callers can see WHY the shift is
  * vacated (which leave interval covers it) without a second round-trip.
+ *
+ * RODO ALLOWLIST projection: a `select` (never a bare `include`) so a future PII column on `Employee`
+ * (`pesel`/`peselHash`/`homeAddress`/`homeLat`/`homeLng`) cannot leak into this response just by
+ * existing on the model — it must be deliberately added here. Mirrors the `SAFE_SELECT` allowlist
+ * `EmployeesService` uses for every other employee read path.
  */
 export type VacatedShift = TenantPrisma.ShiftGetPayload<{
-  include: { employee: { include: { leaves: true } } }
+  select: {
+    id: true
+    date: true
+    start: true
+    end: true
+    role: true
+    employeeId: true
+    lokalizacjaId: true
+    employee: {
+      select: {
+        id: true
+        unitId: true
+        firstName: true
+        lastName: true
+        position: true
+        leaves: {
+          select: {
+            id: true
+            startDate: true
+            endDate: true
+            status: true
+            employeeId: true
+          }
+        }
+      }
+    }
+  }
 }>
 
 /** The inclusive `[from, to]` calendar-date window (ISO `YYYY-MM-DD`) a vacated-shift scan sweeps. */
@@ -180,8 +211,15 @@ export class ReplacementService {
    * a final in-memory pass enforces the exact per-shift closed-interval covering. `Shift.date` and
    * the leave bounds are all `@db.Date` (UTC midnight), so the comparison stays in UTC. DETECTS
    * only — no proposal is created and nothing is mutated.
+   *
+   * The returned `employee` (and its `leaves`) are a RODO-safe `select` projection — see
+   * {@link VacatedShift} — never the full row.
    */
   async findVacatedShifts(client: TenantClient, actor: AiConfigActor, range: ScanRange): Promise<VacatedShift[]> {
+    // ISO YYYY-MM-DD strings compare correctly lexicographically; the DTO already validates both are
+    // real calendar dates (IsISO8601 strict), so a plain string compare is enough here.
+    if (range.from > range.to) throw new BadRequestException('from must not be after to')
+
     const from = new Date(range.from)
     const to = new Date(range.to)
 
@@ -195,7 +233,25 @@ export class ReplacementService {
 
     const shifts = await client.shift.findMany({
       where: { date: { gte: from, lte: to }, employee: employeeWhere },
-      include: { employee: { include: { leaves: { where: { status: 'APPROVED' } } } } },
+      select: {
+        id: true,
+        date: true,
+        start: true,
+        end: true,
+        role: true,
+        employeeId: true,
+        lokalizacjaId: true,
+        employee: {
+          select: {
+            id: true,
+            unitId: true,
+            firstName: true,
+            lastName: true,
+            position: true,
+            leaves: { where: { status: 'APPROVED' }, select: { id: true, startDate: true, endDate: true, status: true, employeeId: true } },
+          },
+        },
+      },
     })
 
     // Exact per-shift covering: keep only shifts whose date falls inside a loaded leave's CLOSED

@@ -123,6 +123,25 @@ describe('AiGrafikController', () => {
     )
   })
 
+  it('listProposals rejects an unknown ?state= value with a BadRequestException, never reaching the service', async () => {
+    await expect(controller.listProposals(client, user, '1.2.3.4', undefined, 'GARBAGE')).rejects.toThrow(
+      'state must be one of',
+    )
+    expect(mockProposals.list).not.toHaveBeenCalled()
+  })
+
+  it('listProposals allows an absent ?state= (no filter)', async () => {
+    mockProposals.list.mockResolvedValue([])
+
+    await controller.listProposals(client, user, '1.2.3.4', undefined, undefined)
+
+    expect(mockProposals.list).toHaveBeenCalledWith(
+      client,
+      { userId: 'kc-1', roles: [Role.HR], ipAddress: '1.2.3.4' },
+      { mine: false, state: undefined },
+    )
+  })
+
   it('delegates getProposal to AiProposalService.getById', async () => {
     mockProposals.getById.mockResolvedValue({ id: 'prop-1' })
 

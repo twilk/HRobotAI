@@ -31,6 +31,7 @@ type CreatedCandidate = {
 type MockTx = {
   shift: { updateMany: jest.Mock }
   aiProposal: { updateMany: jest.Mock }
+  aiProposalCandidate: { update: jest.Mock }
   auditLog: { create: jest.Mock }
 }
 
@@ -38,6 +39,7 @@ function makeClient() {
   const tx: MockTx = {
     shift: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     aiProposal: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    aiProposalCandidate: { update: jest.fn().mockResolvedValue({}) },
     auditLog: { create: jest.fn().mockResolvedValue({ id: 'log-1' }) },
   }
   return {
@@ -373,8 +375,8 @@ describe('AiProposalService.employeeConsent', () => {
     const { service } = makeService()
 
     await expect(service.employeeConsent(as(client), EMPLOYEE, 'prop-1', true)).rejects.toThrow(ForbiddenException)
-    expect(client.aiProposalCandidate.update).not.toHaveBeenCalled()
-    expect(client.aiProposal.update).not.toHaveBeenCalled()
+    expect(client.$transaction).not.toHaveBeenCalled()
+    expect(client.__tx.aiProposalCandidate.update).not.toHaveBeenCalled()
   })
 
   it('conflicts when the proposal is not awaiting employee consent', async () => {
@@ -384,9 +386,10 @@ describe('AiProposalService.employeeConsent', () => {
     const { service } = makeService()
 
     await expect(service.employeeConsent(as(client), EMPLOYEE, 'prop-1', true)).rejects.toThrow(ConflictException)
+    expect(client.$transaction).not.toHaveBeenCalled()
   })
 
-  it('accept → active candidate GRANTED (+ consentAt) and state advances to PENDING_MANAGER', async () => {
+  it('accept → active candidate GRANTED (+ consentAt) and state advances to PENDING_MANAGER, all inside one transaction', async () => {
     const client = makeClient()
     client.aiProposal.findUnique.mockResolvedValue(pendingConsentProposal())
     client.employee.findFirst.mockResolvedValue({ id: C1 })
@@ -394,17 +397,31 @@ describe('AiProposalService.employeeConsent', () => {
 
     await service.employeeConsent(as(client), EMPLOYEE, 'prop-1', true)
 
-    expect(client.aiProposalCandidate.update).toHaveBeenCalledWith({
+    expect(client.$transaction).toHaveBeenCalledTimes(1)
+    const tx = client.__tx
+    expect(tx.aiProposalCandidate.update).toHaveBeenCalledWith({
       where: { id: 'cand-1' },
       data: { consentState: ConsentState.GRANTED, consentAt: expect.any(Date) },
     })
-    const upd = client.aiProposal.update.mock.calls[0][0]
-    expect(upd.where).toEqual({ id: 'prop-1' })
-    expect(upd.data.state).toBe(AiProposalState.PENDING_MANAGER)
+    expect(tx.aiProposal.updateMany).toHaveBeenCalledWith({
+      where: { id: 'prop-1', state: AiProposalState.PENDING_EMPLOYEE_CONSENT },
+      data: { state: AiProposalState.PENDING_MANAGER },
+    })
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'ai_proposal.consented' }))
   })
 
-  it('decline with a remaining candidate → next becomes active PENDING, state stays PENDING_EMPLOYEE_CONSENT', async () => {
+  it('accept: optimistic lock — proposal flip matches zero rows → ConflictException, no audit', async () => {
+    const client = makeClient()
+    client.aiProposal.findUnique.mockResolvedValue(pendingConsentProposal())
+    client.employee.findFirst.mockResolvedValue({ id: C1 })
+    client.__tx.aiProposal.updateMany.mockResolvedValue({ count: 0 })
+    const { service, audit } = makeService()
+
+    await expect(service.employeeConsent(as(client), EMPLOYEE, 'prop-1', true)).rejects.toThrow(ConflictException)
+    expect(audit.log).not.toHaveBeenCalled()
+  })
+
+  it('decline with a remaining candidate → next becomes active PENDING, state stays PENDING_EMPLOYEE_CONSENT, all inside one transaction', async () => {
     const client = makeClient()
     client.aiProposal.findUnique.mockResolvedValue(pendingConsentProposal())
     client.employee.findFirst.mockResolvedValue({ id: C1 })
@@ -412,22 +429,35 @@ describe('AiProposalService.employeeConsent', () => {
 
     await service.employeeConsent(as(client), EMPLOYEE, 'prop-1', false)
 
+    expect(client.$transaction).toHaveBeenCalledTimes(1)
+    const tx = client.__tx
     // The declined candidate is marked DECLINED...
-    expect(client.aiProposalCandidate.update).toHaveBeenCalledWith({
+    expect(tx.aiProposalCandidate.update).toHaveBeenCalledWith({
       where: { id: 'cand-1' },
       data: { consentState: ConsentState.DECLINED },
     })
     // ...and the next feasible NOT_ASKED candidate is promoted to the active PENDING slot.
-    expect(client.aiProposalCandidate.update).toHaveBeenCalledWith({
+    expect(tx.aiProposalCandidate.update).toHaveBeenCalledWith({
       where: { id: 'cand-2' },
       data: { consentState: ConsentState.PENDING, consentRequestedAt: expect.any(Date) },
     })
-    const upd = client.aiProposal.update.mock.calls[0][0]
-    expect(upd.data.activeCandidateId).toBe('cand-2')
-    expect(upd.data.state).toBe(AiProposalState.PENDING_EMPLOYEE_CONSENT)
+    expect(tx.aiProposal.updateMany).toHaveBeenCalledWith({
+      where: { id: 'prop-1', state: AiProposalState.PENDING_EMPLOYEE_CONSENT },
+      data: { state: AiProposalState.PENDING_EMPLOYEE_CONSENT, activeCandidateId: 'cand-2' },
+    })
   })
 
-  it('decline with NO candidate left → ESCALATED and audits ai_proposal.escalated', async () => {
+  it('decline: optimistic lock — proposal flip matches zero rows → ConflictException', async () => {
+    const client = makeClient()
+    client.aiProposal.findUnique.mockResolvedValue(pendingConsentProposal())
+    client.employee.findFirst.mockResolvedValue({ id: C1 })
+    client.__tx.aiProposal.updateMany.mockResolvedValue({ count: 0 })
+    const { service } = makeService()
+
+    await expect(service.employeeConsent(as(client), EMPLOYEE, 'prop-1', false)).rejects.toThrow(ConflictException)
+  })
+
+  it('decline with NO candidate left → ESCALATED and audits ai_proposal.escalated, all inside one transaction', async () => {
     const client = makeClient()
     client.aiProposal.findUnique.mockResolvedValue(
       pendingConsentProposal({
@@ -441,12 +471,16 @@ describe('AiProposalService.employeeConsent', () => {
 
     await service.employeeConsent(as(client), EMPLOYEE, 'prop-1', false)
 
-    expect(client.aiProposalCandidate.update).toHaveBeenCalledWith({
+    expect(client.$transaction).toHaveBeenCalledTimes(1)
+    const tx = client.__tx
+    expect(tx.aiProposalCandidate.update).toHaveBeenCalledWith({
       where: { id: 'cand-1' },
       data: { consentState: ConsentState.DECLINED },
     })
-    const upd = client.aiProposal.update.mock.calls[0][0]
-    expect(upd.data.state).toBe(AiProposalState.ESCALATED)
+    expect(tx.aiProposal.updateMany).toHaveBeenCalledWith({
+      where: { id: 'prop-1', state: AiProposalState.PENDING_EMPLOYEE_CONSENT },
+      data: { state: AiProposalState.ESCALATED },
+    })
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'ai_proposal.escalated' }))
   })
 })

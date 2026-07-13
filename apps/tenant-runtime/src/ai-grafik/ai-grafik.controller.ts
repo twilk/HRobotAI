@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Ip, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Get, Ip, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
-import { Role } from '@hrobot/shared'
+import { AiProposalState, Role } from '@hrobot/shared'
 import { TenantRoute } from '../tenant-runtime/tenant-route.decorator.js'
 import { Roles } from '../tenant-runtime/rbac/roles.decorator.js'
 import { CurrentTenantClient, CurrentUser } from '../tenant-runtime/tenant-context/current-tenant-client.decorator.js'
@@ -84,7 +84,9 @@ export class AiGrafikController {
   }
 
   // List proposals. A PRACOWNIK passes `mine=true` to see only proposals awaiting THEIR consent;
-  // MANAGER/HR/ADMIN see their in-scope proposals (scoping enforced in the service).
+  // MANAGER/HR/ADMIN see their in-scope proposals (scoping enforced in the service). `state` is
+  // validated against the AiProposalState enum HERE so a garbage value 400s instead of reaching
+  // Prisma's `where.state` and throwing a PrismaClientValidationError (→ 500).
   @Get('proposals')
   @Roles(Role.PRACOWNIK, Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA)
   async listProposals(
@@ -94,6 +96,9 @@ export class AiGrafikController {
     @Query('mine') mine?: string,
     @Query('state') state?: string,
   ): Promise<unknown> {
+    if (state != null && !Object.values(AiProposalState).includes(state as AiProposalState)) {
+      throw new BadRequestException(`state must be one of: ${Object.values(AiProposalState).join(', ')}`)
+    }
     return this.proposals.list(client, this.actor(user, ip), { mine: mine === 'true', state })
   }
 

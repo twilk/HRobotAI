@@ -283,9 +283,51 @@ describe('ReplacementService.findVacatedShifts', () => {
 
     const where = client.shift.findMany.mock.calls[0][0].where
     expect(where.employee.leaves.some.status).toBe('APPROVED')
-    // The included leaves are likewise narrowed to APPROVED so the post-filter never sees others.
-    const include = client.shift.findMany.mock.calls[0][0].include
-    expect(include.employee.include.leaves.where.status).toBe('APPROVED')
+    // The selected leaves are likewise narrowed to APPROVED so the post-filter never sees others.
+    const select = client.shift.findMany.mock.calls[0][0].select
+    expect(select.employee.select.leaves.where.status).toBe('APPROVED')
+  })
+
+  it('RODO: the query uses a select (never a bare include) and projects NO pesel/home-address fields', async () => {
+    const client = makeScanClient([])
+
+    await service.findVacatedShifts(asScan(client), HR_ACTOR, RANGE)
+
+    const call = client.shift.findMany.mock.calls[0][0]
+    expect(call.include).toBeUndefined()
+    const employeeSelect = call.select.employee.select
+    expect(employeeSelect).toEqual({
+      id: true,
+      unitId: true,
+      firstName: true,
+      lastName: true,
+      position: true,
+      leaves: { where: { status: 'APPROVED' }, select: { id: true, startDate: true, endDate: true, status: true, employeeId: true } },
+    })
+    for (const forbidden of ['pesel', 'peselHash', 'homeAddress', 'homeLat', 'homeLng']) {
+      expect(employeeSelect[forbidden]).toBeUndefined()
+    }
+  })
+
+  it('RODO: a returned vacated shift carries no pesel/home-address keys on its employee', async () => {
+    const covered = scanShift('shift-1', '2026-07-15', [{ startIso: '2026-07-14', endIso: '2026-07-16' }])
+    const client = makeScanClient([covered])
+
+    const [result] = await service.findVacatedShifts(asScan(client), HR_ACTOR, RANGE)
+
+    expect(result).toBeDefined()
+    for (const forbidden of ['pesel', 'peselHash', 'homeAddress', 'homeLat', 'homeLng']) {
+      expect((result!.employee as Record<string, unknown>)[forbidden]).toBeUndefined()
+    }
+  })
+
+  it('rejects from > to with a BadRequestException before querying', async () => {
+    const client = makeScanClient([])
+
+    await expect(
+      service.findVacatedShifts(asScan(client), HR_ACTOR, { from: '2026-07-31', to: '2026-07-01' }),
+    ).rejects.toThrow('from must not be after to')
+    expect(client.shift.findMany).not.toHaveBeenCalled()
   })
 
   it('scopes a MANAGER to their managed units via managedUnitIds', async () => {
