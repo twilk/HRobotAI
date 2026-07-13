@@ -6,6 +6,7 @@ import { Role } from '@hrobot/shared'
 import { AiGrafikController } from './ai-grafik.controller.js'
 import { AiConfigService } from './ai-config.service.js'
 import { ReplacementService } from './replacement.service.js'
+import { AiProposalService } from './ai-proposal.service.js'
 import { ROLES_KEY } from '../tenant-runtime/rbac/roles.decorator.js'
 import { KeycloakJwtGuard } from '../tenant-runtime/keycloak/keycloak-jwt.guard.js'
 import { TenantContextInterceptor } from '../tenant-runtime/tenant-context/tenant-context.interceptor.js'
@@ -19,6 +20,13 @@ const mockService = {
 }
 const mockReplacement = {
   findVacatedShifts: jest.fn(),
+}
+const mockProposals = {
+  createReplacement: jest.fn(),
+  list: jest.fn(),
+  getById: jest.fn(),
+  employeeConsent: jest.fn(),
+  managerDecision: jest.fn(),
 }
 const client = {} as TenantClient
 const user: JwtPayload = { sub: 'kc-1', iss: 'x', hrobot_roles: [Role.HR], exp: 0 }
@@ -35,6 +43,7 @@ describe('AiGrafikController', () => {
       providers: [
         { provide: AiConfigService, useValue: mockService },
         { provide: ReplacementService, useValue: mockReplacement },
+        { provide: AiProposalService, useValue: mockProposals },
       ],
     })
       .overrideGuard(KeycloakJwtGuard).useValue(bypass)
@@ -87,6 +96,74 @@ describe('AiGrafikController', () => {
     )
   })
 
+  it('delegates createProposal to AiProposalService.createReplacement with the actor, shiftId and reason', async () => {
+    mockProposals.createReplacement.mockResolvedValue({ id: 'prop-1', state: 'DRAFT' })
+
+    const result = await controller.createProposal(client, user, '1.2.3.4', 'shift-9', { reason: 'urlop' })
+
+    expect(result).toEqual({ id: 'prop-1', state: 'DRAFT' })
+    expect(mockProposals.createReplacement).toHaveBeenCalledWith(
+      client,
+      { userId: 'kc-1', roles: [Role.HR], ipAddress: '1.2.3.4' },
+      'shift-9',
+      'urlop',
+    )
+  })
+
+  it('delegates listProposals to AiProposalService.list with a parsed filter', async () => {
+    mockProposals.list.mockResolvedValue([{ id: 'prop-1' }])
+
+    const result = await controller.listProposals(client, user, '1.2.3.4', 'true', 'DRAFT')
+
+    expect(result).toEqual([{ id: 'prop-1' }])
+    expect(mockProposals.list).toHaveBeenCalledWith(
+      client,
+      { userId: 'kc-1', roles: [Role.HR], ipAddress: '1.2.3.4' },
+      { mine: true, state: 'DRAFT' },
+    )
+  })
+
+  it('delegates getProposal to AiProposalService.getById', async () => {
+    mockProposals.getById.mockResolvedValue({ id: 'prop-1' })
+
+    const result = await controller.getProposal(client, user, '1.2.3.4', 'prop-1')
+
+    expect(result).toEqual({ id: 'prop-1' })
+    expect(mockProposals.getById).toHaveBeenCalledWith(
+      client,
+      { userId: 'kc-1', roles: [Role.HR], ipAddress: '1.2.3.4' },
+      'prop-1',
+    )
+  })
+
+  it('delegates consent to AiProposalService.employeeConsent with the parsed accept flag', async () => {
+    mockProposals.employeeConsent.mockResolvedValue({ id: 'prop-1', state: 'PENDING_MANAGER' })
+
+    const result = await controller.consent(client, user, '1.2.3.4', 'prop-1', { accept: true })
+
+    expect(result).toEqual({ id: 'prop-1', state: 'PENDING_MANAGER' })
+    expect(mockProposals.employeeConsent).toHaveBeenCalledWith(
+      client,
+      { userId: 'kc-1', roles: [Role.HR], ipAddress: '1.2.3.4' },
+      'prop-1',
+      true,
+    )
+  })
+
+  it('delegates managerDecision to AiProposalService.managerDecision with the approve flag', async () => {
+    mockProposals.managerDecision.mockResolvedValue({ id: 'prop-1', state: 'APPROVED' })
+
+    const result = await controller.managerDecision(client, user, '1.2.3.4', 'prop-1', { approve: true })
+
+    expect(result).toEqual({ id: 'prop-1', state: 'APPROVED' })
+    expect(mockProposals.managerDecision).toHaveBeenCalledWith(
+      client,
+      { userId: 'kc-1', roles: [Role.HR], ipAddress: '1.2.3.4' },
+      'prop-1',
+      { approve: true },
+    )
+  })
+
   // --- RBAC metadata: proves the role gate wired to each route ------------------------------------
 
   describe('@Roles gate metadata', () => {
@@ -104,6 +181,26 @@ describe('AiGrafikController', () => {
 
     it('restricts scan to MANAGER/HR/ADMIN_KLIENTA', () => {
       expect(rolesFor('scan')).toEqual([Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA])
+    })
+
+    it('restricts createProposal to MANAGER/HR/ADMIN_KLIENTA', () => {
+      expect(rolesFor('createProposal')).toEqual([Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA])
+    })
+
+    it('opens listProposals to PRACOWNIK/MANAGER/HR/ADMIN_KLIENTA', () => {
+      expect(rolesFor('listProposals')).toEqual([Role.PRACOWNIK, Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA])
+    })
+
+    it('opens getProposal to PRACOWNIK/MANAGER/HR/ADMIN_KLIENTA', () => {
+      expect(rolesFor('getProposal')).toEqual([Role.PRACOWNIK, Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA])
+    })
+
+    it('opens consent to PRACOWNIK/MANAGER/HR/ADMIN_KLIENTA', () => {
+      expect(rolesFor('consent')).toEqual([Role.PRACOWNIK, Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA])
+    })
+
+    it('restricts managerDecision to MANAGER/HR/ADMIN_KLIENTA', () => {
+      expect(rolesFor('managerDecision')).toEqual([Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA])
     })
   })
 })
