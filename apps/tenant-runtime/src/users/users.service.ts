@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
 import { TenantPrisma } from '@hrobot/db'
 import { Role } from '@hrobot/shared'
@@ -166,6 +166,19 @@ export class UsersService {
   }
 
   /**
+   * FIX 2(a): ADMIN_KLIENTA is always GLOBAL — reject a grant that pairs it with a non-null `unitId`
+   * at the service layer, in BOTH {@link invite} and {@link assignRole}. This is defense-in-depth
+   * alongside {@link guardedAdminMutation}'s now role-based-only last-admin count (FIX 2(b)): even if
+   * this check were somehow bypassed, the invariant still holds — but rejecting here is what stops a
+   * unit-scoped ADMIN_KLIENTA row from ever being created in the first place.
+   */
+  private assertGlobalAdminGrant(role: Role, unitId: string | null): void {
+    if (role === Role.ADMIN_KLIENTA && unitId !== null) {
+      throw new BadRequestException('ADMIN_KLIENTA jest zawsze globalny — bez jednostki')
+    }
+  }
+
+  /**
    * LAST-ADMIN guard + guarded write, wrapped as ONE atomic unit. The plain read-then-decide this
    * used to be (`findMany` the global admins, then separately call KC + write DB) has a classic
    * write-skew hole: with exactly 2 active global ADMIN_KLIENTA users, two CONCURRENT revoke/deactivate
@@ -190,8 +203,14 @@ export class UsersService {
     try {
       return await client.$transaction(
         async (tx) => {
+          // FIX 2(b): ROLE-BASED ONLY — every ADMIN_KLIENTA UserRole row counts toward the invariant,
+          // regardless of `unitId`. ADMIN_KLIENTA is supposed to always be granted globally
+          // (`unitId: null`, enforced by {@link assertGlobalAdminGrant} at every grant site), but this
+          // count must not silently assume that holds — a non-null-unitId ADMIN_KLIENTA row (e.g. from
+          // data predating that guard, or any other out-of-band write) must still count, or the last
+          // admin invariant can be bypassed entirely via such a row.
           const admins = await tx.userRole.findMany({
-            where: { role: Role.ADMIN_KLIENTA, unitId: null, user: { active: true } },
+            where: { role: Role.ADMIN_KLIENTA, user: { active: true } },
             select: { userId: true },
           })
           const distinctAdminIds = new Set(admins.map((a) => a.userId))
@@ -245,6 +264,7 @@ export class UsersService {
     if (!actor.roles.includes(Role.ADMIN_KLIENTA)) {
       throw new ForbiddenException('Only ADMIN_KLIENTA may invite users')
     }
+    this.assertGlobalAdminGrant(role, unitId)
     await this.requireRealAdmin(client, actor)
 
     const existing = await client.user.findFirst({ where: { email } })
@@ -303,6 +323,7 @@ export class UsersService {
     if (!actor.roles.includes(Role.ADMIN_KLIENTA)) {
       throw new ForbiddenException('Only ADMIN_KLIENTA may manage roles')
     }
+    this.assertGlobalAdminGrant(role, unitId)
 
     const actingUser = await this.requireRealAdmin(client, actor)
 
@@ -342,7 +363,11 @@ export class UsersService {
     const target = await client.user.findUnique({ where: { id: targetUserId }, select: { id: true, keycloakSub: true } })
     if (!target) throw new NotFoundException(`User ${targetUserId} not found`)
 
-    if (role === Role.ADMIN_KLIENTA && unitId === null) {
+    // FIX 2(b): route EVERY ADMIN_KLIENTA revoke through the last-admin guard, regardless of `unitId`
+    // — ADMIN_KLIENTA is supposed to always be granted globally (enforced at grant time by
+    // {@link assertGlobalAdminGrant}), but the revoke path must not rely on that holding; a
+    // non-null-unitId ADMIN_KLIENTA row must still be guarded, not routed through the unguarded branch.
+    if (role === Role.ADMIN_KLIENTA) {
       await this.guardedAdminMutation(client, target.id, (tx) => this.revokeInternal(tx, realm, target.id, target.keycloakSub, role, unitId))
     } else {
       await this.revokeInternal(client, realm, target.id, target.keycloakSub, role, unitId)
@@ -369,7 +394,10 @@ export class UsersService {
     })
     if (!target) throw new NotFoundException(`User ${targetUserId} not found`)
 
-    const isAdmin = target.roles.some((r) => r.role === Role.ADMIN_KLIENTA && r.unitId === null)
+    // FIX 2(b): ROLE-BASED ONLY — same reasoning as guardedAdminMutation's count query and
+    // revokeRole's routing above; a non-null-unitId ADMIN_KLIENTA row must still route through the
+    // guarded (last-admin) branch, not the unguarded one.
+    const isAdmin = target.roles.some((r) => r.role === Role.ADMIN_KLIENTA)
     if (isAdmin) {
       await this.guardedAdminMutation(client, target.id, async (tx) => {
         await this.keycloak.setEnabled(realm, target.keycloakSub, false)

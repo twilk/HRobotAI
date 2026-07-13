@@ -34,6 +34,15 @@ describe('InviteUserDto validation', () => {
     const errors = await errorsFor({ email: 'new@acme.com', role: 'MANAGER', unitId: 'not-a-uuid' })
     expect(errors.some((e) => e.property === 'unitId')).toBe(true)
   })
+
+  it('FIX 2(a): rejects an ADMIN_KLIENTA invite paired with a unitId — ADMIN_KLIENTA is always global', async () => {
+    const errors = await errorsFor({ email: 'new@acme.com', role: 'ADMIN_KLIENTA', unitId: '550e8400-e29b-41d4-a716-446655440000' })
+    expect(errors.some((e) => e.property === 'unitId')).toBe(true)
+  })
+
+  it('accepts a GLOBAL ADMIN_KLIENTA invite (no unitId)', async () => {
+    expect(await errorsFor({ email: 'new@acme.com', role: 'ADMIN_KLIENTA' })).toHaveLength(0)
+  })
 })
 
 describe('RoleAssignmentDto validation', () => {
@@ -57,5 +66,10 @@ describe('RoleAssignmentDto validation', () => {
   it('rejects an unknown role', async () => {
     const errors = await errorsFor({ role: 'SUPERUSER' })
     expect(errors.some((e) => e.property === 'role')).toBe(true)
+  })
+
+  it('FIX 2(a): rejects an ADMIN_KLIENTA role assignment paired with a unitId — ADMIN_KLIENTA is always global', async () => {
+    const errors = await errorsFor({ role: 'ADMIN_KLIENTA', unitId: '550e8400-e29b-41d4-a716-446655440000' })
+    expect(errors.some((e) => e.property === 'unitId')).toBe(true)
   })
 })

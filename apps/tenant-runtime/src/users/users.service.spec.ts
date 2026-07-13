@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
 import { Role } from '@hrobot/shared'
 import { UsersService, type UsersActor } from './users.service.js'
@@ -193,6 +193,14 @@ describe('UsersService', () => {
       expect(keycloak.createUser).not.toHaveBeenCalled()
       expect(client.user.create).not.toHaveBeenCalled()
     })
+
+    it('FIX 2(a): rejects an ADMIN_KLIENTA invite with a non-null unitId — ADMIN_KLIENTA is always global', async () => {
+      await expect(service.invite(asClient(client), ADMIN, REALM, 'new@acme.com', Role.ADMIN_KLIENTA, 'unit-A')).rejects.toThrow(
+        BadRequestException,
+      )
+      expect(keycloak.createUser).not.toHaveBeenCalled()
+      expect(client.user.create).not.toHaveBeenCalled()
+    })
   })
 
   describe('assignRole (GRANT)', () => {
@@ -200,6 +208,14 @@ describe('UsersService', () => {
       client.user.findFirst.mockResolvedValue({ id: 'admin-db-id', active: true, roles: [{ role: Role.ADMIN_KLIENTA, unitId: null }] })
       client.user.findUnique.mockResolvedValue({ id: 'target-1', keycloakSub: 'kc-target-1' })
       client.userRole.create.mockResolvedValue({})
+    })
+
+    it('FIX 2(a): rejects granting ADMIN_KLIENTA with a non-null unitId — ADMIN_KLIENTA is always global', async () => {
+      await expect(
+        service.assignRole(asClient(client), ADMIN, REALM, 'target-1', Role.ADMIN_KLIENTA, 'unit-A'),
+      ).rejects.toThrow(BadRequestException)
+      expect(client.userRole.create).not.toHaveBeenCalled()
+      expect(keycloak.assignRealmRole).not.toHaveBeenCalled()
     })
 
     it('writes UserRole THEN calls KC assignRealmRole, in that order', async () => {
@@ -312,6 +328,21 @@ describe('UsersService', () => {
       expect(keycloak.removeRealmRole).not.toHaveBeenCalled()
     })
 
+    it('FIX 2(b): the last-admin count is ROLE-BASED ONLY (no unitId filter) — blocks even a hypothetical unit-scoped ADMIN_KLIENTA row for the sole admin', async () => {
+      client.user.findUnique.mockResolvedValue({ id: 'sole-admin', keycloakSub: 'kc-sole-admin' })
+      client.userRole.findMany.mockResolvedValue([{ userId: 'sole-admin' }])
+
+      await expect(
+        service.revokeRole(asClient(client), ADMIN, REALM, 'sole-admin', Role.ADMIN_KLIENTA, 'unit-X'),
+      ).rejects.toThrow(ConflictException)
+
+      expect(keycloak.removeRealmRole).not.toHaveBeenCalled()
+      expect(client.userRole.findMany).toHaveBeenCalledWith({
+        where: { role: Role.ADMIN_KLIENTA, user: { active: true } },
+        select: { userId: true },
+      })
+    })
+
     it('allows revoking ADMIN_KLIENTA when another active admin remains', async () => {
       client.user.findUnique.mockResolvedValue({ id: 'admin-2', keycloakSub: 'kc-admin-2' })
       client.userRole.findMany.mockResolvedValue([{ userId: 'admin-2' }, { userId: 'admin-3' }])
@@ -417,6 +448,15 @@ describe('UsersService', () => {
 
       await expect(service.deactivate(asClient(client), ADMIN, REALM, 'sole-admin')).rejects.toThrow(ConflictException)
       expect(keycloak.setEnabled).not.toHaveBeenCalled()
+    })
+
+    it('FIX 2(b): isAdmin routing is ROLE-BASED ONLY — a hypothetical unit-scoped ADMIN_KLIENTA row for the sole admin still takes the guarded (last-admin) branch', async () => {
+      client.user.findUnique.mockResolvedValue({ id: 'sole-admin', keycloakSub: 'kc-sole-admin', roles: [{ role: Role.ADMIN_KLIENTA, unitId: 'unit-X' }] })
+      client.userRole.findMany.mockResolvedValue([{ userId: 'sole-admin' }])
+
+      await expect(service.deactivate(asClient(client), ADMIN, REALM, 'sole-admin')).rejects.toThrow(ConflictException)
+      expect(keycloak.setEnabled).not.toHaveBeenCalled()
+      expect(client.user.update).not.toHaveBeenCalled()
     })
 
     it('LAST-ADMIN TOCTOU: a concurrent write-skew detected by Postgres (P2034) is surfaced as a 409, not silently allowed', async () => {
