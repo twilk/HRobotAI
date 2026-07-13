@@ -1,8 +1,7 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
 import { EncryptionService } from '@hrobot/shared'
 import { AuditService } from '../tenant-runtime/audit/audit.service.js'
-import { isGlobal, managedUnitIds } from '../tenant-runtime/rbac/unit-scope.js'
 
 /**
  * DI token for the 32-byte PESEL blind-index HMAC key. Defined here (not in employees.module.ts) so
@@ -17,19 +16,6 @@ export interface EmployeeActor {
   roles: string[]
   ipAddress: string
 }
-
-/** Fields safe to return to any in-scope reader — pesel is NEVER selected here (RODO). */
-const SAFE_SELECT = {
-  id: true,
-  firstName: true,
-  lastName: true,
-  position: true,
-  employmentType: true,
-  hiredAt: true,
-  unitId: true,
-  etat: true,
-  qualifications: true,
-} as const
 
 @Injectable()
 export class EmployeesService {
