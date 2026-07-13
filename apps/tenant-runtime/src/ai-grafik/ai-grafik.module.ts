@@ -3,6 +3,7 @@ import { ShiftSwapModule } from '../shift-swap/shift-swap.module.js'
 import { AiGrafikController } from './ai-grafik.controller.js'
 import { AiConfigService } from './ai-config.service.js'
 import { ReplacementService } from './replacement.service.js'
+import { AiProposalService } from './ai-proposal.service.js'
 
 /**
  * AI-scheduling ("Grafik AI") module (M2 §AI). Task 0.3 ships the per-unit config surface
@@ -14,6 +15,6 @@ import { ReplacementService } from './replacement.service.js'
 @Module({
   imports: [ShiftSwapModule],
   controllers: [AiGrafikController],
-  providers: [AiConfigService, ReplacementService],
+  providers: [AiConfigService, ReplacementService, AiProposalService],
 })
 export class AiGrafikModule {}
