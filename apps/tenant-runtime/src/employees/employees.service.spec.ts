@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common'
+import { BadRequestException, ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
 import { Role } from '@hrobot/shared'
 import { EmployeesService, type EmployeeActor, PESEL_BI_KEY } from './employees.service.js'
@@ -339,6 +339,17 @@ describe('EmployeesService', () => {
       expect(audit.log).not.toHaveBeenCalled()
     })
 
+    it('surfaces a Prisma P2003 (bad unitId FK) as BadRequestException', async () => {
+      client.employee.findUnique.mockResolvedValue({ id: 'e1', unitId: 'u' })
+      const p2003 = Object.assign(new Error('Foreign key constraint failed'), { code: 'P2003' })
+      client.employee.update.mockRejectedValue(p2003)
+
+      await expect(
+        service.update(asClient(client), ADMIN, 'e1', { unitId: '550e8400-e29b-41d4-a716-446655440000' }, 'tenant-1'),
+      ).rejects.toThrow(BadRequestException)
+      expect(audit.log).not.toHaveBeenCalled()
+    })
+
     it('throws NotFoundException when the employee does not exist', async () => {
       client.employee.findUnique.mockResolvedValue(null)
 
@@ -432,6 +443,17 @@ describe('EmployeesService', () => {
       await expect(
         service.create(asClient(client), HR, createDto as never, 'tenant-1'),
       ).rejects.toThrow(ConflictException)
+      expect(audit.log).not.toHaveBeenCalled()
+    })
+
+    it('surfaces a Prisma P2003 (bad unitId FK) as BadRequestException', async () => {
+      encryption.encrypt.mockReturnValue('NEW-CIPHERTEXT')
+      const p2003 = Object.assign(new Error('Foreign key constraint failed'), { code: 'P2003' })
+      client.employee.create.mockRejectedValue(p2003)
+
+      await expect(
+        service.create(asClient(client), HR, createDto as never, 'tenant-1'),
+      ).rejects.toThrow(BadRequestException)
       expect(audit.log).not.toHaveBeenCalled()
     })
   })

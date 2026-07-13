@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
 import { decryptEmployeePesel, encryptEmployeePesel, TenantPrisma } from '@hrobot/db'
 import { EncryptionService } from '@hrobot/shared'
@@ -45,6 +45,23 @@ export class EmployeesService {
 
   private writeAudit(client: TenantClient, actor: EmployeeActor, action: string, id: string, payload: Record<string, unknown>): Promise<void> {
     return this.audit.log({ tenantClient: client, actorUserId: actor.userId, action, entityType: 'Employee', entityId: id, payload, ipAddress: actor.ipAddress })
+  }
+
+  /**
+   * Map the Prisma write errors an employee create/update can hit onto clean 4xx responses instead of
+   * raw 500s (which could leak internal Prisma text). Shared by both write paths:
+   *   - P2002 (unique constraint) → 409; the only unique column either write touches is `peselHash`.
+   *   - P2003 (foreign-key constraint) → 400; a syntactically-valid but nonexistent `unitId` fails the
+   *     `unit` FK. `unitId` passes `@IsUUID()`, so this is a real user-writable failure mode.
+   * Anything else is rethrown unchanged. Return type is `never` — it always throws.
+   */
+  private mapWriteError(err: unknown): never {
+    if (typeof err === 'object' && err !== null && 'code' in err) {
+      const code = (err as { code: string }).code
+      if (code === 'P2002') throw new ConflictException('Employee with this PESEL already exists')
+      if (code === 'P2003') throw new BadRequestException('Invalid unitId: unit does not exist')
+    }
+    throw err
   }
 
   /**
@@ -139,11 +156,8 @@ export class EmployeesService {
     try {
       updated = await client.employee.update({ where: { id }, data })
     } catch (err: unknown) {
-      // P2002 = unique-constraint violation; the only unique column an edit can hit is peselHash.
-      if (typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2002') {
-        throw new ConflictException('Employee with this PESEL already exists')
-      }
-      throw err
+      // P2002 (duplicate peselHash) → 409, P2003 (bad unitId FK) → 400; anything else rethrows.
+      this.mapWriteError(err)
     }
 
     await this.writeAudit(client, actor, 'employee.update', id, {
@@ -174,11 +188,8 @@ export class EmployeesService {
     try {
       created = await client.employee.create({ data })
     } catch (err: unknown) {
-      // P2002 = unique-constraint violation; the only unique column a create can hit is peselHash.
-      if (typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2002') {
-        throw new ConflictException('Employee with this PESEL already exists')
-      }
-      throw err
+      // P2002 (duplicate peselHash) → 409, P2003 (bad unitId FK) → 400; anything else rethrows.
+      this.mapWriteError(err)
     }
 
     const safe = this.toSafeEmployee(created as Record<string, unknown>)
