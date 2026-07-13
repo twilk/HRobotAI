@@ -9,7 +9,7 @@ import { EncryptionService } from '@hrobot/shared'
 /** A mock tenant client exposing exactly the delegates EmployeesService touches. */
 function makeClient() {
   return {
-    employee: { findMany: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn() },
+    employee: { findMany: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
     userRole: { findMany: jest.fn() },
   }
 }
@@ -234,6 +234,75 @@ describe('EmployeesService', () => {
       expect(profile.id).toBe('e4')
       expect(profile.peselLast4).toBeUndefined()
       expect(encryption.decrypt).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('update', () => {
+    it('lets HR update fields and writes an audit entry', async () => {
+      client.employee.findUnique.mockResolvedValue({ id: 'e1', unitId: 'u', position: 'old' })
+      client.employee.update.mockResolvedValue({ id: 'e1', position: 'new' })
+
+      await service.update(asClient(client), HR, 'e1', { position: 'new' }, 'tenant-1')
+
+      expect(client.employee.update).toHaveBeenCalledWith({
+        where: { id: 'e1' },
+        data: expect.objectContaining({ position: 'new' }),
+      })
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'employee.update' }),
+      )
+    })
+
+    it('lets ADMIN_KLIENTA update fields', async () => {
+      client.employee.findUnique.mockResolvedValue({ id: 'e1', unitId: 'u', position: 'old' })
+      client.employee.update.mockResolvedValue({ id: 'e1', position: 'new' })
+
+      await service.update(asClient(client), ADMIN, 'e1', { position: 'new' }, 'tenant-1')
+
+      expect(client.employee.update).toHaveBeenCalledWith({
+        where: { id: 'e1' },
+        data: expect.objectContaining({ position: 'new' }),
+      })
+    })
+
+    it('forbids a MANAGER from updating an employee', async () => {
+      await expect(
+        service.update(asClient(client), MANAGER, 'e1', { position: 'new' }, 'tenant-1'),
+      ).rejects.toThrow(ForbiddenException)
+      expect(client.employee.update).not.toHaveBeenCalled()
+    })
+
+    it('forbids a PRACOWNIK from updating an employee', async () => {
+      await expect(
+        service.update(asClient(client), PRACOWNIK, 'e1', { position: 'new' }, 'tenant-1'),
+      ).rejects.toThrow(ForbiddenException)
+      expect(client.employee.update).not.toHaveBeenCalled()
+    })
+
+    it('encrypts a new PESEL via employeePii and never audits it', async () => {
+      client.employee.findUnique.mockResolvedValue({ id: 'e1', unitId: 'u', pesel: 'OLD-CIPHER', peselHash: 'OLD-HASH' })
+      client.employee.update.mockResolvedValue({ id: 'e1' })
+      encryption.encrypt.mockReturnValue('NEW-CIPHERTEXT')
+
+      await service.update(asClient(client), ADMIN, 'e1', { pesel: '44051401359' }, 'tenant-1')
+
+      const call = client.employee.update.mock.calls[0][0] as { data: Record<string, unknown> }
+      expect(call.data.pesel).toBeDefined()
+      expect(call.data.peselHash).toBeDefined()
+      expect(call.data.pesel).not.toBe('44051401359')
+
+      const auditPayload = JSON.stringify(audit.log.mock.calls[0][0])
+      expect(auditPayload).not.toContain('44051401359')
+      expect(auditPayload).not.toContain('NEW-CIPHERTEXT')
+    })
+
+    it('throws NotFoundException when the employee does not exist', async () => {
+      client.employee.findUnique.mockResolvedValue(null)
+
+      await expect(
+        service.update(asClient(client), HR, 'ghost', { position: 'new' }, 'tenant-1'),
+      ).rejects.toThrow(NotFoundException)
+      expect(client.employee.update).not.toHaveBeenCalled()
     })
   })
 })

@@ -1,9 +1,10 @@
 import { ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
-import { decryptEmployeePesel } from '@hrobot/db'
+import { decryptEmployeePesel, encryptEmployeePesel } from '@hrobot/db'
 import { EncryptionService } from '@hrobot/shared'
 import { AuditService } from '../tenant-runtime/audit/audit.service.js'
 import { isGlobal, managedUnitIds } from '../tenant-runtime/rbac/unit-scope.js'
+import type { UpdateEmployeeDto } from './dto/employee.dto.js'
 
 /**
  * DI token for the 32-byte PESEL blind-index HMAC key. Defined here (not in employees.module.ts) so
@@ -104,5 +105,35 @@ export class EmployeesService {
       }
     }
     return safe
+  }
+
+  /**
+   * HR/ADMIN-only partial edit. A new `pesel` (if provided) is encrypted via `@hrobot/db`
+   * employeePii before it ever touches `data` or the audit payload — the plaintext AND the
+   * ciphertext are scrubbed from both the audit `before` snapshot and the returned/`after` view.
+   */
+  async update(client: TenantClient, actor: EmployeeActor, id: string, dto: UpdateEmployeeDto, tenantId: string): Promise<unknown> {
+    if (!isGlobal(actor.roles)) throw new ForbiddenException('Only HR/ADMIN may edit employees')
+    const before = await client.employee.findUnique({ where: { id } })
+    if (!before) throw new NotFoundException(`Employee ${id} not found`)
+
+    const { pesel, ...rest } = dto
+    const data: Record<string, unknown> = { ...rest }
+    if (pesel) Object.assign(data, encryptEmployeePesel(this.encryption, this.peselBlindIndexKey, tenantId, pesel))
+
+    await client.employee.update({ where: { id }, data })
+
+    // RODO: audit payload must never carry plaintext or ciphertext PESEL — scrub `before`, and
+    // `after` is built from `rest` only (pesel/peselHash were destructured out above).
+    const scrub = (row: Record<string, unknown>): Record<string, unknown> => {
+      const { pesel: _pesel, peselHash: _peselHash, ...safe } = row
+      return safe
+    }
+    await this.writeAudit(client, actor, 'employee.update', id, {
+      before: scrub(before as Record<string, unknown>),
+      after: { id, ...rest },
+    })
+
+    return { id, ...rest }
   }
 }
