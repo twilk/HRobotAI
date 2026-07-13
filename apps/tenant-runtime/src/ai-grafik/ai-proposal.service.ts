@@ -28,8 +28,6 @@ import { normalizePosition } from '../cost/position.util.js'
 import { AiConfigService, type AiConfigActor } from './ai-config.service.js'
 import { ReplacementService, type RankedCandidate } from './replacement.service.js'
 
-const { Decimal } = TenantPrisma
-
 /** A persisted AiProposal with its ranked candidate rows pre-loaded — the STABLE return shape. */
 export type AiProposalRow = TenantPrisma.AiProposalGetPayload<{ include: { candidates: true } }>
 
@@ -209,7 +207,7 @@ export class AiProposalService {
     shift: { start: string; end: string },
     candidateEmployeeId: string,
     vacatedEmployeeId: string,
-  ): Promise<InstanceType<typeof Decimal> | null> {
+  ): Promise<TenantPrisma.Decimal | null> {
     const employees = await client.employee.findMany({
       where: { id: { in: [candidateEmployeeId, vacatedEmployeeId] } },
       select: { id: true, position: true, employmentType: true },
