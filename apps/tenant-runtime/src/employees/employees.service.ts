@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
 import { decryptEmployeePesel, encryptEmployeePesel } from '@hrobot/db'
 import { EncryptionService } from '@hrobot/shared'
@@ -47,6 +47,19 @@ export class EmployeesService {
     return this.audit.log({ tenantClient: client, actorUserId: actor.userId, action, entityType: 'Employee', entityId: id, payload, ipAddress: actor.ipAddress })
   }
 
+  /**
+   * RODO ALLOWLIST projection: copy ONLY the SAFE_SELECT keys off a raw Employee row. This is the
+   * single gate that keeps PII (`pesel`/`peselHash`, and the home-address columns `homeAddress`/
+   * `homeLat`/`homeLng`) out of API responses AND out of the append-only `audit_log` (a DB trigger
+   * blocks UPDATE/DELETE, so anything written there is permanently unerasable). A future PII column
+   * cannot leak unless someone explicitly adds it to SAFE_SELECT.
+   */
+  private toSafeEmployee(row: Record<string, unknown>): Record<string, unknown> {
+    const safe: Record<string, unknown> = {}
+    for (const key of Object.keys(SAFE_SELECT)) safe[key] = row[key]
+    return safe
+  }
+
   /** The plain employee's own unit, resolved via their Keycloak subject. */
   private async ownUnitId(client: TenantClient, userId: string): Promise<string | null> {
     const me = await client.employee.findFirst({ where: { user: { keycloakSub: userId } }, select: { unitId: true } })
@@ -93,8 +106,7 @@ export class EmployeesService {
       const inScope = (await this.resolveScopeUnits(client, actor)).includes(emp.unitId)
       if (!inScope) throw new ForbiddenException('Employee is outside your scope')
     }
-    const safe: Record<string, unknown> = {}
-    for (const key of Object.keys(SAFE_SELECT)) safe[key] = (emp as Record<string, unknown>)[key]
+    const safe = this.toSafeEmployee(emp as Record<string, unknown>)
     if (isGlobal(actor.roles) && tenantId && emp.pesel) {
       try {
         const plain = decryptEmployeePesel(this.encryption, tenantId, emp.pesel)
@@ -109,8 +121,10 @@ export class EmployeesService {
 
   /**
    * HR/ADMIN-only partial edit. A new `pesel` (if provided) is encrypted via `@hrobot/db`
-   * employeePii before it ever touches `data` or the audit payload — the plaintext AND the
-   * ciphertext are scrubbed from both the audit `before` snapshot and the returned/`after` view.
+   * employeePii before it ever touches the update `data`. Both the audit `before`/`after` snapshots
+   * and the returned value pass through `toSafeEmployee` (the SAFE_SELECT allowlist), so no PII —
+   * PESEL or home address — can reach the append-only `audit_log` or the API response. `peselHash`
+   * is `@unique`; a collision surfaces as a 409 rather than an unhandled Prisma 500.
    */
   async update(client: TenantClient, actor: EmployeeActor, id: string, dto: UpdateEmployeeDto, tenantId: string): Promise<unknown> {
     if (!isGlobal(actor.roles)) throw new ForbiddenException('Only HR/ADMIN may edit employees')
@@ -121,19 +135,22 @@ export class EmployeesService {
     const data: Record<string, unknown> = { ...rest }
     if (pesel) Object.assign(data, encryptEmployeePesel(this.encryption, this.peselBlindIndexKey, tenantId, pesel))
 
-    await client.employee.update({ where: { id }, data })
-
-    // RODO: audit payload must never carry plaintext or ciphertext PESEL — scrub `before`, and
-    // `after` is built from `rest` only (pesel/peselHash were destructured out above).
-    const scrub = (row: Record<string, unknown>): Record<string, unknown> => {
-      const { pesel: _pesel, peselHash: _peselHash, ...safe } = row
-      return safe
+    let updated: unknown
+    try {
+      updated = await client.employee.update({ where: { id }, data })
+    } catch (err: unknown) {
+      // P2002 = unique-constraint violation; the only unique column an edit can hit is peselHash.
+      if (typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2002') {
+        throw new ConflictException('Employee with this PESEL already exists')
+      }
+      throw err
     }
+
     await this.writeAudit(client, actor, 'employee.update', id, {
-      before: scrub(before as Record<string, unknown>),
-      after: { id, ...rest },
+      before: this.toSafeEmployee(before as Record<string, unknown>),
+      after: this.toSafeEmployee(updated as Record<string, unknown>),
     })
 
-    return { id, ...rest }
+    return this.toSafeEmployee(updated as Record<string, unknown>)
   }
 }

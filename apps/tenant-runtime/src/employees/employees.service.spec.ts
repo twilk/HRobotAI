@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { NotFoundException, ForbiddenException } from '@nestjs/common'
+import { ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
 import { Role } from '@hrobot/shared'
 import { EmployeesService, type EmployeeActor, PESEL_BI_KEY } from './employees.service.js'
@@ -265,26 +265,28 @@ describe('EmployeesService', () => {
       })
     })
 
-    it('forbids a MANAGER from updating an employee', async () => {
+    it('forbids a MANAGER from updating an employee (authz BEFORE any DB access)', async () => {
       await expect(
         service.update(asClient(client), MANAGER, 'e1', { position: 'new' }, 'tenant-1'),
       ).rejects.toThrow(ForbiddenException)
+      expect(client.employee.findUnique).not.toHaveBeenCalled()
       expect(client.employee.update).not.toHaveBeenCalled()
     })
 
-    it('forbids a PRACOWNIK from updating an employee', async () => {
+    it('forbids a PRACOWNIK from updating an employee (authz BEFORE any DB access)', async () => {
       await expect(
         service.update(asClient(client), PRACOWNIK, 'e1', { position: 'new' }, 'tenant-1'),
       ).rejects.toThrow(ForbiddenException)
+      expect(client.employee.findUnique).not.toHaveBeenCalled()
       expect(client.employee.update).not.toHaveBeenCalled()
     })
 
     it('encrypts a new PESEL via employeePii and never audits it', async () => {
       client.employee.findUnique.mockResolvedValue({ id: 'e1', unitId: 'u', pesel: 'OLD-CIPHER', peselHash: 'OLD-HASH' })
-      client.employee.update.mockResolvedValue({ id: 'e1' })
+      client.employee.update.mockResolvedValue({ id: 'e1', pesel: 'NEW-CIPHERTEXT', peselHash: 'NEW-HASH' })
       encryption.encrypt.mockReturnValue('NEW-CIPHERTEXT')
 
-      await service.update(asClient(client), ADMIN, 'e1', { pesel: '44051401359' }, 'tenant-1')
+      const result = await service.update(asClient(client), ADMIN, 'e1', { pesel: '44051401359' }, 'tenant-1')
 
       const call = client.employee.update.mock.calls[0][0] as { data: Record<string, unknown> }
       expect(call.data.pesel).toBeDefined()
@@ -294,6 +296,47 @@ describe('EmployeesService', () => {
       const auditPayload = JSON.stringify(audit.log.mock.calls[0][0])
       expect(auditPayload).not.toContain('44051401359')
       expect(auditPayload).not.toContain('NEW-CIPHERTEXT')
+
+      // Return value is the SAFE_SELECT projection of the updated row — never any pesel/peselHash.
+      const ret = result as Record<string, unknown>
+      expect(ret.pesel).toBeUndefined()
+      expect(ret.peselHash).toBeUndefined()
+    })
+
+    it('ALLOWLISTS the audit snapshots — home-address PII never reaches the append-only audit_log', async () => {
+      // Raw rows carry home PII (homeAddress ciphertext + homeLat/homeLng). A blocklist scrub would
+      // leak these; the SAFE_SELECT allowlist must drop them even on a change that only touches position.
+      client.employee.findUnique.mockResolvedValue({
+        id: 'e1', unitId: 'u', position: 'old',
+        pesel: 'CIPHER', peselHash: 'HASH',
+        homeAddress: 'ENC-HOME-ADDR', homeLat: 52.2297, homeLng: 21.0122,
+      })
+      client.employee.update.mockResolvedValue({
+        id: 'e1', unitId: 'u', position: 'new',
+        pesel: 'CIPHER', peselHash: 'HASH',
+        homeAddress: 'ENC-HOME-ADDR', homeLat: 52.2297, homeLng: 21.0122,
+      })
+
+      await service.update(asClient(client), HR, 'e1', { position: 'new' }, 'tenant-1')
+
+      const auditPayload = JSON.stringify(audit.log.mock.calls[0][0])
+      expect(auditPayload).not.toContain('ENC-HOME-ADDR')
+      expect(auditPayload).not.toContain('52.2297')
+      expect(auditPayload).not.toContain('21.0122')
+      expect(auditPayload).not.toContain('CIPHER')
+      expect(auditPayload).not.toContain('HASH')
+    })
+
+    it('surfaces a Prisma P2002 (duplicate PESEL) as ConflictException', async () => {
+      client.employee.findUnique.mockResolvedValue({ id: 'e1', unitId: 'u', peselHash: 'OLD-HASH' })
+      const p2002 = Object.assign(new Error('Unique constraint failed'), { code: 'P2002' })
+      client.employee.update.mockRejectedValue(p2002)
+      encryption.encrypt.mockReturnValue('NEW-CIPHERTEXT')
+
+      await expect(
+        service.update(asClient(client), ADMIN, 'e1', { pesel: '44051401359' }, 'tenant-1'),
+      ).rejects.toThrow(ConflictException)
+      expect(audit.log).not.toHaveBeenCalled()
     })
 
     it('throws NotFoundException when the employee does not exist', async () => {
