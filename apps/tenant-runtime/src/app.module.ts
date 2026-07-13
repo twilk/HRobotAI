@@ -17,6 +17,7 @@ import { GrafikModule } from './grafik/grafik.module.js'
 import { ShiftSwapModule } from './shift-swap/shift-swap.module.js'
 import { AiGrafikModule } from './ai-grafik/ai-grafik.module.js'
 import { LeaveModule } from './leave/leave.module.js'
+import { DostepyModule } from './dostepy/dostepy.module.js'
 import { UstawieniaModule } from './ustawienia/ustawienia.module.js'
 import { RedisService } from './common/redis/redis.service.js'
 
@@ -50,6 +51,7 @@ import { RedisService } from './common/redis/redis.service.js'
     ShiftSwapModule,
     AiGrafikModule,
     LeaveModule,
+    DostepyModule,
     UstawieniaModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
