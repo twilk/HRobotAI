@@ -3,10 +3,7 @@ import { parseEnv } from '@hrobot/config'
 import { EncryptionService } from '@hrobot/shared'
 import { deriveBlindIndexKey } from '@hrobot/db'
 import { EmployeesController } from './employees.controller.js'
-import { EmployeesService } from './employees.service.js'
-
-/** DI token for the 32-byte PESEL blind-index HMAC key (derived from TENANT_DB_ENCRYPTION_KEY). */
-export const PESEL_BI_KEY = 'PESEL_BI_KEY'
+import { EmployeesService, PESEL_BI_KEY } from './employees.service.js'
 
 @Module({
   controllers: [EmployeesController],

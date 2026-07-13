@@ -3,7 +3,13 @@ import type { TenantClient } from '@hrobot/db'
 import { EncryptionService } from '@hrobot/shared'
 import { AuditService } from '../tenant-runtime/audit/audit.service.js'
 import { isGlobal, managedUnitIds } from '../tenant-runtime/rbac/unit-scope.js'
-import { PESEL_BI_KEY } from './employees.module.js'
+
+/**
+ * DI token for the 32-byte PESEL blind-index HMAC key. Defined here (not in employees.module.ts) so
+ * the module can import it alongside `EmployeesService` without a module<->service circular import
+ * (mirrors grafik's `OPTIMIZER_CLIENT`, which lives in optimizer.client.ts for the same reason).
+ */
+export const PESEL_BI_KEY = 'PESEL_BI_KEY'
 
 /** The acting user projected from the JWT + IP (mirrors GrafikActor). */
 export interface EmployeeActor {
