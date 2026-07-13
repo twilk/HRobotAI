@@ -56,11 +56,17 @@ export interface CreateUnitInput {
   parentId?: string
 }
 
-/** `PATCH /ustawienia/units/:id` body (`UpdateUnitDto`) — every field optional (partial edit). */
+/**
+ * `PATCH /ustawienia/units/:id` body (`UpdateUnitDto`) — every field optional (partial edit).
+ * `parentId`/`managerUserId` accept an explicit `null` (clear the field) in addition to `undefined`
+ * (leave untouched) — the backend's `compact()` only drops `undefined` keys, so `null` reaches Prisma
+ * as a real clear. Callers must NOT collapse `null` to `undefined` via `??`, or JSON.stringify will
+ * drop the key and the clear silently no-ops.
+ */
 export interface UpdateUnitInput {
   name?: string
-  parentId?: string
-  managerUserId?: string
+  parentId?: string | null
+  managerUserId?: string | null
 }
 
 /** Carries the upstream HTTP status so the UI can distinguish 400 (validation/cycle) / 403 / 409. */

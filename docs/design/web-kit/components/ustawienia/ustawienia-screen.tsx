@@ -189,12 +189,16 @@ export function UstawieniaScreen() {
       return
     }
 
+    const nextManagerUserId = edit.managerUserId.trim() === '' ? null : edit.managerUserId.trim()
+
     setSavingUnit(true)
     try {
       const updated = await ustawieniaApi.updateUnit(editingId, {
         name,
-        parentId: nextParentId ?? undefined,
-        managerUserId: edit.managerUserId.trim() || undefined,
+        // Explicit null (not `??`/`||` collapsed to undefined) so clearing the parent/manager actually
+        // reaches the backend — see UpdateUnitInput's doc in lib/ustawienia.ts.
+        parentId: nextParentId,
+        managerUserId: nextManagerUserId,
       })
       if (!cancelledRef.current) {
         setUnits((prev) => prev.map((u) => (u.id === updated.id ? updated : u)))
