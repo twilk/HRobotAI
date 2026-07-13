@@ -345,6 +345,26 @@ model LeaveRequest {
   @@map("leave_requests")
 }
 
+/// Standard hourly cost per (position, employmentType) — SP4 cost calculator input. `position` is
+/// FREE TEXT on `Employee.position` (no position catalog yet); callers MUST normalize (trim +
+/// collapse internal whitespace) at both write and lookup time to avoid silent join misses. A
+/// missing rate must NEVER be treated as 0 — callers surface `missingRates` instead. MVP does not
+/// compute overtime: `overtimeMultiplier` is stored for a future phase but unused by the calculator.
+model PositionCostRate {
+  id                 String         @id @default(uuid())
+  position           String
+  employmentType     EmploymentType @map("employment_type")
+  hourlyRate         Decimal        @map("hourly_rate")
+  /// Reserved for a future overtime calculation — NOT applied by the MVP cost calculator.
+  overtimeMultiplier Decimal        @default(1.5) @map("overtime_multiplier")
+  currency           String         @default("PLN")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+
+  @@unique([position, employmentType])
+  @@map("position_cost_rates")
+}
+
 /// Per-unit (or global, when unitId is null) configuration for the AI Grafik Manager's autonomy
 /// level and guardrails. `@@unique([unitId])` alone does not prevent multiple unit-less "default"
 /// rows in Postgres (NULL is never equal to NULL for uniqueness purposes) — a partial unique index
