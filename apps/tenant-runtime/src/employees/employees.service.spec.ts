@@ -9,7 +9,7 @@ import { EncryptionService } from '@hrobot/shared'
 /** A mock tenant client exposing exactly the delegates EmployeesService touches. */
 function makeClient() {
   return {
-    employee: { findMany: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
+    employee: { findMany: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn(), create: jest.fn() },
     userRole: { findMany: jest.fn() },
   }
 }
@@ -346,6 +346,92 @@ describe('EmployeesService', () => {
         service.update(asClient(client), HR, 'ghost', { position: 'new' }, 'tenant-1'),
       ).rejects.toThrow(NotFoundException)
       expect(client.employee.update).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('create', () => {
+    const createDto = {
+      firstName: 'Anna',
+      lastName: 'Kowalska',
+      position: 'Kasjer',
+      employmentType: 'UMOWA_O_PRACE',
+      unitId: 'unit-A',
+      pesel: '44051401359',
+      hiredAt: '2024-01-15',
+    }
+
+    it('lets HR create an employee, encrypting the PESEL and returning the SAFE_SELECT projection', async () => {
+      encryption.encrypt.mockReturnValue('NEW-CIPHERTEXT')
+      client.employee.create.mockResolvedValue({
+        id: 'new-id',
+        firstName: 'Anna',
+        lastName: 'Kowalska',
+        position: 'Kasjer',
+        employmentType: 'UMOWA_O_PRACE',
+        hiredAt: new Date('2024-01-15'),
+        unitId: 'unit-A',
+        etat: 1,
+        qualifications: [],
+        pesel: 'NEW-CIPHERTEXT',
+        peselHash: 'NEW-HASH',
+      })
+
+      const result = await service.create(asClient(client), HR, createDto as never, 'tenant-1')
+
+      const call = client.employee.create.mock.calls[0][0] as { data: Record<string, unknown> }
+      expect(call.data.pesel).toBeDefined()
+      expect(call.data.pesel).not.toBe('44051401359')
+      expect(call.data.peselHash).toBeDefined()
+      expect(call.data.userId).toBeNull()
+
+      const ret = result as Record<string, unknown>
+      expect(ret.id).toBe('new-id')
+      expect(ret.pesel).toBeUndefined()
+      expect(ret.peselHash).toBeUndefined()
+      expect((ret as Record<string, unknown>).homeAddress).toBeUndefined()
+
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'employee.create' }),
+      )
+      const auditPayload = JSON.stringify(audit.log.mock.calls[0][0])
+      expect(auditPayload).not.toContain('44051401359')
+      expect(auditPayload).not.toContain('NEW-CIPHERTEXT')
+    })
+
+    it('lets ADMIN_KLIENTA create an employee', async () => {
+      encryption.encrypt.mockReturnValue('NEW-CIPHERTEXT')
+      client.employee.create.mockResolvedValue({ id: 'new-id-2', unitId: 'unit-A' })
+
+      await service.create(asClient(client), ADMIN, createDto as never, 'tenant-1')
+
+      expect(client.employee.create).toHaveBeenCalled()
+    })
+
+    it('forbids a MANAGER from creating an employee (authz BEFORE any encryption/DB access)', async () => {
+      await expect(
+        service.create(asClient(client), MANAGER, createDto as never, 'tenant-1'),
+      ).rejects.toThrow(ForbiddenException)
+      expect(encryption.encrypt).not.toHaveBeenCalled()
+      expect(client.employee.create).not.toHaveBeenCalled()
+    })
+
+    it('forbids a PRACOWNIK from creating an employee (authz BEFORE any encryption/DB access)', async () => {
+      await expect(
+        service.create(asClient(client), PRACOWNIK, createDto as never, 'tenant-1'),
+      ).rejects.toThrow(ForbiddenException)
+      expect(encryption.encrypt).not.toHaveBeenCalled()
+      expect(client.employee.create).not.toHaveBeenCalled()
+    })
+
+    it('surfaces a Prisma P2002 (duplicate PESEL) as ConflictException', async () => {
+      encryption.encrypt.mockReturnValue('NEW-CIPHERTEXT')
+      const p2002 = Object.assign(new Error('Unique constraint failed'), { code: 'P2002' })
+      client.employee.create.mockRejectedValue(p2002)
+
+      await expect(
+        service.create(asClient(client), HR, createDto as never, 'tenant-1'),
+      ).rejects.toThrow(ConflictException)
+      expect(audit.log).not.toHaveBeenCalled()
     })
   })
 })

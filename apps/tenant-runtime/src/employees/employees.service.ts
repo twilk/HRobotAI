@@ -4,7 +4,7 @@ import { decryptEmployeePesel, encryptEmployeePesel } from '@hrobot/db'
 import { EncryptionService } from '@hrobot/shared'
 import { AuditService } from '../tenant-runtime/audit/audit.service.js'
 import { isGlobal, managedUnitIds } from '../tenant-runtime/rbac/unit-scope.js'
-import type { UpdateEmployeeDto } from './dto/employee.dto.js'
+import type { CreateEmployeeDto, UpdateEmployeeDto } from './dto/employee.dto.js'
 
 /**
  * DI token for the 32-byte PESEL blind-index HMAC key. Defined here (not in employees.module.ts) so
@@ -152,5 +152,37 @@ export class EmployeesService {
     })
 
     return this.toSafeEmployee(updated as Record<string, unknown>)
+  }
+
+  /**
+   * HR/ADMIN-only create (Task 4a). The new employee has no Keycloak login of their own yet
+   * (`userId: null` — a kadrowy-only profile; provisioning a login is a separate, out-of-scope
+   * flow). `pesel` is encrypted via `@hrobot/db` `encryptEmployeePesel` before it ever touches the
+   * insert `data`; the returned value and the audit `after` snapshot both pass through
+   * `toSafeEmployee` (the SAFE_SELECT allowlist), so no PII — PESEL or home address — can reach the
+   * append-only `audit_log` or the API response. `peselHash` is `@unique`; a collision surfaces as
+   * a 409 rather than an unhandled Prisma 500.
+   */
+  async create(client: TenantClient, actor: EmployeeActor, dto: CreateEmployeeDto, tenantId: string): Promise<unknown> {
+    if (!isGlobal(actor.roles)) throw new ForbiddenException('Only HR/ADMIN may add employees')
+
+    const { pesel, hiredAt, ...rest } = dto
+    const enc = encryptEmployeePesel(this.encryption, this.peselBlindIndexKey, tenantId, pesel)
+    const data: Record<string, unknown> = { ...rest, ...enc, hiredAt: new Date(hiredAt), userId: null }
+
+    let created: unknown
+    try {
+      created = await client.employee.create({ data: data as never })
+    } catch (err: unknown) {
+      // P2002 = unique-constraint violation; the only unique column a create can hit is peselHash.
+      if (typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2002') {
+        throw new ConflictException('Employee with this PESEL already exists')
+      }
+      throw err
+    }
+
+    const safe = this.toSafeEmployee(created as Record<string, unknown>)
+    await this.writeAudit(client, actor, 'employee.create', (created as { id: string }).id, { after: safe })
+    return safe
   }
 }

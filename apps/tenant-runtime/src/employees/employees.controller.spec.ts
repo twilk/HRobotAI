@@ -16,6 +16,7 @@ const mockService = {
   list: jest.fn(),
   getById: jest.fn(),
   update: jest.fn(),
+  create: jest.fn(),
 }
 const client = {} as TenantClient
 const user: JwtPayload = { sub: 'kc-1', iss: 'x', hrobot_roles: [Role.HR], exp: 0 }
@@ -84,6 +85,29 @@ describe('EmployeesController', () => {
     )
   })
 
+  it('delegates create to EmployeesService.create with the actor, dto and tenantId', async () => {
+    mockService.create.mockResolvedValue({ id: 'emp-new' })
+
+    const dto = {
+      firstName: 'Anna',
+      lastName: 'Kowalska',
+      position: 'Kasjer',
+      employmentType: 'UMOWA_O_PRACE',
+      unitId: '550e8400-e29b-41d4-a716-446655440000',
+      pesel: '44051401359',
+      hiredAt: '2024-01-15',
+    }
+    const result = await controller.create(client, user, '1.2.3.4', 'tenant-1', dto as never)
+
+    expect(result).toEqual({ id: 'emp-new' })
+    expect(mockService.create).toHaveBeenCalledWith(
+      client,
+      { userId: 'kc-1', roles: [Role.HR], ipAddress: '1.2.3.4' },
+      dto,
+      'tenant-1',
+    )
+  })
+
   // --- RBAC metadata: proves the role gate wired to the route ------------------------------------
 
   describe('@Roles gate metadata', () => {
@@ -101,6 +125,10 @@ describe('EmployeesController', () => {
 
     it('restricts update (PATCH) to HR/ADMIN_KLIENTA only', () => {
       expect(rolesFor('update')).toEqual([Role.HR, Role.ADMIN_KLIENTA])
+    })
+
+    it('restricts create (POST) to HR/ADMIN_KLIENTA only', () => {
+      expect(rolesFor('create')).toEqual([Role.HR, Role.ADMIN_KLIENTA])
     })
   })
 })

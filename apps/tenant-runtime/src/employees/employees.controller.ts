@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Ip, Param, ParseUUIDPipe, Patch } from '@nestjs/common'
+import { Body, Controller, Get, Ip, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
 import { Role } from '@hrobot/shared'
 import { TenantRoute } from '../tenant-runtime/tenant-route.decorator.js'
@@ -6,7 +6,7 @@ import { Roles } from '../tenant-runtime/rbac/roles.decorator.js'
 import { CurrentTenantClient, CurrentTenantId, CurrentUser } from '../tenant-runtime/tenant-context/current-tenant-client.decorator.js'
 import type { JwtPayload } from '../tenant-runtime/keycloak/keycloak-jwt.strategy.js'
 import { EmployeesService, type EmployeeActor } from './employees.service.js'
-import { UpdateEmployeeDto } from './dto/employee.dto.js'
+import { CreateEmployeeDto, UpdateEmployeeDto } from './dto/employee.dto.js'
 
 /** Any scheduling staff role may read the roster; a PRACOWNIK reads their OWN unit (scoped in the service). */
 const READ_ROLES = [Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA, Role.PRACOWNIK] as const
@@ -54,5 +54,18 @@ export class EmployeesController {
     @Body() dto: UpdateEmployeeDto,
   ): Promise<unknown> {
     return this.employees.update(client, this.actor(user, ip), id, dto, tenantId)
+  }
+
+  // RBAC: HR/ADMIN only — re-checked (defense-in-depth) in EmployeesService.create.
+  @Post()
+  @Roles(...WRITE_ROLES)
+  async create(
+    @CurrentTenantClient() client: TenantClient,
+    @CurrentUser() user: JwtPayload,
+    @Ip() ip: string,
+    @CurrentTenantId() tenantId: string,
+    @Body() dto: CreateEmployeeDto,
+  ): Promise<unknown> {
+    return this.employees.create(client, this.actor(user, ip), dto, tenantId)
   }
 }
