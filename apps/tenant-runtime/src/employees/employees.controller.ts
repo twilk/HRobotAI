@@ -19,7 +19,7 @@ export class EmployeesController {
     return { userId: user.sub, roles: user.hrobot_roles ?? [], ipAddress: ip }
   }
 
-  /** pesel is NEVER selected — RODO PII, must never appear in API responses. */
+  // RODO: PESEL projection is enforced in EmployeesService.list (SAFE_SELECT) — never re-add pesel/peselHash here
   @Get()
   @Roles(...READ_ROLES)
   async findAll(@CurrentTenantClient() client: TenantClient, @CurrentUser() user: JwtPayload, @Ip() ip: string): Promise<unknown[]> {

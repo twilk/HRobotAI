@@ -84,6 +84,19 @@ describe('EmployeesService', () => {
         expect.objectContaining({ where: { unitId: { in: ['unit-B'] } } }),
       )
     })
+
+    it('fails safe to an empty roster when a PRACOWNIK manages no unit AND has no own unit', async () => {
+      client.userRole.findMany.mockResolvedValue([]) // manages nothing
+      client.employee.findFirst.mockResolvedValue(null) // no own Employee record → null unit
+      client.employee.findMany.mockResolvedValue([])
+
+      await service.list(asClient(client), PRACOWNIK)
+
+      // Prisma `in: []` matches zero rows → empty roster, NOT an unscoped all-rows bypass.
+      expect(client.employee.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { unitId: { in: [] } } }),
+      )
+    })
   })
 
   describe('RODO — PESEL must never be selected', () => {
