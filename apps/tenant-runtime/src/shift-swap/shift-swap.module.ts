@@ -19,6 +19,6 @@ import { OPTIMIZER_CLIENT, HttpOptimizerClient } from './optimizer.client.js'
     { provide: OPTIMIZER_CLIENT, useClass: HttpOptimizerClient },
     { provide: SWAP_FEASIBILITY_VALIDATOR, useClass: OptimizerSwapFeasibilityValidator },
   ],
-  exports: [ShiftSwapService],
+  exports: [ShiftSwapService, SWAP_FEASIBILITY_VALIDATOR],
 })
 export class ShiftSwapModule {}
