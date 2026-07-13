@@ -1,16 +1,22 @@
 import { Test, TestingModule } from '@nestjs/testing'
 import { ExecutionContext } from '@nestjs/common'
+import { Reflector } from '@nestjs/core'
+import type { TenantClient } from '@hrobot/db'
+import { Role } from '@hrobot/shared'
 import { EmployeesController } from './employees.controller.js'
+import { EmployeesService } from './employees.service.js'
+import { ROLES_KEY } from '../tenant-runtime/rbac/roles.decorator.js'
 import { KeycloakJwtGuard } from '../tenant-runtime/keycloak/keycloak-jwt.guard.js'
 import { TenantContextInterceptor } from '../tenant-runtime/tenant-context/tenant-context.interceptor.js'
 import { AuditInterceptor } from '../tenant-runtime/audit/audit.interceptor.js'
 import { RbacGuard } from '../tenant-runtime/rbac/rbac.guard.js'
-import type { TenantClient } from '@hrobot/db'
+import type { JwtPayload } from '../tenant-runtime/keycloak/keycloak-jwt.strategy.js'
 
-const mockEmployees = [
-  { id: 'emp-1', firstName: 'Jan', lastName: 'Kowalski', position: 'Developer', employmentType: 'UMOWA_O_PRACE', hiredAt: new Date('2024-01-15'), unitId: 'unit-1' },
-]
-const mockTenantClient = { employee: { findMany: jest.fn() } } as unknown as TenantClient
+const mockService = {
+  list: jest.fn(),
+}
+const client = {} as TenantClient
+const user: JwtPayload = { sub: 'kc-1', iss: 'x', hrobot_roles: [Role.HR], exp: 0 }
 
 const bypass = { canActivate: (_ctx: ExecutionContext) => true }
 const bypassI = { intercept: (_ctx: ExecutionContext, next: { handle(): unknown }) => next.handle() }
@@ -21,6 +27,7 @@ describe('EmployeesController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [EmployeesController],
+      providers: [{ provide: EmployeesService, useValue: mockService }],
     })
       .overrideGuard(KeycloakJwtGuard).useValue(bypass)
       .overrideGuard(RbacGuard).useValue(bypass)
@@ -31,17 +38,29 @@ describe('EmployeesController', () => {
     jest.clearAllMocks()
   })
 
-  it('returns employees from the tenant DB', async () => {
-    (mockTenantClient.employee.findMany as jest.Mock).mockResolvedValue(mockEmployees)
-    expect(await controller.findAll(mockTenantClient)).toEqual(mockEmployees)
-    expect(mockTenantClient.employee.findMany).toHaveBeenCalledWith({
-      orderBy: { hiredAt: 'desc' },
-      select: { id: true, firstName: true, lastName: true, position: true, employmentType: true, hiredAt: true, unitId: true },
-    })
+  it('delegates findAll to EmployeesService.list with an actor projected from the JWT + IP', async () => {
+    mockService.list.mockResolvedValue([{ id: 'emp-1' }])
+
+    const result = await controller.findAll(client, user, '1.2.3.4')
+
+    expect(result).toEqual([{ id: 'emp-1' }])
+    expect(mockService.list).toHaveBeenCalledWith(client, { userId: 'kc-1', roles: [Role.HR], ipAddress: '1.2.3.4' })
   })
 
-  it('returns empty array when no employees exist', async () => {
-    (mockTenantClient.employee.findMany as jest.Mock).mockResolvedValue([])
-    expect(await controller.findAll(mockTenantClient)).toEqual([])
+  it('returns empty array when the service resolves no employees', async () => {
+    mockService.list.mockResolvedValue([])
+    expect(await controller.findAll(client, user, '1.2.3.4')).toEqual([])
+  })
+
+  // --- RBAC metadata: proves the role gate wired to the route ------------------------------------
+
+  describe('@Roles gate metadata', () => {
+    const reflector = new Reflector()
+    const rolesFor = (method: keyof EmployeesController): string[] =>
+      reflector.get<string[]>(ROLES_KEY, EmployeesController.prototype[method] as (...args: unknown[]) => unknown) ?? []
+
+    it('allows every scheduling role to read the roster (scoped in the service)', () => {
+      expect(rolesFor('findAll')).toEqual([Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA, Role.PRACOWNIK])
+    })
   })
 })
