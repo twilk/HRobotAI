@@ -6,6 +6,7 @@ import {
   aiProposalActions,
   proposalStateLabel,
   isMineToConsent,
+  shiftLabelOf,
   type AiProposal,
   type AiProposalState,
 } from './ai-grafik'
@@ -116,6 +117,32 @@ describe('aiProposalActions', () => {
   it('offers nothing when the caller has no relationship to the proposal', () => {
     expect(aiProposalActions('PENDING_MANAGER', null)).toEqual([])
     expect(aiProposalActions('PENDING_EMPLOYEE_CONSENT', null)).toEqual([])
+  })
+})
+
+describe('shiftLabelOf', () => {
+  it('formats a known Monday as "pon dd.mm · start–end · ROLE"', () => {
+    expect(
+      shiftLabelOf({ id: 's-1', date: '2026-07-13', start: '06:00', end: '14:00', role: 'RECEPCJA' }),
+    ).toBe('pon 13.07 · 06:00–14:00 · RECEPCJA')
+  })
+
+  it('formats a known Sunday as "nd dd.mm · start–end · ROLE"', () => {
+    expect(
+      shiftLabelOf({ id: 's-2', date: '2026-07-19', start: '22:00', end: '06:00', role: 'OCHRONA' }),
+    ).toBe('nd 19.07 · 22:00–06:00 · OCHRONA')
+  })
+
+  it('tolerates a full ISO datetime, using only the date portion', () => {
+    expect(
+      shiftLabelOf({
+        id: 's-3',
+        date: '2026-07-13T00:00:00.000Z',
+        start: '06:00',
+        end: '14:00',
+        role: 'RECEPCJA',
+      }),
+    ).toBe('pon 13.07 · 06:00–14:00 · RECEPCJA')
   })
 })
 

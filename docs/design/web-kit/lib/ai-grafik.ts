@@ -114,8 +114,13 @@ export const aiGrafikApi = {
 // `/ai-grafik/proposals*` + `/ai-grafik/replacements/scan` routes
 // (apps/tenant-runtime/src/ai-grafik/ai-grafik.controller.ts). The backend returns raw ids only
 // (shiftId, vacatedEmployeeId, candidate.employeeId) — never employee names/PII — so this module
-// enriches them the same way lib/swaps.ts does: fetch `/api/employees` + `/api/grafik/shifts` once
-// per refresh and build id→label maps. IDS ONLY in the backend contract; enrichment is client-side.
+// enriches them the same way lib/swaps.ts does: fetch `/api/employees` + `/api/grafik/shifts` and
+// build id→label maps. `aiProposalApi.listProposals`/`consent`/`managerDecision`/`createForShift`
+// each build their own maps for a single one-off call; a caller that needs several sub-lists in one
+// tick (e.g. proposal-inbox.tsx's `refresh()`) should instead call `listProposalsRaw` per sub-list,
+// build the maps ONCE via `buildProposalEnrichMaps`, and enrich the combined rows with
+// `enrichProposalsWith` — see those exports below. IDS ONLY in the backend contract; enrichment is
+// always client-side.
 
 /** Lifecycle state of an AI proposal — parity with `packages/shared/src/ai-grafik.ts` `AiProposalState`. */
 export type AiProposalState =
@@ -127,8 +132,6 @@ export type AiProposalState =
   | 'REJECTED'
   | 'ESCALATED'
   | 'CANCELLED'
-
-export const AI_TERMINAL_STATES: AiProposalState[] = ['APPROVED', 'REJECTED', 'CANCELLED', 'ESCALATED']
 
 /** Kind of AI proposal — parity with the Prisma `AiProposalType` enum. */
 export type AiProposalType = 'REPLACEMENT' | 'ADHOC' | 'CAPACITY'
@@ -297,7 +300,7 @@ interface ShiftLite {
   role: string
 }
 
-interface ProposalEnrichMaps {
+export interface ProposalEnrichMaps {
   empName: Map<string, string>
   shiftLabel: Map<string, string>
 }
@@ -318,8 +321,14 @@ export function shiftLabelOf(s: ShiftLite): string {
   return `${wd} ${dd}.${mm} · ${s.start}–${s.end} · ${s.role}`
 }
 
-/** Fetch the roster + shifts once (same-origin proxy) and build the id→name / id→shift-label maps. */
-async function buildProposalEnrichMaps(): Promise<ProposalEnrichMaps> {
+/**
+ * Fetch the roster + shifts once (same-origin proxy) and build the id→name / id→shift-label maps.
+ * Exported so a caller that needs several sub-lists in one refresh tick (e.g. proposal-inbox.tsx's
+ * `refresh()`, which combines `mine` + PENDING_MANAGER + DRAFT + ESCALATED) can build the maps ONCE
+ * and reuse them across every sub-list via {@link enrichProposalsWith}, instead of each list call
+ * re-fetching /api/employees + /api/grafik/shifts on its own.
+ */
+export async function buildProposalEnrichMaps(): Promise<ProposalEnrichMaps> {
   const [emps, shifts] = await Promise.all([
     aiFetch<EmployeeLite[]>('/api/employees'),
     aiFetch<ShiftLite[]>('/api/grafik/shifts'),
@@ -343,6 +352,11 @@ function enrichProposal(row: AiProposal, maps: ProposalEnrichMaps): EnrichedProp
     vacatedEmployeeName: maps.empName.get(row.vacatedEmployeeId) ?? row.vacatedEmployeeId.slice(0, 8),
     shiftLabel: maps.shiftLabel.get(row.shiftId) ?? row.shiftId.slice(0, 8),
   }
+}
+
+/** Project many raw rows onto {@link EnrichedProposal} against an already-built map pair (no fetch). */
+export function enrichProposalsWith(rows: AiProposal[], maps: ProposalEnrichMaps): EnrichedProposal[] {
+  return rows.map((r) => enrichProposal(r, maps))
 }
 
 async function enrichProposals(rows: AiProposal[]): Promise<EnrichedProposal[]> {
@@ -371,18 +385,23 @@ export async function fetchMyEmployeeId(): Promise<string | null> {
  * illegal actions surface as {@link AiGrafikApiError}.
  */
 export const aiProposalApi = {
-  listProposals: async (params: ListProposalsParams = {}): Promise<EnrichedProposal[]> => {
+  /**
+   * RAW list — no enrichment fetch. For a caller that needs several sub-lists per refresh tick (see
+   * {@link buildProposalEnrichMaps}'s doc), fetch each list with this, build the maps ONCE, then
+   * enrich the combined rows with {@link enrichProposalsWith}. Prefer {@link aiProposalApi.listProposals}
+   * for a single one-off list.
+   */
+  listProposalsRaw: (params: ListProposalsParams = {}): Promise<AiProposal[]> => {
     const qs = new URLSearchParams()
     if (params.mine) qs.set('mine', 'true')
     if (params.state) qs.set('state', params.state)
     const query = qs.toString()
-    const rows = await aiFetch<AiProposal[]>(`/api/ai-grafik/proposals${query ? `?${query}` : ''}`)
-    return enrichProposals(rows)
+    return aiFetch<AiProposal[]>(`/api/ai-grafik/proposals${query ? `?${query}` : ''}`)
   },
 
-  getProposal: async (id: string): Promise<EnrichedProposal> => {
-    const row = await aiFetch<AiProposal>(`/api/ai-grafik/proposals/${id}`)
-    return enrichProposal(row, await buildProposalEnrichMaps())
+  listProposals: async (params: ListProposalsParams = {}): Promise<EnrichedProposal[]> => {
+    const rows = await aiProposalApi.listProposalsRaw(params)
+    return enrichProposals(rows)
   },
 
   /** The asked employee's answer to their consent request. */

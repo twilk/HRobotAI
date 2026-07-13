@@ -14,8 +14,11 @@ import {
   proposalStateLabel,
   isMineToConsent,
   shiftLabelOf,
+  buildProposalEnrichMaps,
+  enrichProposalsWith,
   AiGrafikApiError,
   type EnrichedProposal,
+  type AiProposal,
   type AiProposalState,
   type VacatedShift,
 } from '@/lib/ai-grafik'
@@ -77,7 +80,10 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
   const [myConsent, setMyConsent] = useState<EnrichedProposal[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState<string | null>(null)
+  // In-flight action keys (`${id}:${action}`, or `create:${shiftId}`) — a Set rather than a single
+  // string so clicking Approve on proposal A then B before A resolves doesn't re-enable A's button
+  // mid-flight (each key is independently busy/not-busy).
+  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set())
   const [polling, setPolling] = useState(true)
 
   const [scanRange, setScanRange] = useState(defaultScanRange)
@@ -103,17 +109,26 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
       const meId = await fetchMyEmployeeId()
       if (cancelledRef.current) return
 
-      const [mine, manager] = await Promise.all([
-        aiProposalApi.listProposals({ mine: true }),
+      // RAW lists (no per-call enrichment fetch) — the id→name/id→shift-label maps are built ONCE
+      // below and reused across every sub-list, instead of each list re-fetching /api/employees +
+      // /api/grafik/shifts on its own (was up to 4x per refresh tick; now exactly once).
+      const [mineRaw, managerRaw] = await Promise.all([
+        aiProposalApi.listProposalsRaw({ mine: true }),
         canManage
           ? Promise.all([
-              aiProposalApi.listProposals({ state: 'PENDING_MANAGER' }),
-              aiProposalApi.listProposals({ state: 'DRAFT' }),
-              aiProposalApi.listProposals({ state: 'ESCALATED' }),
+              aiProposalApi.listProposalsRaw({ state: 'PENDING_MANAGER' }),
+              aiProposalApi.listProposalsRaw({ state: 'DRAFT' }),
+              aiProposalApi.listProposalsRaw({ state: 'ESCALATED' }),
             ]).then(([pendingManager, draft, escalated]) => [...pendingManager, ...draft, ...escalated])
-          : Promise.resolve<EnrichedProposal[]>([]),
+          : Promise.resolve<AiProposal[]>([]),
       ])
       if (cancelledRef.current) return
+
+      const maps = await buildProposalEnrichMaps()
+      if (cancelledRef.current) return
+
+      const mine = enrichProposalsWith(mineRaw, maps)
+      const manager = enrichProposalsWith(managerRaw, maps)
       setMyConsent(mine.filter((p) => isMineToConsent(p, meId)))
       setManagerInbox(manager)
       setError(null)
@@ -142,7 +157,8 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
 
   const run = useCallback(
     async (id: string, action: Action) => {
-      setBusy(`${id}:${action}`)
+      const key = `${id}:${action}`
+      setBusy((prev) => new Set(prev).add(key))
       setError(null)
       try {
         switch (action) {
@@ -163,7 +179,13 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
       } catch (e) {
         if (!cancelledRef.current) setError(actionErrorMessage(e))
       } finally {
-        if (!cancelledRef.current) setBusy(null)
+        if (!cancelledRef.current) {
+          setBusy((prev) => {
+            const next = new Set(prev)
+            next.delete(key)
+            return next
+          })
+        }
       }
     },
     [refresh],
@@ -187,7 +209,8 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
 
   const createProposal = useCallback(
     async (shiftId: string) => {
-      setBusy(`create:${shiftId}`)
+      const key = `create:${shiftId}`
+      setBusy((prev) => new Set(prev).add(key))
       setScanError(null)
       try {
         await aiProposalApi.createForShift(shiftId)
@@ -196,7 +219,13 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
       } catch (e) {
         if (!cancelledRef.current) setScanError(actionErrorMessage(e))
       } finally {
-        if (!cancelledRef.current) setBusy(null)
+        if (!cancelledRef.current) {
+          setBusy((prev) => {
+            const next = new Set(prev)
+            next.delete(key)
+            return next
+          })
+        }
       }
     },
     [refresh],
@@ -227,7 +256,10 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
       </div>
 
       {error && (
-        <div className="mb-4 text-sm text-warn border border-warn/30 bg-warn/[0.08] rounded-lg px-3.5 py-2.5">
+        <div
+          role="alert"
+          className="mb-4 text-sm text-warn border border-warn/30 bg-warn/[0.08] rounded-lg px-3.5 py-2.5"
+        >
           {error}
         </div>
       )}
@@ -249,37 +281,36 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
               </tr>
             </thead>
             <tbody>
-              {myConsent.map((p) => (
-                <tr key={p.id}>
-                  <Td>
-                    <ShiftCell label={p.shiftLabel} sub={p.reason ?? 'Propozycja AI'} />
-                  </Td>
-                  <Td>
-                    <ProposalBadge state={p.state} />
-                  </Td>
-                  <Td className="text-right pr-4">
-                    <div className="inline-flex items-center gap-2 justify-end">
-                      <Button
-                        className="h-8 px-3 text-[13px]"
-                        onClick={() => void run(p.id, 'accept')}
-                        disabled={busy === `${p.id}:accept`}
-                      >
-                        <IconCheck className="w-4 h-4" strokeWidth={2} />
-                        Akceptuj
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        className="h-8 px-3 text-[13px]"
-                        onClick={() => void run(p.id, 'decline')}
-                        disabled={busy === `${p.id}:decline`}
-                      >
-                        <IconClose className="w-4 h-4" strokeWidth={2} />
-                        Odrzuć
-                      </Button>
-                    </div>
-                  </Td>
-                </tr>
-              ))}
+              {myConsent.map((p) => {
+                const actions = aiProposalActions(p.state, 'employee')
+                return (
+                  <tr key={p.id}>
+                    <Td>
+                      <ShiftCell label={p.shiftLabel} sub={p.reason ?? 'Propozycja AI'} />
+                    </Td>
+                    <Td>
+                      <ProposalBadge state={p.state} />
+                    </Td>
+                    <Td className="text-right pr-4">
+                      <div className="inline-flex items-center gap-2 justify-end">
+                        {actions.map((a) => (
+                          <Button
+                            key={a.action}
+                            variant={a.action === 'decline' ? 'ghost' : 'primary'}
+                            className="h-8 px-3 text-[13px]"
+                            onClick={() => void run(p.id, a.action)}
+                            disabled={busy.has(`${p.id}:${a.action}`)}
+                          >
+                            {a.action === 'accept' && <IconCheck className="w-4 h-4" strokeWidth={2} />}
+                            {a.action === 'decline' && <IconClose className="w-4 h-4" strokeWidth={2} />}
+                            {a.label}
+                          </Button>
+                        ))}
+                      </div>
+                    </Td>
+                  </tr>
+                )
+              })}
             </tbody>
           </Table>
         )}
@@ -338,7 +369,7 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
                                   variant={a.action === 'reject' ? 'ghost' : 'primary'}
                                   className="h-8 px-3 text-[13px]"
                                   onClick={() => void run(p.id, a.action)}
-                                  disabled={busy === `${p.id}:${a.action}`}
+                                  disabled={busy.has(`${p.id}:${a.action}`)}
                                 >
                                   {a.action === 'approve' && <IconCheck className="w-4 h-4" strokeWidth={2} />}
                                   {a.action === 'reject' && <IconClose className="w-4 h-4" strokeWidth={2} />}
@@ -388,7 +419,10 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
                 </Button>
               </div>
               {scanError && (
-                <div className="mt-3 text-sm text-warn border border-warn/30 bg-warn/[0.08] rounded-lg px-3.5 py-2.5">
+                <div
+                  role="alert"
+                  className="mt-3 text-sm text-warn border border-warn/30 bg-warn/[0.08] rounded-lg px-3.5 py-2.5"
+                >
                   {scanError}
                 </div>
               )}
@@ -424,7 +458,7 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
                             <Button
                               className="h-8 px-3 text-[13px]"
                               onClick={() => void createProposal(s.id)}
-                              disabled={busy === `create:${s.id}`}
+                              disabled={busy.has(`create:${s.id}`)}
                             >
                               <IconSparkles className="w-4 h-4" strokeWidth={2} />
                               Utwórz propozycję zastępstwa
