@@ -96,6 +96,11 @@ export class SettingsService {
    * first-writes can race — the loser's `create` throws P2002; we re-read the now-existing row and
    * update it instead of surfacing a raw 500 (mirrors the P2002 idiom in ai-config.service.ts). The
    * row carries no PII → before/after snapshots are audited verbatim.
+   *
+   * Validation: the first-ever create requires a non-empty `companyName` (there is no sensible blank
+   * default to persist) — an empty/absent body 400s instead of silently seeding a blank singleton. An
+   * update against an existing row allows a genuine partial change, but a no-op empty body also 400s
+   * rather than writing a pointless audit entry. `companyName` is therefore never persisted as `''`.
    */
   async upsertCompany(client: TenantClient, actor: SettingsActor, dto: UpdateCompanyDto): Promise<unknown> {
     this.assertAdmin(actor)
@@ -104,11 +109,19 @@ export class SettingsService {
 
     let after: { id: string }
     if (before) {
+      if (Object.keys(data).length === 0) {
+        throw new BadRequestException('Brak danych do aktualizacji')
+      }
       after = await client.companySettings.update({ where: { id: before.id }, data })
     } else {
+      const companyName = typeof data.companyName === 'string' ? data.companyName.trim() : ''
+      if (!companyName) {
+        throw new BadRequestException('company_name jest wymagane przy pierwszej konfiguracji')
+      }
       try {
-        // companyName has no schema default (NOT NULL) — seed '' unless the DTO supplies one.
-        after = await client.companySettings.create({ data: { companyName: '', ...data } })
+        // `companyName` is proven non-empty above — narrow the create payload to satisfy Prisma's
+        // required-field typing without re-widening it back to `unknown`.
+        after = await client.companySettings.create({ data: { ...data, companyName } })
       } catch (err: unknown) {
         if (typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2002') {
           const existing = await client.companySettings.findFirst()

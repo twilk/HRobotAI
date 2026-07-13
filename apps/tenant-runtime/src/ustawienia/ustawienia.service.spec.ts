@@ -56,6 +56,17 @@ describe('SettingsService', () => {
         locale: 'pl-PL',
       })
     })
+
+    it('never persists a row as a side effect of a read (no create/update, DB stays empty)', async () => {
+      client.companySettings.findFirst.mockResolvedValue(null)
+
+      await service.getCompany(asClient(client), MANAGER)
+
+      expect(client.companySettings.create).not.toHaveBeenCalled()
+      expect(client.companySettings.update).not.toHaveBeenCalled()
+      // Reading again proves nothing was written by the first read.
+      await expect(service.getCompany(asClient(client), MANAGER)).resolves.toMatchObject({ companyName: '' })
+    })
   })
 
   describe('upsertCompany', () => {
@@ -85,14 +96,51 @@ describe('SettingsService', () => {
       )
     })
 
-    it('creates the singleton (seeding companyName) when none exists', async () => {
+    it('creates the singleton when none exists, given a non-empty companyName', async () => {
       client.companySettings.findFirst.mockResolvedValue(null)
-      client.companySettings.create.mockResolvedValue({ id: 'cs-new', timezone: 'UTC' })
+      client.companySettings.create.mockResolvedValue({ id: 'cs-new', companyName: 'Acme', timezone: 'UTC' })
 
-      await service.upsertCompany(asClient(client), ADMIN, { timezone: 'UTC' })
+      await service.upsertCompany(asClient(client), ADMIN, { companyName: 'Acme', timezone: 'UTC' })
 
-      expect(client.companySettings.create).toHaveBeenCalledWith({ data: { companyName: '', timezone: 'UTC' } })
+      expect(client.companySettings.create).toHaveBeenCalledWith({ data: { companyName: 'Acme', timezone: 'UTC' } })
       expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'settings.updated', entityId: 'cs-new' }))
+    })
+
+    it('rejects the first create with a 400 when companyName is absent (empty body)', async () => {
+      client.companySettings.findFirst.mockResolvedValue(null)
+
+      await expect(service.upsertCompany(asClient(client), ADMIN, {})).rejects.toThrow(BadRequestException)
+      expect(client.companySettings.create).not.toHaveBeenCalled()
+      expect(client.companySettings.update).not.toHaveBeenCalled()
+      expect(audit.log).not.toHaveBeenCalled()
+    })
+
+    it('rejects the first create with a 400 when companyName is blank/whitespace', async () => {
+      client.companySettings.findFirst.mockResolvedValue(null)
+
+      await expect(service.upsertCompany(asClient(client), ADMIN, { companyName: '   ' })).rejects.toThrow(BadRequestException)
+      expect(client.companySettings.create).not.toHaveBeenCalled()
+    })
+
+    it('rejects a no-op empty-body update on an existing row with a 400', async () => {
+      client.companySettings.findFirst.mockResolvedValue({ id: 'cs1', companyName: 'Acme' })
+
+      await expect(service.upsertCompany(asClient(client), ADMIN, {})).rejects.toThrow(BadRequestException)
+      expect(client.companySettings.update).not.toHaveBeenCalled()
+      expect(client.companySettings.create).not.toHaveBeenCalled()
+      expect(audit.log).not.toHaveBeenCalled()
+    })
+
+    it('allows a genuine partial update on an existing row (only the given field changes)', async () => {
+      const before = { id: 'cs1', companyName: 'Acme', timezone: 'Europe/Warsaw' }
+      client.companySettings.findFirst.mockResolvedValue(before)
+      const after = { id: 'cs1', companyName: 'Acme', timezone: 'UTC' }
+      client.companySettings.update.mockResolvedValue(after)
+
+      const result = await service.upsertCompany(asClient(client), ADMIN, { timezone: 'UTC' })
+
+      expect(result).toBe(after)
+      expect(client.companySettings.update).toHaveBeenCalledWith({ where: { id: 'cs1' }, data: { timezone: 'UTC' } })
     })
 
     it('recovers from a P2002 race on the first create by re-reading and updating (no dup)', async () => {
