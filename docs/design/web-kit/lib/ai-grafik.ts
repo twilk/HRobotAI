@@ -404,6 +404,19 @@ export const aiProposalApi = {
     return enrichProposals(rows)
   },
 
+  /**
+   * Manager (or HR/ADMIN) action: advance a DRAFT proposal by asking the top feasible candidate for
+   * consent (Fix 1 — DRAFT otherwise has no path forward under SUGGEST_ONLY/AUTO_NOTIFY autonomy).
+   * Does NOT skip consent or manager approval — moves DRAFT -> PENDING_EMPLOYEE_CONSENT (or ->
+   * ESCALATED when no feasible candidate remains).
+   */
+  requestConsent: async (id: string): Promise<EnrichedProposal> => {
+    const row = await aiFetch<AiProposal>(`/api/ai-grafik/proposals/${id}/request-consent`, {
+      method: 'POST',
+    })
+    return enrichProposal(row, await buildProposalEnrichMaps())
+  },
+
   /** The asked employee's answer to their consent request. */
   consent: async (id: string, accept: boolean): Promise<EnrichedProposal> => {
     const row = await aiFetch<AiProposal>(`/api/ai-grafik/proposals/${id}/consent`, {

@@ -179,6 +179,85 @@ export class AiProposalService {
     return proposal
   }
 
+  /**
+   * MANAGER (or global HR/ADMIN) action that advances a DRAFT proposal by asking the top feasible
+   * candidate for consent (Fix: DRAFT is the terminus for SUGGEST_ONLY/AUTO_NOTIFY autonomy —
+   * {@link createReplacement} leaves it there with no path forward otherwise). Reuses the same
+   * "promote the top feasible NOT_ASKED candidate or escalate" idiom as createReplacement's
+   * AUTO_ASK_CONSENT branch and {@link employeeConsent}'s decline path (via {@link pickNextFeasibleCandidate}):
+   * this NEVER skips consent or manager approval — it only ever moves DRAFT → PENDING_EMPLOYEE_CONSENT
+   * (human-in-the-loop preserved) or, when no feasible candidate remains, DRAFT → ESCALATED.
+   *
+   * Authorize: GLOBAL (HR/ADMIN) or manages the shift's unit, else 403. Wrong lifecycle state (not
+   * DRAFT) is a 409. The proposal flip is an optimistic-locked `updateMany` guarded on `state: DRAFT`
+   * (same idiom as every other transition in this service).
+   */
+  async requestConsent(client: TenantClient, actor: AiConfigActor, proposalId: string): Promise<AiProposalRow> {
+    const proposal = await client.aiProposal.findUnique({
+      where: { id: proposalId },
+      include: { candidates: true },
+    })
+    if (!proposal) throw new NotFoundException('Proposal not found')
+
+    const shift = await client.shift.findUnique({
+      where: { id: proposal.shiftId },
+      select: { employee: { select: { unitId: true } } },
+    })
+    const unitId = shift?.employee.unitId
+    if (!isGlobal(actor.roles)) {
+      const managed = await managedUnitIds(client, actor.userId)
+      if (unitId == null || !managed.includes(unitId)) {
+        throw new ForbiddenException('Proposal is outside your scope')
+      }
+    }
+
+    if (proposal.state !== AiProposalState.DRAFT) {
+      throw new ConflictException('Proposal is not a draft')
+    }
+
+    const next = this.pickNextFeasibleCandidate(proposal.candidates)
+
+    if (!next) {
+      const escalated = nextProposalState(AiProposalState.DRAFT, AiProposalAction.DirectEscalate)
+      const flipped = await client.aiProposal.updateMany({
+        where: { id: proposal.id, state: AiProposalState.DRAFT },
+        data: { state: escalated },
+      })
+      if (flipped.count === 0) throw new ConflictException('Proposal changed concurrently')
+      await this.writeAudit(client, actor, 'ai_proposal.escalated', proposal.id, {
+        shiftId: proposal.shiftId,
+        reason: 'NO_FEASIBLE_CANDIDATE',
+      })
+      return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: { candidates: true } })
+    }
+
+    const now = new Date()
+    const config = (await this.aiConfig.getConfig(client, actor, unitId)) as ResolvedConfig
+    const expiresAt = new Date(now.getTime() + config.consentTtlHours * 60 * 60 * 1000)
+    const pending = nextProposalState(AiProposalState.DRAFT, AiProposalAction.AskConsent)
+
+    await client.$transaction(async (tx) => {
+      await tx.aiProposalCandidate.update({
+        where: { id: next.id },
+        data: { consentState: ConsentState.PENDING, consentRequestedAt: now },
+      })
+      const flipped = await tx.aiProposal.updateMany({
+        where: { id: proposal.id, state: AiProposalState.DRAFT },
+        data: { state: pending, activeCandidateId: next.id, expiresAt },
+      })
+      if (flipped.count === 0) throw new ConflictException('Proposal changed concurrently')
+    })
+
+    await this.writeAudit(client, actor, 'ai_proposal.consent_requested', proposal.id, {
+      shiftId: proposal.shiftId,
+      activeCandidateId: next.id,
+      employeeId: next.employeeId,
+      state: pending,
+    })
+
+    return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: { candidates: true } })
+  }
+
   /** One candidate insert row; the active (consent-path) candidate is stamped PENDING at `now`. */
   private candidateData(
     id: string,
@@ -213,7 +292,9 @@ export class AiProposalService {
       const where: TenantPrisma.AiProposalWhereInput = {}
       if (!global) where.shift = { employee: { unitId: { in: managed } } }
       if (filter.state != null) where.state = filter.state as AiProposalState
-      return client.aiProposal.findMany({ where, include: { candidates: true } })
+      const rows = await client.aiProposal.findMany({ where, include: { candidates: true } })
+      // Fix 2 — lazy expiry: a stale PENDING_EMPLOYEE_CONSENT row never shows as still-actionable.
+      return Promise.all(rows.map((p) => this.expireIfStale(client, actor, p)))
     }
 
     // Plain employee: only their own active PENDING consent request.
@@ -227,13 +308,20 @@ export class AiProposalService {
       },
       include: { candidates: true },
     })
-    return rows.filter((p) => this.isMyActivePending(p, me.id))
+    // Expire stale rows FIRST — a just-expired row no longer passes isMyActivePending (its state moved
+    // off PENDING_EMPLOYEE_CONSENT), so it correctly drops out of the employee's view.
+    const current = await Promise.all(rows.map((p) => this.expireIfStale(client, actor, p)))
+    return current.filter((p) => this.isMyActivePending(p, me.id))
   }
 
   /** Load one proposal, applying the same scoping as {@link list} (404 missing, 403 out of scope). */
   async getById(client: TenantClient, actor: AiConfigActor, id: string): Promise<AiProposalRow> {
-    const proposal = await client.aiProposal.findUnique({ where: { id }, include: { candidates: true } })
-    if (!proposal) throw new NotFoundException('Proposal not found')
+    const found = await client.aiProposal.findUnique({ where: { id }, include: { candidates: true } })
+    if (!found) throw new NotFoundException('Proposal not found')
+
+    // Fix 2 — lazy expiry: expire before returning/scoping so a stale PENDING_EMPLOYEE_CONSENT proposal
+    // never reads back as still-actionable.
+    const proposal = await this.expireIfStale(client, actor, found)
 
     if (isGlobal(actor.roles)) return proposal
 
@@ -258,6 +346,59 @@ export class AiProposalService {
     if (proposal.state !== AiProposalState.PENDING_EMPLOYEE_CONSENT) return false
     const active = proposal.candidates.find((c) => c.id === proposal.activeCandidateId)
     return active != null && active.employeeId === employeeId && active.consentState === ConsentState.PENDING
+  }
+
+  /**
+   * The top feasible NOT_ASKED candidate (ascending rank), or `undefined` if none remain. Shared by
+   * {@link requestConsent}'s initial pick and {@link employeeConsent}'s decline-promotion — the "find
+   * who to ask next" rule is identical in both call sites.
+   */
+  private pickNextFeasibleCandidate(
+    candidates: AiProposalRow['candidates'],
+  ): AiProposalRow['candidates'][number] | undefined {
+    return candidates
+      .filter((c) => c.feasible && c.consentState === ConsentState.NOT_ASKED)
+      .sort((a, b) => a.rank - b.rank)[0]
+  }
+
+  /** True iff `proposal` is PENDING_EMPLOYEE_CONSENT with a `expiresAt` that has already passed. */
+  private isStaleConsent(proposal: Pick<AiProposalRow, 'state' | 'expiresAt'>): boolean {
+    return (
+      proposal.state === AiProposalState.PENDING_EMPLOYEE_CONSENT &&
+      proposal.expiresAt != null &&
+      proposal.expiresAt.getTime() < Date.now()
+    )
+  }
+
+  /**
+   * Fix 2 — consent TTL is write-only otherwise (nothing ever reads `expiresAt`). No cron is
+   * available, so expiry is LAZY: called from every read path ({@link list}, {@link getById}) and
+   * before {@link employeeConsent}'s mutation. A stale PENDING_EMPLOYEE_CONSENT proposal transitions
+   * expire → ESCALATED via the same optimistic-locked `updateMany` idiom as every other transition
+   * (audit `ai_proposal.expired` on success). A concurrent flip (someone else's read raced this one)
+   * just means the guard matches 0 rows — re-read and return the current row rather than surfacing a
+   * spurious error, since lazy expiry here is best-effort bookkeeping, not a caller-facing mutation.
+   * Returns `proposal` unchanged when it isn't stale.
+   */
+  private async expireIfStale(
+    client: TenantClient,
+    actor: AiConfigActor,
+    proposal: AiProposalRow,
+  ): Promise<AiProposalRow> {
+    if (!this.isStaleConsent(proposal)) return proposal
+
+    const expired = nextProposalState(AiProposalState.PENDING_EMPLOYEE_CONSENT, AiProposalAction.Expire)
+    const flipped = await client.aiProposal.updateMany({
+      where: { id: proposal.id, state: AiProposalState.PENDING_EMPLOYEE_CONSENT },
+      data: { state: expired },
+    })
+    if (flipped.count > 0) {
+      await this.writeAudit(client, actor, 'ai_proposal.expired', proposal.id, {
+        shiftId: proposal.shiftId,
+        reason: 'CONSENT_TTL_EXPIRED',
+      })
+    }
+    return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: { candidates: true } })
   }
 
   /** The caller's own Employee id (via `User.keycloakSub`), or null if they have no employee record. */
@@ -293,6 +434,14 @@ export class AiProposalService {
       include: { candidates: true },
     })
     if (!proposal) throw new NotFoundException('Proposal not found')
+
+    // Fix 2 — a past-TTL employee action can't slip through: expire first, then reject with a
+    // dedicated message (distinct from the generic wrong-state 409 below).
+    if (this.isStaleConsent(proposal)) {
+      await this.expireIfStale(client, actor, proposal)
+      throw new ConflictException('consent request expired')
+    }
+
     if (proposal.state !== AiProposalState.PENDING_EMPLOYEE_CONSENT) {
       throw new ConflictException('Proposal is not awaiting employee consent')
     }
@@ -336,9 +485,8 @@ export class AiProposalService {
     }
 
     // Decline: mark this candidate DECLINED, then promote the next feasible untouched candidate.
-    const next = proposal.candidates
-      .filter((c) => c.feasible && c.consentState === ConsentState.NOT_ASKED && c.id !== active.id)
-      .sort((a, b) => a.rank - b.rank)[0]
+    // (`active` is PENDING, never NOT_ASKED, so it's already excluded by pickNextFeasibleCandidate.)
+    const next = this.pickNextFeasibleCandidate(proposal.candidates)
 
     if (next) {
       // Self-loop: stays PENDING_EMPLOYEE_CONSENT, just re-pointed at the promoted candidate.

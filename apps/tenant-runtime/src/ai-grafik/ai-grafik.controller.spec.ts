@@ -25,6 +25,7 @@ const mockProposals = {
   createReplacement: jest.fn(),
   list: jest.fn(),
   getById: jest.fn(),
+  requestConsent: jest.fn(),
   employeeConsent: jest.fn(),
   managerDecision: jest.fn(),
 }
@@ -155,6 +156,19 @@ describe('AiGrafikController', () => {
     )
   })
 
+  it('delegates requestConsent to AiProposalService.requestConsent', async () => {
+    mockProposals.requestConsent.mockResolvedValue({ id: 'prop-1', state: 'PENDING_EMPLOYEE_CONSENT' })
+
+    const result = await controller.requestConsent(client, user, '1.2.3.4', 'prop-1')
+
+    expect(result).toEqual({ id: 'prop-1', state: 'PENDING_EMPLOYEE_CONSENT' })
+    expect(mockProposals.requestConsent).toHaveBeenCalledWith(
+      client,
+      { userId: 'kc-1', roles: [Role.HR], ipAddress: '1.2.3.4' },
+      'prop-1',
+    )
+  })
+
   it('delegates consent to AiProposalService.employeeConsent with the parsed accept flag', async () => {
     mockProposals.employeeConsent.mockResolvedValue({ id: 'prop-1', state: 'PENDING_MANAGER' })
 
@@ -216,6 +230,10 @@ describe('AiGrafikController', () => {
 
     it('opens consent to PRACOWNIK/MANAGER/HR/ADMIN_KLIENTA', () => {
       expect(rolesFor('consent')).toEqual([Role.PRACOWNIK, Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA])
+    })
+
+    it('restricts requestConsent to MANAGER/HR/ADMIN_KLIENTA', () => {
+      expect(rolesFor('requestConsent')).toEqual([Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA])
     })
 
     it('restricts managerDecision to MANAGER/HR/ADMIN_KLIENTA', () => {

@@ -114,6 +114,21 @@ export class AiGrafikController {
     return this.proposals.getById(client, this.actor(user, ip), id)
   }
 
+  // Fix 1: a manager (or HR/ADMIN) advances a DRAFT proposal by asking the top feasible candidate for
+  // consent — DRAFT is otherwise a dead end under SUGGEST_ONLY/AUTO_NOTIFY autonomy. This does NOT
+  // skip consent or manager approval; the service only ever moves DRAFT -> PENDING_EMPLOYEE_CONSENT
+  // (or -> ESCALATED when no feasible candidate remains).
+  @Post('proposals/:id/request-consent')
+  @Roles(...CONFIG_ROLES)
+  async requestConsent(
+    @CurrentTenantClient() client: TenantClient,
+    @CurrentUser() user: JwtPayload,
+    @Ip() ip: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<unknown> {
+    return this.proposals.requestConsent(client, this.actor(user, ip), id)
+  }
+
   // The asked employee answers their consent request (Task 1.4). Any role may hold an employee record,
   // but the service enforces that the caller IS the proposal's active (asked) candidate.
   @Post('proposals/:id/consent')

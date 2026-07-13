@@ -66,8 +66,11 @@ type Action = ProposalActionKind
  * action buttons, a `run(id, action)` dispatcher, state badges. Manager-only (rendered from
  * app/(tenant)/ai-grafik-manager/page.tsx, gated to canManage there); two sections:
  *
- *   A. "Skrzynka managera" — proposals in PENDING_MANAGER get Approve/Reject; DRAFT/ESCALATED
- *      proposals are listed with their status only (no action wired for those yet).
+ *   A. "Skrzynka managera" — proposals in PENDING_MANAGER get Approve/Reject; DRAFT gets "Zapytaj
+ *      pracownika o zgodę" (Fix 1 — asks the top feasible candidate for consent; DRAFT is otherwise a
+ *      dead end under SUGGEST_ONLY/AUTO_NOTIFY, and this never skips consent or manager approval).
+ *      ESCALATED proposals are listed with their status only (no action wired for those — a human
+ *      handles escalations outside this screen).
  *   B. "Wykrywanie wypadnięć" — scan a date range for vacated shifts, then create a replacement
  *      proposal per shift. This is what seeds the manager inbox in the demo.
  *
@@ -162,6 +165,32 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
             await aiProposalApi.managerDecision(id, false)
             break
         }
+        await refresh()
+      } catch (e) {
+        if (!cancelledRef.current) setError(actionErrorMessage(e))
+      } finally {
+        if (!cancelledRef.current) {
+          setBusy((prev) => {
+            const next = new Set(prev)
+            next.delete(key)
+            return next
+          })
+        }
+      }
+    },
+    [refresh],
+  )
+
+  // Fix 1: DRAFT proposals otherwise have no path forward (DRAFT is the SUGGEST_ONLY/AUTO_NOTIFY
+  // default). This asks the top feasible candidate for consent — it does NOT skip consent/approval,
+  // it only moves DRAFT -> PENDING_EMPLOYEE_CONSENT (or -> ESCALATED if no one is left to ask).
+  const requestConsent = useCallback(
+    async (id: string) => {
+      const key = `request-consent:${id}`
+      setBusy((prev) => new Set(prev).add(key))
+      setError(null)
+      try {
+        await aiProposalApi.requestConsent(id)
         await refresh()
       } catch (e) {
         if (!cancelledRef.current) setError(actionErrorMessage(e))
@@ -296,7 +325,18 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
                           <ProposalBadge state={p.state} />
                         </Td>
                         <Td className="text-right pr-4">
-                          {actions.length > 0 ? (
+                          {p.state === 'DRAFT' ? (
+                            // Fix 1: DRAFT otherwise has no path forward — this asks the top feasible
+                            // candidate for consent (never skips consent/approval).
+                            <Button
+                              className="h-8 px-3 text-[13px]"
+                              onClick={() => void requestConsent(p.id)}
+                              disabled={busy.has(`request-consent:${p.id}`)}
+                            >
+                              <IconSparkles className="w-4 h-4" strokeWidth={2} />
+                              Zapytaj pracownika o zgodę
+                            </Button>
+                          ) : actions.length > 0 ? (
                             <div className="inline-flex items-center gap-2 justify-end">
                               {actions.map((a) => (
                                 <Button

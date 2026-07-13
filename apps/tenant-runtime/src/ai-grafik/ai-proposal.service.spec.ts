@@ -62,6 +62,9 @@ function makeClient() {
       findUnique: jest.fn(),
       findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'prop-1', candidates: [] }),
       update: jest.fn().mockImplementation(({ data }) => ({ id: 'prop-1', ...data })),
+      // Fix 1's no-feasible-candidate escalate branch and Fix 2's lazy expiry both flip the proposal
+      // state directly on the top-level client (outside a $transaction).
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     $transaction: jest.fn(async (cb: (tx: MockTx) => unknown) => cb(tx)),
     __tx: tx,
@@ -233,6 +236,114 @@ describe('AiProposalService.createReplacement', () => {
     expect(payload).toEqual(
       expect.objectContaining({ shiftId: SHIFT_ID, vacatedEmployeeId: VACATED }),
     )
+  })
+})
+
+// --- Fix 1: DRAFT -> request-consent manager action --------------------------------------------
+
+function draftProposal(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'prop-1',
+    state: AiProposalState.DRAFT,
+    shiftId: SHIFT_ID,
+    vacatedEmployeeId: VACATED,
+    activeCandidateId: null,
+    candidates: [
+      { id: 'cand-1', employeeId: 'emp-c1', rank: 1, feasible: true, consentState: ConsentState.NOT_ASKED },
+      { id: 'cand-2', employeeId: 'emp-c2', rank: 2, feasible: true, consentState: ConsentState.NOT_ASKED },
+    ],
+    ...overrides,
+  }
+}
+
+describe('AiProposalService.requestConsent', () => {
+  it('promotes the top feasible NOT_ASKED candidate: PENDING_EMPLOYEE_CONSENT, candidate PENDING, expiresAt set', async () => {
+    const client = makeClient()
+    client.aiProposal.findUnique.mockResolvedValue(draftProposal())
+    client.aiProposal.findUniqueOrThrow.mockResolvedValue({
+      id: 'prop-1',
+      state: AiProposalState.PENDING_EMPLOYEE_CONSENT,
+      candidates: [],
+    })
+    const { service, audit } = makeService({ consentTtlHours: 8 })
+    const before = Date.now()
+
+    const result = await service.requestConsent(as(client), HR, 'prop-1')
+
+    expect(result.state).toBe(AiProposalState.PENDING_EMPLOYEE_CONSENT)
+    expect(client.$transaction).toHaveBeenCalledTimes(1)
+    const tx = client.__tx
+    expect(tx.aiProposalCandidate.update).toHaveBeenCalledWith({
+      where: { id: 'cand-1' },
+      data: { consentState: ConsentState.PENDING, consentRequestedAt: expect.any(Date) },
+    })
+    const call = tx.aiProposal.updateMany.mock.calls[0][0]
+    expect(call.where).toEqual({ id: 'prop-1', state: AiProposalState.DRAFT })
+    expect(call.data.state).toBe(AiProposalState.PENDING_EMPLOYEE_CONSENT)
+    expect(call.data.activeCandidateId).toBe('cand-1')
+    const ttlMs = (call.data.expiresAt as Date).getTime() - before
+    expect(ttlMs).toBeGreaterThanOrEqual(8 * 60 * 60 * 1000 - 5000)
+    expect(ttlMs).toBeLessThanOrEqual(8 * 60 * 60 * 1000 + 5000)
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'ai_proposal.consent_requested',
+        payload: expect.objectContaining({ activeCandidateId: 'cand-1', employeeId: 'emp-c1' }),
+      }),
+    )
+  })
+
+  it('escalates to ESCALATED when no feasible NOT_ASKED candidate remains', async () => {
+    const client = makeClient()
+    client.aiProposal.findUnique.mockResolvedValue(
+      draftProposal({
+        candidates: [{ id: 'cand-1', employeeId: 'emp-c1', rank: 1, feasible: false, consentState: ConsentState.NOT_ASKED }],
+      }),
+    )
+    client.aiProposal.findUniqueOrThrow.mockResolvedValue({ id: 'prop-1', state: AiProposalState.ESCALATED, candidates: [] })
+    const { service, audit } = makeService()
+
+    const result = await service.requestConsent(as(client), HR, 'prop-1')
+
+    expect(result.state).toBe(AiProposalState.ESCALATED)
+    expect(client.$transaction).not.toHaveBeenCalled()
+    expect(client.aiProposal.updateMany).toHaveBeenCalledWith({
+      where: { id: 'prop-1', state: AiProposalState.DRAFT },
+      data: { state: AiProposalState.ESCALATED },
+    })
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'ai_proposal.escalated',
+        payload: expect.objectContaining({ reason: 'NO_FEASIBLE_CANDIDATE' }),
+      }),
+    )
+  })
+
+  it('conflicts when the proposal is not a DRAFT', async () => {
+    const client = makeClient()
+    client.aiProposal.findUnique.mockResolvedValue(draftProposal({ state: AiProposalState.PENDING_MANAGER }))
+    const { service } = makeService()
+
+    await expect(service.requestConsent(as(client), HR, 'prop-1')).rejects.toThrow(ConflictException)
+    expect(client.$transaction).not.toHaveBeenCalled()
+    expect(client.aiProposal.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('forbids a PRACOWNIK (manages no unit)', async () => {
+    const client = makeClient()
+    client.aiProposal.findUnique.mockResolvedValue(draftProposal())
+    const { service } = makeService()
+
+    await expect(service.requestConsent(as(client), EMPLOYEE, 'prop-1')).rejects.toThrow(ForbiddenException)
+  })
+
+  it('forbids a MANAGER who does not manage the shift unit', async () => {
+    const client = makeClient()
+    client.aiProposal.findUnique.mockResolvedValue(draftProposal())
+    client.userRole.findMany.mockResolvedValue([{ unitId: 'other-unit' }])
+    const { service } = makeService()
+
+    await expect(service.requestConsent(as(client), MANAGER, 'prop-1')).rejects.toThrow(ForbiddenException)
+    expect(client.$transaction).not.toHaveBeenCalled()
   })
 })
 
@@ -482,6 +593,90 @@ describe('AiProposalService.employeeConsent', () => {
       data: { state: AiProposalState.ESCALATED },
     })
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'ai_proposal.escalated' }))
+  })
+})
+
+// --- Fix 2: lazy consent-TTL expiry -------------------------------------------------------------
+
+describe('AiProposalService — lazy consent-TTL expiry', () => {
+  it('list(): a stale PENDING_EMPLOYEE_CONSENT row is returned as ESCALATED and audits ai_proposal.expired', async () => {
+    const client = makeClient()
+    const past = new Date(Date.now() - 60_000)
+    const stale = pendingConsentProposal({ expiresAt: past })
+    client.aiProposal.findMany.mockResolvedValue([stale])
+    client.aiProposal.findUniqueOrThrow.mockResolvedValue({ ...stale, state: AiProposalState.ESCALATED })
+    const { service, audit } = makeService()
+
+    const result = await service.list(as(client), HR, {})
+
+    expect(client.aiProposal.updateMany).toHaveBeenCalledWith({
+      where: { id: 'prop-1', state: AiProposalState.PENDING_EMPLOYEE_CONSENT },
+      data: { state: AiProposalState.ESCALATED },
+    })
+    expect(result[0]!.state).toBe(AiProposalState.ESCALATED)
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'ai_proposal.expired' }))
+  })
+
+  it('getById(): a stale PENDING_EMPLOYEE_CONSENT proposal is returned as ESCALATED and audits ai_proposal.expired', async () => {
+    const client = makeClient()
+    const past = new Date(Date.now() - 60_000)
+    const stale = pendingConsentProposal({ expiresAt: past })
+    client.aiProposal.findUnique.mockResolvedValue(stale)
+    client.aiProposal.findUniqueOrThrow.mockResolvedValue({ ...stale, state: AiProposalState.ESCALATED })
+    const { service, audit } = makeService()
+
+    const result = await service.getById(as(client), HR, 'prop-1')
+
+    expect(result.state).toBe(AiProposalState.ESCALATED)
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'ai_proposal.expired' }))
+  })
+
+  it('employeeConsent(): a stale proposal throws ConflictException("consent request expired") without mutating the candidate', async () => {
+    const client = makeClient()
+    const past = new Date(Date.now() - 60_000)
+    const stale = pendingConsentProposal({ expiresAt: past })
+    client.aiProposal.findUnique.mockResolvedValue(stale)
+    client.employee.findFirst.mockResolvedValue({ id: C1 })
+    const { service, audit } = makeService()
+
+    await expect(service.employeeConsent(as(client), EMPLOYEE, 'prop-1', true)).rejects.toThrow(
+      'consent request expired',
+    )
+
+    expect(client.aiProposal.updateMany).toHaveBeenCalledWith({
+      where: { id: 'prop-1', state: AiProposalState.PENDING_EMPLOYEE_CONSENT },
+      data: { state: AiProposalState.ESCALATED },
+    })
+    expect(client.$transaction).not.toHaveBeenCalled()
+    expect(client.__tx.aiProposalCandidate.update).not.toHaveBeenCalled()
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'ai_proposal.expired' }))
+  })
+
+  it('a PENDING_EMPLOYEE_CONSENT proposal with expiresAt in the future is left untouched', async () => {
+    const client = makeClient()
+    const future = new Date(Date.now() + 60_000)
+    const fresh = pendingConsentProposal({ expiresAt: future })
+    client.aiProposal.findMany.mockResolvedValue([fresh])
+    const { service, audit } = makeService()
+
+    const result = await service.list(as(client), HR, {})
+
+    expect(client.aiProposal.updateMany).not.toHaveBeenCalled()
+    expect(result[0]!.state).toBe(AiProposalState.PENDING_EMPLOYEE_CONSENT)
+    expect(audit.log).not.toHaveBeenCalled()
+  })
+
+  it('a proposal with no expiresAt at all is left untouched', async () => {
+    const client = makeClient()
+    const noTtl = pendingConsentProposal({ expiresAt: null })
+    client.aiProposal.findMany.mockResolvedValue([noTtl])
+    const { service, audit } = makeService()
+
+    const result = await service.list(as(client), HR, {})
+
+    expect(client.aiProposal.updateMany).not.toHaveBeenCalled()
+    expect(result[0]!.state).toBe(AiProposalState.PENDING_EMPLOYEE_CONSENT)
+    expect(audit.log).not.toHaveBeenCalled()
   })
 })
 
