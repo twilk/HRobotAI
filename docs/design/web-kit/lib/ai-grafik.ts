@@ -181,6 +181,10 @@ export interface AiProposalCandidate {
   travelKm?: string | number | null
   travelMinutes?: string | number | null
   travelCost?: string | number | null
+  /** Candidate's display name from the backend (firstName/lastName). Present so a CROSS-UNIT candidate
+   *  — absent from the manager's unit-scoped /api/employees roster — still resolves to a name rather
+   *  than a raw id. Not sensitive PII (never PESEL/home). */
+  employee?: { firstName: string; lastName: string } | null
 }
 
 /** A raw AiProposal row as returned by the tenant-runtime `/ai-grafik/proposals*` routes (ids only). */
@@ -465,7 +469,11 @@ function enrichProposal(row: AiProposal, maps: ProposalEnrichMaps): EnrichedProp
     ...rest,
     candidates: candidates.map((c) => ({
       ...c,
-      employeeName: maps.empName.get(c.employeeId) ?? c.employeeId.slice(0, 8),
+      // Prefer the backend-provided name (works for a CROSS-UNIT candidate the scoped roster misses),
+      // then the client-side roster map, then the raw-id fallback.
+      employeeName: c.employee
+        ? `${c.employee.firstName} ${c.employee.lastName}`.trim()
+        : maps.empName.get(c.employeeId) ?? c.employeeId.slice(0, 8),
     })),
     vacatedEmployeeName: maps.empName.get(row.vacatedEmployeeId) ?? row.vacatedEmployeeId.slice(0, 8),
     shiftLabel: maps.shiftLabel.get(row.shiftId) ?? row.shiftId.slice(0, 8),

@@ -28,8 +28,16 @@ import { normalizePosition } from '../cost/position.util.js'
 import { AiConfigService, type AiConfigActor } from './ai-config.service.js'
 import { ReplacementService, type RankedCandidate } from './replacement.service.js'
 
-/** A persisted AiProposal with its ranked candidate rows pre-loaded — the STABLE return shape. */
-export type AiProposalRow = TenantPrisma.AiProposalGetPayload<{ include: { candidates: true } }>
+/** Include used everywhere an AiProposalRow is built: candidates + each candidate's employee display
+ *  name (firstName/lastName). The NAME is not sensitive PII (never PESEL/home) and lets the web-kit
+ *  label a CROSS-UNIT candidate the manager cannot resolve from their own unit-scoped /api/employees
+ *  roster (2026-07-14 spec — cross-unit name enrichment). Audit payloads stay IDs-only regardless. */
+const PROPOSAL_INCLUDE = {
+  candidates: { include: { employee: { select: { firstName: true, lastName: true } } } },
+} as const
+
+/** A persisted AiProposal with its ranked candidate rows (each carrying its employee's display name). */
+export type AiProposalRow = TenantPrisma.AiProposalGetPayload<{ include: typeof PROPOSAL_INCLUDE }>
 
 /** Filter for {@link AiProposalService.list}. */
 export interface ProposalListFilter {
@@ -195,7 +203,7 @@ export class AiProposalService {
           create: candidateSeeds.map(({ id, candidate }) => this.candidateData(id, candidate, activeSeedId, now)),
         },
       },
-      include: { candidates: true },
+      include: PROPOSAL_INCLUDE,
     })
 
     await this.writeAudit(client, actor, auditAction, proposal.id, {
@@ -280,7 +288,7 @@ export class AiProposalService {
   async requestConsent(client: TenantClient, actor: AiConfigActor, proposalId: string): Promise<AiProposalRow> {
     const proposal = await client.aiProposal.findUnique({
       where: { id: proposalId },
-      include: { candidates: true },
+      include: PROPOSAL_INCLUDE,
     })
     if (!proposal) throw new NotFoundException('Proposal not found')
 
@@ -310,7 +318,7 @@ export class AiProposalService {
         owningUnitId: unitId,
         reason: 'NO_FEASIBLE_CANDIDATE',
       })
-      return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: { candidates: true } })
+      return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: PROPOSAL_INCLUDE })
     }
 
     const now = new Date()
@@ -337,7 +345,7 @@ export class AiProposalService {
       state: pending,
     })
 
-    return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: { candidates: true } })
+    return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: PROPOSAL_INCLUDE })
   }
 
   /** One candidate insert row; the active (consent-path) candidate is stamped PENDING at `now`.
@@ -385,7 +393,7 @@ export class AiProposalService {
       const where: TenantPrisma.AiProposalWhereInput = {}
       if (!global) where.owningUnitId = { in: managed }
       if (filter.state != null) where.state = filter.state as AiProposalState
-      const rows = await client.aiProposal.findMany({ where, include: { candidates: true } })
+      const rows = await client.aiProposal.findMany({ where, include: PROPOSAL_INCLUDE })
       // Fix 2 — lazy expiry: a stale PENDING_EMPLOYEE_CONSENT row never shows as still-actionable.
       return Promise.all(rows.map((p) => this.expireIfStale(client, actor, p)))
     }
@@ -399,7 +407,7 @@ export class AiProposalService {
         state: AiProposalState.PENDING_EMPLOYEE_CONSENT,
         candidates: { some: { employeeId: me.id, consentState: ConsentState.PENDING } },
       },
-      include: { candidates: true },
+      include: PROPOSAL_INCLUDE,
     })
     // Expire stale rows FIRST — a just-expired row no longer passes isMyActivePending (its state moved
     // off PENDING_EMPLOYEE_CONSENT), so it correctly drops out of the employee's view.
@@ -409,7 +417,7 @@ export class AiProposalService {
 
   /** Load one proposal, applying the same scoping as {@link list} (404 missing, 403 out of scope). */
   async getById(client: TenantClient, actor: AiConfigActor, id: string): Promise<AiProposalRow> {
-    const found = await client.aiProposal.findUnique({ where: { id }, include: { candidates: true } })
+    const found = await client.aiProposal.findUnique({ where: { id }, include: PROPOSAL_INCLUDE })
     if (!found) throw new NotFoundException('Proposal not found')
 
     // Fix 2 — lazy expiry: expire before returning/scoping so a stale PENDING_EMPLOYEE_CONSENT proposal
@@ -494,7 +502,7 @@ export class AiProposalService {
         reason: 'CONSENT_TTL_EXPIRED',
       })
     }
-    return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: { candidates: true } })
+    return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: PROPOSAL_INCLUDE })
   }
 
   /** The caller's own Employee id (via `User.keycloakSub`), or null if they have no employee record. */
@@ -527,7 +535,7 @@ export class AiProposalService {
   ): Promise<AiProposalRow> {
     const proposal = await client.aiProposal.findUnique({
       where: { id: proposalId },
-      include: { candidates: true },
+      include: PROPOSAL_INCLUDE,
     })
     if (!proposal) throw new NotFoundException('Proposal not found')
 
@@ -577,7 +585,7 @@ export class AiProposalService {
         employeeId: active.employeeId,
         state: pendingManager,
       })
-      return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: { candidates: true } })
+      return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: PROPOSAL_INCLUDE })
     }
 
     // Decline: mark this candidate DECLINED, then promote the next feasible untouched candidate.
@@ -602,7 +610,7 @@ export class AiProposalService {
         })
         if (flipped.count === 0) throw new ConflictException('Proposal changed concurrently')
       })
-      return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: { candidates: true } })
+      return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: PROPOSAL_INCLUDE })
     }
 
     // No candidate left to ask — escalate to a human.
@@ -626,7 +634,7 @@ export class AiProposalService {
       shiftId: proposal.shiftId,
       reason: 'ALL_CANDIDATES_DECLINED',
     })
-    return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: { candidates: true } })
+    return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: PROPOSAL_INCLUDE })
   }
 
   /**
@@ -651,7 +659,7 @@ export class AiProposalService {
   ): Promise<AiProposalRow> {
     const proposal = await client.aiProposal.findUnique({
       where: { id: proposalId },
-      include: { candidates: true },
+      include: PROPOSAL_INCLUDE,
     })
     if (!proposal) throw new NotFoundException('Proposal not found')
 
@@ -673,7 +681,7 @@ export class AiProposalService {
       const updated = await client.aiProposal.update({
         where: { id: proposal.id },
         data: { state: rejected, decidedByManagerId: actor.userId },
-        include: { candidates: true },
+        include: PROPOSAL_INCLUDE,
       })
       await this.writeAudit(client, actor, 'ai_proposal.rejected', proposal.id, {
         shiftId: proposal.shiftId,
@@ -731,6 +739,6 @@ export class AiProposalService {
       })
     })
 
-    return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: { candidates: true } })
+    return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: PROPOSAL_INCLUDE })
   }
 }

@@ -647,7 +647,7 @@ describe('AiProposalService.list', () => {
 
     await service.list(as(client), HR, {})
 
-    expect(client.aiProposal.findMany).toHaveBeenCalledWith({ where: {}, include: { candidates: true } })
+    expect(client.aiProposal.findMany).toHaveBeenCalledWith({ where: {}, include: { candidates: { include: { employee: { select: { firstName: true, lastName: true } } } } } })
   })
 
   it('a MANAGER is scoped to their managed units (by owningUnitId, Codex P1-2), optionally narrowed by state', async () => {
@@ -659,7 +659,7 @@ describe('AiProposalService.list', () => {
 
     expect(client.aiProposal.findMany).toHaveBeenCalledWith({
       where: { owningUnitId: { in: [UNIT] }, state: AiProposalState.DRAFT },
-      include: { candidates: true },
+      include: { candidates: { include: { employee: { select: { firstName: true, lastName: true } } } } },
     })
   })
 
