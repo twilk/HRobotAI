@@ -140,9 +140,12 @@ ON CONFLICT (id) DO NOTHING;
 
 -- 6) CROSS-UNIT TRAVEL DEMO (2026-07-14 spec §7/§12) — pracownica.demo / Katarzyna Zając:
 --    a KOORDYNATOR in Region Północ (cross-unit vs Anna Kowalska's Region Centrum), reachable
---    (linked User with a login) and living ~7km from Lot. Chopina — Anna's 14.07 14:00-22:00 shift
---    location — so the replacement engine's tiered pool + H-travel feasibility finds her as a cheap
---    cross-unit candidate and AUTO_ASK_CONSENT can reach her (Employee.userId -> login).
+--    (linked User with a login) and living ~7km from Lot. Chopina (haversineKm(home, 52.1657,
+--    20.9671) ~= 6.99 km — verified against apps/tenant-runtime/src/cost/travel.util.ts) — Anna's
+--    14.07 14:00-22:00 shift location — so the replacement engine's tiered pool + H-travel
+--    feasibility finds her as a cheap cross-unit candidate and AUTO_ASK_CONSENT can reach her
+--    (Employee.userId -> login). Deliberately ~7km, not Jan Nowak's spec-documented ~4km, so the
+--    two cross-unit candidates are distinguishable by dojazd cost.
 --    keycloak_sub is a PLACEHOLDER: Keycloak reassigns user ids on every realm rebuild, so
 --    demo-up.mjs re-syncs it to the live id right after this script runs via resolveSub()
 --    (mirrors the admin keycloak_sub sync already there — see scripts/demo-up.mjs).
@@ -167,7 +170,7 @@ SELECT
   'demo-placeholder-pesel-hash-katarzyna-zajac-cross-unit-001',
   'Koordynator zmiany', 'UMOWA_O_PRACE'::"EmploymentType", DATE '2022-03-01',
   (SELECT id FROM organizational_units WHERE name = 'Region Północ'),
-  'ul. Demo Testowa 7, 00-001 Warszawa', 52.20, 20.95, 1,
+  'ul. Demo Testowa 7, 00-001 Warszawa', 52.2286, 20.9671, 1,
   ARRAY['KOORDYNATOR']::TEXT[],
   now(), now()
 WHERE NOT EXISTS (SELECT 1 FROM employees WHERE id = 'a1d00000-0000-4000-8000-00000000ec02');
