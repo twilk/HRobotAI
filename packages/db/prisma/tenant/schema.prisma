@@ -185,6 +185,9 @@ model Employee {
   aiProposalsVacated    AiProposal[]          @relation("AiProposalVacated")
   aiProposalCandidacies AiProposalCandidate[] @relation("AiProposalCandidateEmp")
   accessGrants   AccessGrant[]
+  workOrders           WorkOrder[]                   @relation("WorkOrderAssignee")
+  complaints           Complaint[]                   @relation("ComplaintEmployee")
+  performanceSnapshots EmployeePerformanceSnapshot[] @relation("SnapshotEmployee")
 
   @@map("employees")
 }
@@ -488,4 +491,172 @@ model AccessGrant {
 
   @@index([employeeId])
   @@map("access_grant")
+}
+
+// ---------------------------------------------------------------------------
+// strategic-brain: AI performance analysis + development trajectory +
+// recruitment recommendation. Greenfield module (spec
+// docs/superpowers/specs/2026-07-14-ai-performance-trajectory-recruitment-SPEC.md,
+// §3 + authoritative §14 reconciliation). Zero PII in operational data — only
+// `employeeId` + numeric metrics.
+// ---------------------------------------------------------------------------
+
+enum WorkOrderStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum ComplaintSeverity {
+  MINOR
+  MAJOR
+  CRITICAL
+}
+
+enum RecoScopeType {
+  LOKALIZACJA
+  UNIT
+}
+
+enum RecruitmentVerdict {
+  WZNOW
+  WSTRZYMAJ
+  UTRZYMAJ
+}
+
+enum ProactivityLevel {
+  TYLKO_NA_ZADANIE
+  PROAKTYWNE_REKOMENDACJE
+  PROAKTYWNE_ALERTY
+}
+
+/// A demo/synthetic work assignment (detailing, podstawienie, ...) — source of the Performance +
+/// Terminowość dimensions. Deliberately SEPARATE from Shift/ShiftDemand (M6/M7). `kind` is drawn
+/// from a service-validated bounded set with a per-kind SLA; `dueAt = assignedAt + SLA(kind)`.
+/// `CANCELLED` orders never count toward any metric (never punish operator-cancelled work).
+model WorkOrder {
+  id                   String          @id @default(uuid())
+  assignedToEmployeeId String          @map("assigned_to_employee_id")
+  assignedTo           Employee        @relation("WorkOrderAssignee", fields: [assignedToEmployeeId], references: [id])
+  assignedByOperatorId String?         @map("assigned_by_operator_id")
+  assignedAt           DateTime        @map("assigned_at")
+  dueAt                DateTime        @map("due_at")
+  completedAt          DateTime?       @map("completed_at")
+  status               WorkOrderStatus @default(OPEN)
+  lokalizacjaId        String?         @map("lokalizacja_id")
+  kind                 String
+  createdAt            DateTime        @default(now()) @map("created_at")
+  complaints           Complaint[]
+
+  @@index([assignedToEmployeeId])
+  @@index([lokalizacjaId])
+  @@index([completedAt])
+  @@map("work_order")
+}
+
+/// A complaint (reklamacja) — source of the Jakość dimension (defectRate = complaints /
+/// completedWorkOrders in a window, never an absolute count). `employeeId` denormalizes the
+/// responsible party for fast defect-rate queries but MUST equal `workOrder.assignedToEmployeeId`
+/// when `workOrderId` is set (M5 integrity, enforced by both being real FK relations + a service
+/// test, not just a bare string column).
+model Complaint {
+  id          String            @id @default(uuid())
+  workOrderId String?           @map("work_order_id")
+  workOrder   WorkOrder?        @relation(fields: [workOrderId], references: [id])
+  employeeId  String            @map("employee_id")
+  employee    Employee          @relation("ComplaintEmployee", fields: [employeeId], references: [id])
+  category    String
+  severity    ComplaintSeverity @default(MINOR)
+  createdAt   DateTime          @map("created_at")
+
+  @@index([employeeId])
+  @@map("complaint")
+}
+
+/// Materialized CACHE (not an audit fact, §14 B2) of one employee's metrics over a window — the
+/// time series that a `developmentSlope` regression is computed from. `@@unique` gives idempotent
+/// upsert-per-window (a recompute intentionally OVERWRITES the row); `algorithmVersion` +
+/// `configHash` record which scoring version/config produced the cached numbers.
+/// `excludedReason` implements the anti-proxy-discrimination guard (§7): a window with an
+/// L4/urlop/onboarding overlap is excluded from the trend rather than silently dragging it down.
+model EmployeePerformanceSnapshot {
+  id                 String    @id @default(uuid())
+  employeeId         String    @map("employee_id")
+  employee           Employee  @relation("SnapshotEmployee", fields: [employeeId], references: [id])
+  windowStart        DateTime  @map("window_start")
+  windowEnd          DateTime  @map("window_end")
+  throughput         Int
+  medianCycleMinutes Int?      @map("median_cycle_minutes")
+  slaHitRate         Decimal?  @map("sla_hit_rate")
+  defectRate         Decimal?  @map("defect_rate")
+  compositeScore     Decimal?  @map("composite_score")
+  developmentSlope   Decimal?  @map("development_slope")
+  confidence         Decimal
+  peerGroupKey       String    @map("peer_group_key")
+  isNewHire          Boolean   @map("is_new_hire")
+  excludedReason     String?   @map("excluded_reason")
+  /// Scoring engine version that produced this cached row (B2) — lets a future engine change
+  /// distinguish stale cache rows from freshly recomputed ones.
+  algorithmVersion   Int       @default(1) @map("algorithm_version")
+  /// Hash of the `PerformanceConfig` weights/thresholds in effect when this row was computed (B2) —
+  /// downstream recommendations freeze their own `factors` and never re-derive from live config.
+  configHash         String    @map("config_hash")
+  computedAt         DateTime  @default(now()) @map("computed_at")
+
+  @@unique([employeeId, windowStart, windowEnd])
+  @@index([employeeId, windowEnd])
+  @@map("employee_performance_snapshot")
+}
+
+/// An immutable recruitment-recommendation EVENT (B3, not a mutate-in-place "supersede" record — the
+/// only true append-only pattern in this repo is `audit_log` with a DB trigger). A new
+/// recommendation for the same scope points back via `replacesRecommendationId` instead of setting
+/// a `supersededAt` on the prior row; "current" = the newest event per scope. `factors` freezes the
+/// numeric breakdown at issue time so the recommendation stays reproducible even if
+/// `PerformanceConfig` weights change later. `acknowledgedBy*` records a HUMAN decision taken on the
+/// recommendation — never an executed HR action (RODO art. 22 boundary, M13).
+model RecruitmentRecommendation {
+  id                        String             @id @default(uuid())
+  scopeType                 RecoScopeType      @default(LOKALIZACJA) @map("scope_type")
+  scopeId                   String             @map("scope_id")
+  verdict                   RecruitmentVerdict
+  rationale                 String
+  factors                   Json
+  replacesRecommendationId  String?            @map("replaces_recommendation_id")
+  computedAt                DateTime           @default(now()) @map("computed_at")
+  acknowledgedByUserId      String?            @map("acknowledged_by_user_id")
+  acknowledgedAt            DateTime?          @map("acknowledged_at")
+
+  @@index([scopeType, scopeId, computedAt])
+  @@map("recruitment_recommendation")
+}
+
+/// Per-unit (or tenant-default when `unitId` is NULL) scoring configuration — mirrors
+/// `AiSchedulingConfig`. Uniqueness of the single default row is enforced by a manual partial-unique
+/// index (`perf_config_default_unique`) appended to the generated migration SQL, since Postgres does
+/// NOT treat multiple NULLs as a uniqueness violation under a plain `@@unique` (B1). Default weights
+/// (performance 0.30 / timeliness 0.25 / quality 0.25 / development 0.20) sum to 1.00 — validated in
+/// `PerformanceConfigService`. `ProactivityLevel` deliberately has NO "auto-execute HR action" level
+/// (§7 hard limit, enforced by a test asserting the enum's member set).
+model PerformanceConfig {
+  id                String           @id @default(uuid())
+  unitId            String?          @map("unit_id")
+  weightPerformance Decimal          @default(0.30) @map("weight_performance")
+  weightTimeliness  Decimal          @default(0.25) @map("weight_timeliness")
+  weightQuality     Decimal          @default(0.25) @map("weight_quality")
+  weightDevelopment Decimal          @default(0.20) @map("weight_development")
+  slaTargetMinutes  Int              @default(120) @map("sla_target_minutes")
+  defectThreshold   Decimal          @default(0.10) @map("defect_threshold")
+  confidenceMinDays Int              @default(30) @map("confidence_min_days")
+  windowDays        Int              @default(14) @map("window_days")
+  minValidWindows   Int              @default(3) @map("min_valid_windows")
+  minSlopeForGrowth Decimal          @default(0.5) @map("min_slope_for_growth")
+  minPeerGroupSize  Int              @default(5) @map("min_peer_group_size")
+  proactivityLevel  ProactivityLevel @default(PROAKTYWNE_REKOMENDACJE) @map("proactivity_level")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  @@unique([unitId])
+  @@map("performance_config")
 }
