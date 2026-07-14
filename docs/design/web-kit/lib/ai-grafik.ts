@@ -361,16 +361,23 @@ export function costBreakdownText(
 }
 
 /**
- * The manager inbox's Δ koszt cell text, given whether the row has an active candidate at all —
- * "brak kandydata" (never "brak stawki") when there is none (Codex F3 copy fix: a missing candidate
- * is NOT a missing-rate bug), else {@link costBreakdownText}.
+ * The manager inbox's Δ koszt cell text, given whether the row has ANY feasible candidate (active or
+ * not) — "brak kandydata" (never "brak stawki") only when there is truly none (Codex F3 copy fix: a
+ * missing candidate is NOT a missing-rate bug), else {@link costBreakdownText}.
+ *
+ * `hasCandidate` must be "a feasible candidate exists" (e.g. `p.candidates.some(c => c.feasible)`),
+ * NOT "activeCandidateId is set" — DRAFT proposals created under SUGGEST_ONLY/AUTO_NOTIFY autonomy
+ * have a real top-feasible candidate and a real computed `estimatedCost` but never get
+ * `activeCandidateId` set server-side (only the AUTO_ASK_CONSENT/AUTO_COMMIT branch does that, on
+ * `requestConsent`). Gating on `activeCandidateId` alone regressed these rows to "brak kandydata"
+ * even though a real Δ is available (review fix, 2026-07-14).
  */
 export function costCellText(
-  hasActiveCandidate: boolean,
+  hasCandidate: boolean,
   estimatedCost: string | number | null | undefined,
   travelCost: string | number | null | undefined,
 ): string {
-  if (!hasActiveCandidate) return 'brak kandydata'
+  if (!hasCandidate) return 'brak kandydata'
   return costBreakdownText(estimatedCost, travelCost)
 }
 

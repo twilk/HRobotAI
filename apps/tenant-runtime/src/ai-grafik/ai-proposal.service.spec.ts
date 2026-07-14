@@ -908,7 +908,9 @@ describe('AiProposalService.employeeConsent', () => {
     })
     expect(tx.aiProposal.updateMany).toHaveBeenCalledWith({
       where: { id: 'prop-1', state: AiProposalState.PENDING_EMPLOYEE_CONSENT },
-      data: { state: AiProposalState.ESCALATED },
+      // Review fix: activeCandidateId is cleared on escalation so the manager inbox doesn't keep
+      // rendering the just-declined candidate as if still live.
+      data: { state: AiProposalState.ESCALATED, activeCandidateId: null },
     })
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'ai_proposal.escalated' }))
   })
@@ -929,7 +931,9 @@ describe('AiProposalService — lazy consent-TTL expiry', () => {
 
     expect(client.aiProposal.updateMany).toHaveBeenCalledWith({
       where: { id: 'prop-1', state: AiProposalState.PENDING_EMPLOYEE_CONSENT },
-      data: { state: AiProposalState.ESCALATED },
+      // Review fix: activeCandidateId is cleared on TTL-expiry escalation for the same reason as the
+      // decline-all path above.
+      data: { state: AiProposalState.ESCALATED, activeCandidateId: null },
     })
     expect(result[0]!.state).toBe(AiProposalState.ESCALATED)
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'ai_proposal.expired' }))
@@ -963,7 +967,9 @@ describe('AiProposalService — lazy consent-TTL expiry', () => {
 
     expect(client.aiProposal.updateMany).toHaveBeenCalledWith({
       where: { id: 'prop-1', state: AiProposalState.PENDING_EMPLOYEE_CONSENT },
-      data: { state: AiProposalState.ESCALATED },
+      // Review fix: activeCandidateId is cleared on TTL-expiry escalation for the same reason as the
+      // decline-all path above.
+      data: { state: AiProposalState.ESCALATED, activeCandidateId: null },
     })
     expect(client.$transaction).not.toHaveBeenCalled()
     expect(client.__tx.aiProposalCandidate.update).not.toHaveBeenCalled()

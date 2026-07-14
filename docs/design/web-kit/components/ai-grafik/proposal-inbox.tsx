@@ -312,12 +312,25 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
                 <tbody>
                   {managerInbox.map((p) => {
                     const actions = aiProposalActions(p.state, 'manager')
+                    // `active` is only ever set once the manager has asked someone for consent
+                    // (AUTO_ASK_CONSENT/AUTO_COMMIT_ON_APPROVAL, or after "Zapytaj o zgodę"); backend
+                    // escalation transitions (ALL_CANDIDATES_DECLINED, CONSENT_TTL_EXPIRED) now clear
+                    // activeCandidateId, so `active` is undefined for every genuinely-dead-end row.
                     const active = p.candidates.find((c) => c.id === p.activeCandidateId)
-                    // Genuinely ESCALATED with no candidate at all (Codex F3/F4 copy fix) — one clear
-                    // operator message replaces the bare "—" / "brak stawki" across both cells, rather
-                    // than showing two dead-end blanks.
-                    const noCandidateAtAll = p.state === 'ESCALATED' && !active
-                    const badge = active ? travelBadgeText(active) : null
+                    // DRAFT proposals (SUGGEST_ONLY/AUTO_NOTIFY autonomy) have a real top feasible
+                    // candidate and a real estimatedCost, but never get activeCandidateId set — fall
+                    // back to the top-ranked feasible candidate for display so these rows aren't shown
+                    // as candidate-less (review fix, 2026-07-14).
+                    const topFeasible = [...p.candidates].filter((c) => c.feasible).sort((a, b) => a.rank - b.rank)[0]
+                    const display = active ?? topFeasible
+                    // Genuinely no candidate at all (Codex F3/F4 copy fix) — one clear operator message
+                    // replaces the bare "—" / "brak stawki" across both cells, rather than showing two
+                    // dead-end blanks. ESCALATED-with-no-active now correctly implies no candidate is
+                    // left (backend clears activeCandidateId on every escalation transition), and
+                    // `display` folds in the DRAFT topFeasible fallback so this only trips when truly
+                    // nothing is left to show.
+                    const noCandidateAtAll = p.state === 'ESCALATED' && !display
+                    const badge = display ? travelBadgeText(display) : null
                     return (
                       <tr key={p.id}>
                         <Td>
@@ -330,9 +343,9 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
                         ) : (
                           <>
                             <Td>
-                              {active ? (
+                              {display ? (
                                 <div>
-                                  <ShiftCell label={active.employeeName} sub={`ranga ${active.rank}`} />
+                                  <ShiftCell label={display.employeeName} sub={`ranga ${display.rank}`} />
                                   {badge && (
                                     <Badge tone="role" className="mt-1.5">
                                       {badge}
@@ -345,7 +358,7 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
                             </Td>
                             <Td>
                               <span className="text-[13px] font-mono">
-                                {costCellText(active != null, p.estimatedCost, active?.travelCost)}
+                                {costCellText(display != null, p.estimatedCost, display?.travelCost)}
                               </span>
                             </Td>
                           </>

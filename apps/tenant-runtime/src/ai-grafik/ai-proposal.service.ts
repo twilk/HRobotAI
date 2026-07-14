@@ -482,7 +482,11 @@ export class AiProposalService {
     const expired = nextProposalState(AiProposalState.PENDING_EMPLOYEE_CONSENT, AiProposalAction.Expire)
     const flipped = await client.aiProposal.updateMany({
       where: { id: proposal.id, state: AiProposalState.PENDING_EMPLOYEE_CONSENT },
-      data: { state: expired },
+      // Clear activeCandidateId on escalation (Codex review fix) — otherwise it keeps pointing at the
+      // still-PENDING (never-answered) candidate and the manager inbox's `noCandidateAtAll` check
+      // (which resolves `active` via activeCandidateId) misses this escalation path entirely, showing
+      // a dead candidate row instead of NO_CANDIDATE_MESSAGE.
+      data: { state: expired, activeCandidateId: null },
     })
     if (flipped.count > 0) {
       await this.writeAudit(client, actor, 'ai_proposal.expired', proposal.id, {
@@ -610,7 +614,11 @@ export class AiProposalService {
       })
       const flipped = await tx.aiProposal.updateMany({
         where: { id: proposal.id, state: AiProposalState.PENDING_EMPLOYEE_CONSENT },
-        data: { state: escalated },
+        // Clear activeCandidateId on escalation (Codex review fix) — otherwise it keeps pointing at
+        // the just-DECLINED candidate and the manager inbox's `noCandidateAtAll` check misses this
+        // escalation path entirely, showing the declined candidate's name/badge/cost instead of
+        // NO_CANDIDATE_MESSAGE.
+        data: { state: escalated, activeCandidateId: null },
       })
       if (flipped.count === 0) throw new ConflictException('Proposal changed concurrently')
     })
