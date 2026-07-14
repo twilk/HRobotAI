@@ -49,13 +49,20 @@ jobs:
 
     defaults:
       run:
-        # EXPLICIT Git Bash path: on this box a bare `shell: bash` resolves to the WSL shim
-        # (C:\WINDOWS\system32\bash.EXE), whose relay fails with "execvpe(/bin/bash) failed"
-        # (no default WSL distro for the runner user). Pinning the Git for Windows bash removes
-        # the PATH-order dependency entirely.
-        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        # Git Bash on the Windows dev box. The first step below puts Git\bin ahead of
+        # System32 on PATH — otherwise a bare `bash` resolves to the WSL shim
+        # (C:\WINDOWS\system32\bash.EXE), whose relay fails with "execvpe(/bin/bash) failed".
+        # (An explicit `shell:` template can't be used instead: the runner's parser rejects
+        # executable paths containing spaces — "Second path fragment must not be a drive…".)
+        shell: bash
 
     steps:
+      # 0. Make `bash` resolve to Git Bash for every subsequent step (GITHUB_PATH entries are
+      #    PREPENDED to PATH). Runs under pwsh so it does not itself depend on bash.
+      - name: Put Git Bash first on PATH
+        shell: pwsh
+        run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
+
       # 1. Checkout the exact green `main` that CI validated.
       #    clean: false — the default `git clean -ffdx` would wipe the runner-side, git-ignored
       #    operator files this deploy depends on (.env consumed by compose `env_file`,
