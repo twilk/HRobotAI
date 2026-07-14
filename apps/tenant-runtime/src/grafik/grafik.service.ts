@@ -1,7 +1,6 @@
 import { ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import type { TenantClient, TenantPrisma } from '@hrobot/db'
 import {
-  Role,
   ProblemInputSchema,
   SolveStatus,
   type DemandInput,
@@ -13,6 +12,7 @@ import {
   type Unmet,
 } from '@hrobot/shared'
 import { AuditService } from '../tenant-runtime/audit/audit.service.js'
+import { isGlobal, managedUnitIds } from '../tenant-runtime/rbac/unit-scope.js'
 import type { CreateShiftDto, UpdateShiftDto } from './dto/shift.dto.js'
 import type { CreateShiftDemandDto, UpdateShiftDemandDto } from './dto/shift-demand.dto.js'
 import type { CreateShiftTemplateDto, UpdateShiftTemplateDto } from './dto/shift-template.dto.js'
@@ -42,10 +42,6 @@ export interface GrafikActor {
   roles: string[] // hrobot_roles claim
   ipAddress: string
 }
-
-/** HR and the tenant admin act across every unit; MANAGER is scoped to the unit(s) they manage. */
-const GLOBAL_ROLES: string[] = [Role.HR, Role.ADMIN_KLIENTA]
-const isGlobal = (roles: string[]): boolean => roles.some((r) => GLOBAL_ROLES.includes(r))
 
 /**
  * Soft-preference objective weight sent as `weights.p` to the solver (#28).
@@ -93,19 +89,10 @@ export class GrafikService {
 
   // --- unit scoping ------------------------------------------------------------------------------
 
-  /** Unit IDs the user holds a MANAGER role for (via tenant `UserRole`). */
-  private async managedUnitIds(client: TenantClient, userId: string): Promise<string[]> {
-    const rows = await client.userRole.findMany({
-      where: { user: { keycloakSub: userId }, role: Role.MANAGER, unitId: { not: null } },
-      select: { unitId: true },
-    })
-    return rows.map((r) => r.unitId).filter((u): u is string => u !== null)
-  }
-
   /** Throws unless the actor is global or manages `unitId`. */
   private async assertManagesUnit(client: TenantClient, actor: GrafikActor, unitId: string): Promise<void> {
     if (isGlobal(actor.roles)) return
-    const units = await this.managedUnitIds(client, actor.userId)
+    const units = await managedUnitIds(client, actor.userId)
     if (!units.includes(unitId)) {
       throw new ForbiddenException('MANAGER may only act on their own unit')
     }
@@ -137,15 +124,34 @@ export class GrafikService {
     })
   }
 
+  // --- Catalog name lookups (read-only; any scheduling role) ------------------------------------
+
+  /** Location id→name catalog for UI labels (no PII, no geolocation). */
+  async listLokalizacje(client: TenantClient): Promise<unknown[]> {
+    return client.lokalizacja.findMany({ select: { id: true, name: true, typ: true }, orderBy: { name: 'asc' } })
+  }
+
+  /** Organizational-unit id→name catalog for UI labels. */
+  async listUnits(client: TenantClient): Promise<unknown[]> {
+    return client.organizationalUnit.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } })
+  }
+
   // --- Shift -------------------------------------------------------------------------------------
 
   async listShifts(client: TenantClient, actor: GrafikActor): Promise<unknown[]> {
     if (isGlobal(actor.roles)) {
       return client.shift.findMany({ orderBy: [{ date: 'desc' }, { start: 'asc' }] })
     }
-    const units = await this.managedUnitIds(client, actor.userId)
+    const units = await managedUnitIds(client, actor.userId)
+    if (units.length > 0) {
+      return client.shift.findMany({
+        where: { employee: { unitId: { in: units } } },
+        orderBy: [{ date: 'desc' }, { start: 'asc' }],
+      })
+    }
+    // Plain employee (no managed units): may read only their OWN shifts, matched via Keycloak subject.
     return client.shift.findMany({
-      where: { employee: { unitId: { in: units } } },
+      where: { employee: { user: { keycloakSub: actor.userId } } },
       orderBy: [{ date: 'desc' }, { start: 'asc' }],
     })
   }
@@ -211,8 +217,27 @@ export class GrafikService {
 
   // --- ShiftDemand (HR/ADMIN mutations; MANAGER read) --------------------------------------------
 
-  async listDemands(client: TenantClient): Promise<unknown[]> {
-    return client.shiftDemand.findMany({ orderBy: [{ date: 'desc' }, { start: 'asc' }] })
+  async listDemands(client: TenantClient, actor: GrafikActor): Promise<unknown[]> {
+    if (isGlobal(actor.roles)) {
+      return client.shiftDemand.findMany({ orderBy: [{ date: 'desc' }, { start: 'asc' }] })
+    }
+    const units = await managedUnitIds(client, actor.userId)
+    if (units.length > 0) {
+      // A MANAGER sees demands at the locations their units staff.
+      const unitShifts = await client.shift.findMany({
+        where: { employee: { unitId: { in: units } } },
+        select: { lokalizacjaId: true },
+      })
+      const locIds = [...new Set(unitShifts.map((s) => s.lokalizacjaId))]
+      return client.shiftDemand.findMany({ where: { lokalizacjaId: { in: locIds } }, orderBy: [{ date: 'desc' }, { start: 'asc' }] })
+    }
+    // Plain employee: only demands at locations where they personally have shifts.
+    const ownShifts = await client.shift.findMany({
+      where: { employee: { user: { keycloakSub: actor.userId } } },
+      select: { lokalizacjaId: true },
+    })
+    const locIds = [...new Set(ownShifts.map((s) => s.lokalizacjaId))]
+    return client.shiftDemand.findMany({ where: { lokalizacjaId: { in: locIds } }, orderBy: [{ date: 'desc' }, { start: 'asc' }] })
   }
 
   async getDemand(client: TenantClient, id: string): Promise<unknown> {
@@ -346,7 +371,7 @@ export class GrafikService {
    */
   private async resolveUnitScope(client: TenantClient, actor: GrafikActor, unitId?: string): Promise<string[] | null> {
     if (isGlobal(actor.roles)) return unitId ? [unitId] : null
-    const managed = await this.managedUnitIds(client, actor.userId)
+    const managed = await managedUnitIds(client, actor.userId)
     if (unitId) {
       if (!managed.includes(unitId)) throw new ForbiddenException('MANAGER may only solve their own unit')
       return [unitId]
@@ -526,17 +551,32 @@ export class GrafikService {
     const demandById = new Map(demandRows.map((d) => [d.id, d]))
     const packedEmployeeIds = new Set(employeeIds)
     const shifts = await client.$transaction(async (tx) => {
-      await tx.shift.deleteMany({
+      // Resolve the exact AUTO shifts we're about to replace. ALWAYS scope to the packed
+      // demand/manual-shift locations. An empty `locIds` must match NOTHING (deletes nothing) —
+      // omitting the filter would drop the location scope entirely and, for a global actor solving
+      // an empty-demand week, wipe every AUTO shift in the tenant.
+      const staleShifts = await tx.shift.findMany({
         where: {
           source: 'AUTO',
           date: { gte: weekStartDate, lt: weekEndExcl },
-          // ALWAYS scope to the packed demand/manual-shift locations. An empty `locIds` must match
-          // NOTHING (deletes nothing) — omitting the filter would drop the location scope entirely
-          // and, for a global actor solving an empty-demand week, wipe every AUTO shift in the tenant.
           lokalizacjaId: { in: locIds },
           ...(unitScope ? { employee: { unitId: { in: unitScope } } } : {}),
         },
+        select: { id: true },
       })
+      const staleIds = staleShifts.map((s) => s.id)
+      if (staleIds.length > 0) {
+        // Regenerating the schedule invalidates any pending swap request tied to a shift we're
+        // replacing. shift_swap_requests hold RESTRICT FKs to requester/target shifts, so we must
+        // clear those dependents FIRST or shift.deleteMany throws a FK violation (500 on re-solve).
+        const clearedSwaps = await tx.shiftSwapRequest.deleteMany({
+          where: { OR: [{ requesterShiftId: { in: staleIds } }, { targetShiftId: { in: staleIds } }] },
+        })
+        if (clearedSwaps.count > 0) {
+          this.logger.warn(`solve replaced ${staleIds.length} AUTO shifts; cleared ${clearedSwaps.count} dependent swap request(s)`)
+        }
+        await tx.shift.deleteMany({ where: { id: { in: staleIds } } })
+      }
       const created: unknown[] = []
       for (const a of result.assignments) {
         const d = demandById.get(a.demandId)

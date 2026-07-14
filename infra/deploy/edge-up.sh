@@ -67,18 +67,23 @@ start_detached() {
 stop_by_pidfile web
 start_detached web node "${REPO_ROOT}/apps/web/serve.mjs"
 
-# ---- cloudflared named tunnel ---------------------------------------------
-if [[ -z "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]]; then
-  echo "ERROR: CLOUDFLARE_TUNNEL_TOKEN is not set — cannot start the Cloudflare tunnel." >&2
-  echo "       Provide it from a runner secret; see docs/infra/staging-runner.md." >&2
-  exit 1
-fi
+# ---- cloudflared tunnel -----------------------------------------------------
+# Named tunnel (stable URL, ENV-2) when CLOUDFLARE_TUNNEL_TOKEN is provided; otherwise degrade
+# gracefully to a QUICK tunnel (session-scoped URL logged to cloudflared.log) so a deploy without
+# the secret still exposes the stack instead of failing. Configure the named tunnel per
+# docs/infra/staging-runner.md to get the stable URL.
 if ! command -v cloudflared >/dev/null 2>&1; then
   echo "ERROR: cloudflared is not installed / not on PATH. See docs/infra/staging-runner.md." >&2
   exit 1
 fi
 stop_by_pidfile cloudflared
-start_detached cloudflared cloudflared tunnel --no-autoupdate run --token "${CLOUDFLARE_TUNNEL_TOKEN}"
+if [[ -z "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]]; then
+  echo "  WARN: CLOUDFLARE_TUNNEL_TOKEN not set — starting a QUICK tunnel (URL changes per session)." >&2
+  echo "        For the stable named-tunnel URL configure the secret; see docs/infra/staging-runner.md." >&2
+  start_detached cloudflared cloudflared tunnel --no-autoupdate --url "http://localhost:${WEB_PORT}"
+else
+  start_detached cloudflared cloudflared tunnel --no-autoupdate run --token "${CLOUDFLARE_TUNNEL_TOKEN}"
+fi
 
 # Give both a moment to bind before the caller's health-check probes them.
 sleep 3

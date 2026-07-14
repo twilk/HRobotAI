@@ -27,3 +27,9 @@ Thumbs.db
 .staging-run/
 
 # Claude Code / gstack harness files (not project source)
+
+# Local dev-box compose override (host-port remaps for shared box)
+docker-compose.override.yml
+
+# Evidence Pack test logs (EV-3) — committed on purpose as acceptance evidence
+!data/m2-evidence/test-logs/*.log

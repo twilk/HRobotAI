@@ -2,6 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { joinBackendPath, proxyToTenantRuntime, tenantRuntimeBaseUrl } from './tenant-runtime'
 import { __resetKeycloakTokenCacheForTests } from './keycloak-token'
 
+// The cookie-401→refresh path re-sets the session/refresh cookies via next/headers cookies().set().
+// Mock the module so that mutable-cookie call works under vitest; the spy lets us assert on it.
+// The other paths in this file never reach cookies() (they 200 or use header/dev/minted tokens).
+const { cookieSetSpy, cookieDeleteSpy } = vi.hoisted(() => ({ cookieSetSpy: vi.fn(), cookieDeleteSpy: vi.fn() }))
+vi.mock('next/headers', () => ({
+  cookies: vi.fn(async () => ({ set: cookieSetSpy, get: vi.fn(), delete: cookieDeleteSpy })),
+}))
+
 const ORIGINAL_ENV = { ...process.env }
 
 const KEYCLOAK_ENV_KEYS = ['KEYCLOAK_TOKEN_URL', 'KEYCLOAK_CLIENT_ID', 'KEYCLOAK_USERNAME', 'KEYCLOAK_PASSWORD']
@@ -195,6 +203,107 @@ describe('proxyToTenantRuntime — minted Keycloak token', () => {
   })
 })
 
+describe('proxyToTenantRuntime — cookie token refresh rotation', () => {
+  it('rotates a stale cookie token on 401: refreshes, retries with the new access token, and re-sets both cookies', async () => {
+    cookieSetSpy.mockClear()
+    let backendCalls = 0
+    const fn = vi.fn(async (url: string | URL, _init?: RequestInit) => {
+      // The refresh grant hits the Keycloak token endpoint; return a fresh token pair.
+      if (String(url).includes('/protocol/openid-connect/token')) {
+        return new Response(
+          JSON.stringify({ access_token: 'A2', refresh_token: 'R2', expires_in: 300, refresh_expires_in: 1800 }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      backendCalls += 1
+      // First backend hit 401s (stale access token); the retry with the rotated token succeeds.
+      const status = backendCalls === 1 ? 401 : 200
+      return new Response(JSON.stringify(status === 200 ? [{ id: 'ok' }] : { error: 'expired' }), {
+        status,
+        headers: { 'content-type': 'application/json' },
+      })
+    })
+    vi.stubGlobal('fetch', fn)
+
+    const req = new Request('http://localhost/api/grafik/shifts', {
+      headers: { cookie: 'hrobot_token=stale-jwt; hrobot_refresh=R1' },
+    })
+    const res = await proxyToTenantRuntime(req, 'grafik/shifts')
+
+    // The session survived: the retried upstream call returned 200, not a bounce to /login.
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual([{ id: 'ok' }])
+    expect(backendCalls).toBe(2)
+
+    // The refresh POST carried the old refresh token via the refresh_token grant.
+    const refreshCall = fn.mock.calls.find((c) => String(c[0]).includes('/protocol/openid-connect/token'))!
+    expect((refreshCall[1] as RequestInit).body).toContain('grant_type=refresh_token')
+    expect((refreshCall[1] as RequestInit).body).toContain('refresh_token=R1')
+
+    // The retry hit the backend with the ROTATED access token, not the stale one.
+    const backendHits = fn.mock.calls.filter((c) => String(c[0]).includes('/grafik/shifts'))
+    expect((backendHits[0][1] as RequestInit).headers).toMatchObject({ authorization: 'Bearer stale-jwt' })
+    expect((backendHits[1][1] as RequestInit).headers).toMatchObject({ authorization: 'Bearer A2' })
+
+    // Both cookies were re-set so the browser carries the rotated pair forward.
+    const setNames = cookieSetSpy.mock.calls.map((c) => c[0])
+    expect(setNames).toContain('hrobot_token')
+    expect(setNames).toContain('hrobot_refresh')
+    const tokenSet = cookieSetSpy.mock.calls.find((c) => c[0] === 'hrobot_token')!
+    const refreshSet = cookieSetSpy.mock.calls.find((c) => c[0] === 'hrobot_refresh')!
+    expect(tokenSet[1]).toBe('A2')
+    expect(refreshSet[1]).toBe('R2')
+  })
+
+  it('does NOT rotate when the cookie carries no hrobot_refresh (nothing to refresh with)', async () => {
+    cookieSetSpy.mockClear()
+    const fetchFn = mockFetch(401, { error: 'expired' })
+    const req = new Request('http://localhost/api/grafik/shifts', {
+      headers: { cookie: 'hrobot_token=stale-jwt' },
+    })
+    const res = await proxyToTenantRuntime(req, 'grafik/shifts')
+    expect(res.status).toBe(401)
+    expect(fetchFn).toHaveBeenCalledTimes(1) // no refresh POST, no retry
+    expect(cookieSetSpy).not.toHaveBeenCalled()
+  })
+
+  it('clears both cookies and returns 401 when the refresh token is rejected', async () => {
+    cookieSetSpy.mockClear()
+    cookieDeleteSpy.mockClear()
+    let backendCalls = 0
+    const fn = vi.fn(async (url: string | URL, _init?: RequestInit) => {
+      // Keycloak rejects the (revoked / expired) refresh token → refreshAccessToken returns null.
+      if (String(url).includes('/protocol/openid-connect/token')) {
+        return new Response('{"error":"invalid_grant"}', {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      backendCalls += 1
+      return new Response(JSON.stringify({ error: 'expired' }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' },
+      })
+    })
+    vi.stubGlobal('fetch', fn)
+
+    const req = new Request('http://localhost/api/grafik/shifts', {
+      headers: { cookie: 'hrobot_token=stale-jwt; hrobot_refresh=dead-refresh' },
+    })
+    const res = await proxyToTenantRuntime(req, 'grafik/shifts')
+
+    // The stale 401 passes through — no retry with a new bearer happened.
+    expect(res.status).toBe(401)
+    expect(backendCalls).toBe(1)
+
+    // Session is over: both cookies cleared (so the next navigation is re-gated to /login), none re-set.
+    expect(cookieSetSpy).not.toHaveBeenCalled()
+    const deletedNames = cookieDeleteSpy.mock.calls.map((c) => c[0])
+    expect(deletedNames).toContain('hrobot_token')
+    expect(deletedNames).toContain('hrobot_refresh')
+  })
+})
+
 describe('proxyToTenantRuntime — forwarding', () => {
   it('uses the compose base URL and preserves the query string', async () => {
     process.env.TENANT_RUNTIME_URL = 'http://tenant-runtime:3001'
@@ -218,6 +327,21 @@ describe('proxyToTenantRuntime — forwarding', () => {
     const init = fetchFn.mock.calls[0][1] as RequestInit
     expect(init.method).toBe('POST')
     expect(init.body).toBe(JSON.stringify({ role: 'Operator' }))
+    expect(init.headers).toMatchObject({ 'content-type': 'application/json' })
+  })
+
+  it('forwards a DELETE body with a JSON content-type (e.g. uzytkownicy revokeRole)', async () => {
+    const fetchFn = mockFetch(200, {})
+    const req = new Request('http://localhost/api/uzytkownicy/u1/roles', {
+      method: 'DELETE',
+      headers: { authorization: 'Bearer t' },
+      body: JSON.stringify({ role: 'MANAGER', unitId: 'unit-1' }),
+    })
+    const res = await proxyToTenantRuntime(req, 'uzytkownicy/u1/roles')
+    expect(res.status).toBe(200)
+    const init = fetchFn.mock.calls[0][1] as RequestInit
+    expect(init.method).toBe('DELETE')
+    expect(init.body).toBe(JSON.stringify({ role: 'MANAGER', unitId: 'unit-1' }))
     expect(init.headers).toMatchObject({ 'content-type': 'application/json' })
   })
 

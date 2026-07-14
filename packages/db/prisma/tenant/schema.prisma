@@ -46,9 +46,9 @@ enum SwapState {
   CANCELLED
 }
 
-/// Lifecycle of a leave request (urlop) (M2 leave support). APPROVED is the default: the seed and
-/// most callers create already-decided leave; PENDING/REJECTED/CANCELLED exist for a future
-/// request/approval flow. Only APPROVED leave feeds the grafik solver as an H3 hard constraint.
+/// Lifecycle of a leave request (urlop) (M2 leave support). PENDING is the default: leave enters an
+/// approval flow (see `nextLeaveState` in @hrobot/shared) and only becomes APPROVED/REJECTED/CANCELLED
+/// via an explicit decision. Only APPROVED leave feeds the grafik solver as an H3 hard constraint.
 enum LeaveStatus {
   PENDING
   APPROVED
@@ -56,15 +56,63 @@ enum LeaveStatus {
   CANCELLED
 }
 
+enum AutonomyLevel {
+  SUGGEST_ONLY
+  AUTO_NOTIFY
+  AUTO_ASK_CONSENT
+  AUTO_COMMIT_ON_APPROVAL
+}
+
+enum AiProposalType {
+  REPLACEMENT
+  ADHOC
+  CAPACITY
+}
+
+enum AiProposalState {
+  DRAFT
+  PENDING_EMPLOYEE_CONSENT
+  EMPLOYEE_AGREED
+  PENDING_MANAGER
+  APPROVED
+  REJECTED
+  ESCALATED
+  CANCELLED
+}
+
+enum ConsentState {
+  NOT_ASKED
+  PENDING
+  GRANTED
+  DECLINED
+  EXPIRED
+}
+
+/// Kind of physical/logical access grant (Dostępy). Mirrors the TS `AccessType` const-object.
+enum AccessType {
+  CARD
+  KEY
+  PERMISSION
+}
+
+/// Lifecycle status of an AccessGrant. Mirrors the TS `AccessStatus` const-object.
+enum AccessStatus {
+  ACTIVE
+  REVOKED
+  LOST
+}
+
 model User {
-  id           String               @id
-  email        String               @unique
-  keycloakSub  String               @unique @map("keycloak_sub")
-  active       Boolean              @default(true)
-  createdAt    DateTime             @default(now()) @map("created_at")
-  roles        UserRole[]
-  managedUnits OrganizationalUnit[] @relation("UnitManager")
-  employee     Employee?
+  id             String               @id
+  email          String               @unique
+  keycloakSub    String               @unique @map("keycloak_sub")
+  active         Boolean              @default(true)
+  createdAt      DateTime             @default(now()) @map("created_at")
+  roles          UserRole[]
+  managedUnits   OrganizationalUnit[] @relation("UnitManager")
+  employee       Employee?
+  leaveDecisions LeaveRequest[]       @relation("LeaveDecider")
+  accessIssued   AccessGrant[]        @relation("AccessIssuer")
 
   @@map("users")
 }
@@ -91,6 +139,7 @@ model OrganizationalUnit {
   manager       User?                @relation("UnitManager", fields: [managerUserId], references: [id])
   roles         UserRole[]
   employees     Employee[]
+  aiConfig      AiSchedulingConfig[]
 
   @@map("organizational_units")
 }
@@ -133,6 +182,12 @@ model Employee {
   swapsRequested ShiftSwapRequest[] @relation("SwapRequester")
   swapsTargeted  ShiftSwapRequest[] @relation("SwapTarget")
   leaves         LeaveRequest[]
+  aiProposalsVacated    AiProposal[]          @relation("AiProposalVacated")
+  aiProposalCandidacies AiProposalCandidate[] @relation("AiProposalCandidateEmp")
+  accessGrants   AccessGrant[]
+  workOrders           WorkOrder[]                   @relation("WorkOrderAssignee")
+  complaints           Complaint[]                   @relation("ComplaintEmployee")
+  performanceSnapshots EmployeePerformanceSnapshot[] @relation("SnapshotEmployee")
 
   @@map("employees")
 }
@@ -149,6 +204,7 @@ model Lokalizacja {
   lng     Float?
   demands ShiftDemand[]
   shifts  Shift[]
+  accessGrants AccessGrant[]
 
   @@map("lokalizacje")
 }
@@ -209,6 +265,7 @@ model Shift {
   updatedAt     DateTime     @updatedAt @map("updated_at")
   swapsAsRequesterShift ShiftSwapRequest[] @relation("SwapRequesterShift")
   swapsAsTargetShift    ShiftSwapRequest[] @relation("SwapTargetShift")
+  aiProposals           AiProposal[]
 
   @@map("shifts")
 }
@@ -224,6 +281,21 @@ model AuditLog {
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("audit_log")
+}
+
+/// Singleton tenant-wide company settings (Ustawienia). Uniqueness of the single row is enforced by
+/// a manual partial-unique index (`company_settings_singleton`) appended to the generated migration
+/// SQL, since Prisma has no native "singleton table" construct.
+model CompanySettings {
+  id          String   @id @default(uuid())
+  companyName String   @map("company_name")
+  timezone    String   @default("Europe/Warsaw")
+  region      String   @default("EU-Central")
+  locale      String   @default("pl-PL")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("company_settings")
 }
 
 /// A worker-initiated shift-swap request (M2 #3). A 1:1 swap (both target fields set) or a
@@ -261,12 +333,330 @@ model LeaveRequest {
   employee   Employee    @relation(fields: [employeeId], references: [id])
   startDate  DateTime    @map("start_date") @db.Date
   endDate    DateTime    @map("end_date") @db.Date
-  status     LeaveStatus @default(APPROVED)
+  status     LeaveStatus @default(PENDING)
   /// Leave kind (URLOP_WYPOCZYNKOWY, URLOP_NA_ZADANIE, …). Free-form string, not over-modelled.
   type       String
+  /// Manager/HR who took the approve/reject/cancel decision (set on decision only).
+  decidedByUserId String? @map("decided_by_user_id")
+  decidedBy       User?   @relation("LeaveDecider", fields: [decidedByUserId], references: [id])
+  decidedAt       DateTime? @map("decided_at")
+  reason          String?
   createdAt  DateTime    @default(now()) @map("created_at")
   updatedAt  DateTime    @updatedAt @map("updated_at")
 
   @@index([employeeId, startDate, endDate])
   @@map("leave_requests")
+}
+
+/// Standard hourly cost per (position, employmentType) — SP4 cost calculator input. `position` is
+/// FREE TEXT on `Employee.position` (no position catalog yet); callers MUST normalize (trim +
+/// collapse internal whitespace) at both write and lookup time to avoid silent join misses. A
+/// missing rate must NEVER be treated as 0 — callers surface `missingRates` instead. MVP does not
+/// compute overtime: `overtimeMultiplier` is stored for a future phase but unused by the calculator.
+model PositionCostRate {
+  id                 String         @id @default(uuid())
+  position           String
+  employmentType     EmploymentType @map("employment_type")
+  hourlyRate         Decimal        @map("hourly_rate")
+  /// Reserved for a future overtime calculation — NOT applied by the MVP cost calculator.
+  overtimeMultiplier Decimal        @default(1.5) @map("overtime_multiplier")
+  currency           String         @default("PLN")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+
+  @@unique([position, employmentType])
+  @@map("position_cost_rates")
+}
+
+/// Per-unit (or global, when unitId is null) configuration for the AI Grafik Manager's autonomy
+/// level and guardrails. `@@unique([unitId])` alone does not prevent multiple unit-less "default"
+/// rows in Postgres (NULL is never equal to NULL for uniqueness purposes) — a partial unique index
+/// on `unit_id IS NULL` is appended to the generated migration SQL to enforce a single default.
+model AiSchedulingConfig {
+  id              String             @id @default(uuid())
+  unitId          String?            @map("unit_id")
+  unit            OrganizationalUnit? @relation(fields: [unitId], references: [id])
+  /// (2026-07-14 spec §12 Etap 2) Default AUTO_ASK_CONSENT — a fresh unit's config asks the top
+  /// reachable feasible candidate for consent immediately rather than waiting on a human to push a
+  /// DRAFT proposal forward (SUGGEST_ONLY). Config-level default only; never hardcoded in the
+  /// engine/service logic, which always reads THIS column (or the synthetic default mirroring it —
+  /// see `AiConfigService.defaultConfig`).
+  autonomyLevel   AutonomyLevel      @default(AUTO_ASK_CONSENT) @map("autonomy_level")
+  quietHoursStart String?            @map("quiet_hours_start")
+  quietHoursEnd   String?            @map("quiet_hours_end")
+  consentTtlHours Int                @default(24) @map("consent_ttl_hours")
+  budgetWeeklyCap Decimal?           @map("budget_weekly_cap")
+  /// Cross-unit replacement travel policy (2026-07-14 spec) — "szacunkowy dojazd (demo)": assumed
+  /// average driving speed used to derive travelMinutes from haversineKm.
+  avgSpeedKmh      Int               @default(60) @map("avg_speed_kmh")
+  /// Per-km travel reimbursement rate ("kilometrówka"), PLN.
+  perKmRatePln     Decimal           @default(1.15) @map("per_km_rate_pln")
+  /// Hard feasibility ceiling (H-TRAVEL, engine-side): a cross-unit candidate whose estimated travel
+  /// time exceeds this is infeasible, regardless of rank/cost.
+  maxTravelMinutes Int               @default(120) @map("max_travel_minutes")
+  /// Whether travelCost prices a there-and-back trip (×2) or the one-way leg only.
+  roundTrip        Boolean           @default(true) @map("round_trip")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  @@unique([unitId])
+  @@map("ai_scheduling_config")
+}
+
+/// An AI-generated proposal to fill a vacated shift (replacement), place an ad-hoc assignment, or
+/// address a capacity gap. Never mutates `Shift` directly — the state machine (a later phase) drives
+/// consent/approval transitions and performs the atomic assignment only on APPROVED.
+model AiProposal {
+  id                  String                 @id @default(uuid())
+  type                AiProposalType         @default(REPLACEMENT)
+  state               AiProposalState        @default(DRAFT)
+  shiftId             String                 @map("shift_id")
+  shift               Shift                  @relation(fields: [shiftId], references: [id])
+  vacatedEmployeeId   String                 @map("vacated_employee_id")
+  vacatedEmployee     Employee               @relation("AiProposalVacated", fields: [vacatedEmployeeId], references: [id])
+  activeCandidateId   String?                @map("active_candidate_id")
+  /// (2026-07-14 spec, Codex P1-2) The vacated shift's ORIGINAL unit, frozen at proposal creation —
+  /// authorize list/approve/consent + audit by THIS unit, never by a candidate's (possibly
+  /// cross-unit) `unitId`, so a committed cross-unit replacement never silently "moves" the
+  /// proposal's ownership to the candidate's unit. Plain string, no FK (mirrors
+  /// `decidedByManagerId`) — set once at creation and never reassigned.
+  owningUnitId        String?                @map("owning_unit_id")
+  reason              String?
+  estimatedCost       Decimal?               @map("estimated_cost")
+  decidedByManagerId  String?                @map("decided_by_manager_id")
+  expiresAt           DateTime?              @map("expires_at")
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
+  candidates          AiProposalCandidate[]
+
+  @@index([state])
+  @@index([shiftId])
+  @@map("ai_proposal")
+}
+
+/// A ranked candidate employee for an AiProposal, with feasibility/score and per-candidate consent
+/// tracking (an employee must GRANT consent before being committed to the vacated shift).
+model AiProposalCandidate {
+  id                 String       @id @default(uuid())
+  proposalId         String       @map("proposal_id")
+  proposal           AiProposal   @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  employeeId         String       @map("employee_id")
+  employee           Employee     @relation("AiProposalCandidateEmp", fields: [employeeId], references: [id])
+  rank               Int
+  feasible           Boolean
+  reason             String?
+  score              Decimal?
+  /// Rounded km from the candidate's home to the shift's lokalizacja (0 for a same-unit/local
+  /// candidate); null when never computed (e.g. a local candidate row predating this column, or a
+  /// cross-unit candidate whose home/lokalizacja coordinates were missing). RODO-safe: rounded only,
+  /// never the raw coordinates it was derived from — "szacunkowy dojazd (demo)".
+  travelKm           Decimal?     @map("travel_km")
+  /// Rounded estimated one-way-equivalent travel minutes for `travelKm` (see travel.util.ts).
+  travelMinutes      Decimal?     @map("travel_minutes")
+  /// Rounded estimated travel cost ("kilometrówka") contributing to this candidate's total Δcost,
+  /// kept SEPARATE from the labour Δcost on `AiProposal.estimatedCost` (Codex P2-6) — never summed
+  /// into it silently.
+  travelCost         Decimal?     @map("travel_cost")
+  consentState       ConsentState @default(NOT_ASKED) @map("consent_state")
+  consentRequestedAt DateTime?    @map("consent_requested_at")
+  consentAt          DateTime?    @map("consent_at")
+
+  @@unique([proposalId, employeeId])
+  @@index([proposalId, rank])
+  @@map("ai_proposal_candidate")
+}
+
+/// A physical/logical access grant for an employee (Dostępy): a card, key, or standalone permission.
+/// `identifier` (e.g. card/key serial) is PII/security-sensitive. At most one ACTIVE grant may exist
+/// per (type, identifier) pair — enforced by a partial unique index (`access_grant_active_identifier`)
+/// appended to the generated migration SQL, since a re-issued/lost card's identifier may be reused
+/// once the prior grant is REVOKED/LOST.
+model AccessGrant {
+  id             String       @id @default(uuid())
+  employeeId     String       @map("employee_id")
+  employee       Employee     @relation(fields: [employeeId], references: [id])
+  type           AccessType
+  label          String
+  identifier     String?
+  lokalizacjaId  String?      @map("lokalizacja_id")
+  lokalizacja    Lokalizacja? @relation(fields: [lokalizacjaId], references: [id], onDelete: SetNull)
+  status         AccessStatus @default(ACTIVE)
+  issuedByUserId String?      @map("issued_by_user_id")
+  issuedBy       User?        @relation("AccessIssuer", fields: [issuedByUserId], references: [id], onDelete: SetNull)
+  issuedAt       DateTime     @default(now()) @map("issued_at")
+  revokedAt      DateTime?    @map("revoked_at")
+  notes          String?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  @@index([employeeId])
+  @@map("access_grant")
+}
+
+// ---------------------------------------------------------------------------
+// strategic-brain: AI performance analysis + development trajectory +
+// recruitment recommendation. Greenfield module (spec
+// docs/superpowers/specs/2026-07-14-ai-performance-trajectory-recruitment-SPEC.md,
+// §3 + authoritative §14 reconciliation). Zero PII in operational data — only
+// `employeeId` + numeric metrics.
+// ---------------------------------------------------------------------------
+
+enum WorkOrderStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum ComplaintSeverity {
+  MINOR
+  MAJOR
+  CRITICAL
+}
+
+enum RecoScopeType {
+  LOKALIZACJA
+  UNIT
+}
+
+enum RecruitmentVerdict {
+  WZNOW
+  WSTRZYMAJ
+  UTRZYMAJ
+}
+
+enum ProactivityLevel {
+  TYLKO_NA_ZADANIE
+  PROAKTYWNE_REKOMENDACJE
+  PROAKTYWNE_ALERTY
+}
+
+/// A demo/synthetic work assignment (detailing, podstawienie, ...) — source of the Performance +
+/// Terminowość dimensions. Deliberately SEPARATE from Shift/ShiftDemand (M6/M7). `kind` is drawn
+/// from a service-validated bounded set with a per-kind SLA; `dueAt = assignedAt + SLA(kind)`.
+/// `CANCELLED` orders never count toward any metric (never punish operator-cancelled work).
+model WorkOrder {
+  id                   String          @id @default(uuid())
+  assignedToEmployeeId String          @map("assigned_to_employee_id")
+  assignedTo           Employee        @relation("WorkOrderAssignee", fields: [assignedToEmployeeId], references: [id])
+  assignedByOperatorId String?         @map("assigned_by_operator_id")
+  assignedAt           DateTime        @map("assigned_at")
+  dueAt                DateTime        @map("due_at")
+  completedAt          DateTime?       @map("completed_at")
+  status               WorkOrderStatus @default(OPEN)
+  lokalizacjaId        String?         @map("lokalizacja_id")
+  kind                 String
+  createdAt            DateTime        @default(now()) @map("created_at")
+  complaints           Complaint[]
+
+  @@index([assignedToEmployeeId])
+  @@index([lokalizacjaId])
+  @@index([completedAt])
+  @@map("work_order")
+}
+
+/// A complaint (reklamacja) — source of the Jakość dimension (defectRate = complaints /
+/// completedWorkOrders in a window, never an absolute count). `employeeId` denormalizes the
+/// responsible party for fast defect-rate queries but MUST equal `workOrder.assignedToEmployeeId`
+/// when `workOrderId` is set (M5 integrity, enforced by both being real FK relations + a service
+/// test, not just a bare string column).
+model Complaint {
+  id          String            @id @default(uuid())
+  workOrderId String?           @map("work_order_id")
+  workOrder   WorkOrder?        @relation(fields: [workOrderId], references: [id])
+  employeeId  String            @map("employee_id")
+  employee    Employee          @relation("ComplaintEmployee", fields: [employeeId], references: [id])
+  category    String
+  severity    ComplaintSeverity @default(MINOR)
+  createdAt   DateTime          @map("created_at")
+
+  @@index([employeeId])
+  @@map("complaint")
+}
+
+/// Materialized CACHE (not an audit fact, §14 B2) of one employee's metrics over a window — the
+/// time series that a `developmentSlope` regression is computed from. `@@unique` gives idempotent
+/// upsert-per-window (a recompute intentionally OVERWRITES the row); `algorithmVersion` +
+/// `configHash` record which scoring version/config produced the cached numbers.
+/// `excludedReason` implements the anti-proxy-discrimination guard (§7): a window with an
+/// L4/urlop/onboarding overlap is excluded from the trend rather than silently dragging it down.
+model EmployeePerformanceSnapshot {
+  id                 String    @id @default(uuid())
+  employeeId         String    @map("employee_id")
+  employee           Employee  @relation("SnapshotEmployee", fields: [employeeId], references: [id])
+  windowStart        DateTime  @map("window_start")
+  windowEnd          DateTime  @map("window_end")
+  throughput         Int
+  medianCycleMinutes Int?      @map("median_cycle_minutes")
+  slaHitRate         Decimal?  @map("sla_hit_rate")
+  defectRate         Decimal?  @map("defect_rate")
+  compositeScore     Decimal?  @map("composite_score")
+  developmentSlope   Decimal?  @map("development_slope")
+  confidence         Decimal
+  peerGroupKey       String    @map("peer_group_key")
+  isNewHire          Boolean   @map("is_new_hire")
+  excludedReason     String?   @map("excluded_reason")
+  /// Scoring engine version that produced this cached row (B2) — lets a future engine change
+  /// distinguish stale cache rows from freshly recomputed ones.
+  algorithmVersion   Int       @default(1) @map("algorithm_version")
+  /// Hash of the `PerformanceConfig` weights/thresholds in effect when this row was computed (B2) —
+  /// downstream recommendations freeze their own `factors` and never re-derive from live config.
+  configHash         String    @map("config_hash")
+  computedAt         DateTime  @default(now()) @map("computed_at")
+
+  @@unique([employeeId, windowStart, windowEnd])
+  @@index([employeeId, windowEnd])
+  @@map("employee_performance_snapshot")
+}
+
+/// An immutable recruitment-recommendation EVENT (B3, not a mutate-in-place "supersede" record — the
+/// only true append-only pattern in this repo is `audit_log` with a DB trigger). A new
+/// recommendation for the same scope points back via `replacesRecommendationId` instead of setting
+/// a `supersededAt` on the prior row; "current" = the newest event per scope. `factors` freezes the
+/// numeric breakdown at issue time so the recommendation stays reproducible even if
+/// `PerformanceConfig` weights change later. `acknowledgedBy*` records a HUMAN decision taken on the
+/// recommendation — never an executed HR action (RODO art. 22 boundary, M13).
+model RecruitmentRecommendation {
+  id                        String             @id @default(uuid())
+  scopeType                 RecoScopeType      @default(LOKALIZACJA) @map("scope_type")
+  scopeId                   String             @map("scope_id")
+  verdict                   RecruitmentVerdict
+  rationale                 String
+  factors                   Json
+  replacesRecommendationId  String?            @map("replaces_recommendation_id")
+  computedAt                DateTime           @default(now()) @map("computed_at")
+  acknowledgedByUserId      String?            @map("acknowledged_by_user_id")
+  acknowledgedAt            DateTime?          @map("acknowledged_at")
+
+  @@index([scopeType, scopeId, computedAt])
+  @@map("recruitment_recommendation")
+}
+
+/// Per-unit (or tenant-default when `unitId` is NULL) scoring configuration — mirrors
+/// `AiSchedulingConfig`. Uniqueness of the single default row is enforced by a manual partial-unique
+/// index (`perf_config_default_unique`) appended to the generated migration SQL, since Postgres does
+/// NOT treat multiple NULLs as a uniqueness violation under a plain `@@unique` (B1). Default weights
+/// (performance 0.30 / timeliness 0.25 / quality 0.25 / development 0.20) sum to 1.00 — validated in
+/// `PerformanceConfigService`. `ProactivityLevel` deliberately has NO "auto-execute HR action" level
+/// (§7 hard limit, enforced by a test asserting the enum's member set).
+model PerformanceConfig {
+  id                String           @id @default(uuid())
+  unitId            String?          @map("unit_id")
+  weightPerformance Decimal          @default(0.30) @map("weight_performance")
+  weightTimeliness  Decimal          @default(0.25) @map("weight_timeliness")
+  weightQuality     Decimal          @default(0.25) @map("weight_quality")
+  weightDevelopment Decimal          @default(0.20) @map("weight_development")
+  slaTargetMinutes  Int              @default(120) @map("sla_target_minutes")
+  defectThreshold   Decimal          @default(0.10) @map("defect_threshold")
+  confidenceMinDays Int              @default(30) @map("confidence_min_days")
+  windowDays        Int              @default(14) @map("window_days")
+  minValidWindows   Int              @default(3) @map("min_valid_windows")
+  minSlopeForGrowth Decimal          @default(0.5) @map("min_slope_for_growth")
+  minPeerGroupSize  Int              @default(5) @map("min_peer_group_size")
+  proactivityLevel  ProactivityLevel @default(PROAKTYWNE_REKOMENDACJE) @map("proactivity_level")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  @@unique([unitId])
+  @@map("performance_config")
 }

@@ -10,6 +10,7 @@ import { ScheduleGrid, cellKey } from './schedule-grid'
 import { ShiftEditor, type LocationOption } from './shift-editor'
 import { SolveResultBanner } from './solve-result-banner'
 import { MetricsStrip } from './metrics-strip'
+import { locationName, unitName } from '@/lib/demo-locations'
 import {
   formatWeekRange,
   grafikApi,
@@ -26,6 +27,15 @@ import {
 } from '@/lib/grafik'
 
 const ALL_UNITS = '__all__'
+
+/** Polish 3-form plural for "zmiana": 1 → zmiana, 2–4 → zmiany, else → zmian (12–14 stay "zmian"). */
+function zmianaLabel(n: number): string {
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (n === 1) return 'zmiana'
+  if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) return 'zmiany'
+  return 'zmian'
+}
 
 /** Editor target: an existing shift (edit) or a fresh cell (create). */
 type EditorState =
@@ -44,7 +54,12 @@ function describeError(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
-export function GrafikScreen() {
+/**
+ * @param canManage true for MANAGER/HR/ADMIN_KLIENTA (generate + manual CRUD). A plain PRACOWNIK
+ *        passes false: the backend returns only their own shifts, so the screen is read-only —
+ *        no "Generuj grafik", no add/edit affordances.
+ */
+export function GrafikScreen({ canManage = true }: { canManage?: boolean }) {
   const [mondayIso, setMondayIso] = useState(() => mondayOf(new Date()).toISOString().slice(0, 10))
   const [employees, setEmployees] = useState<Employee[]>([])
   const [shifts, setShifts] = useState<Shift[]>([])
@@ -92,16 +107,21 @@ export function GrafikScreen() {
   // Distinct units present in the roster → the scope filter (we have no unit-name API, so short ids).
   const unitOptions = useMemo(() => {
     const ids = [...new Set(employees.map((e) => e.unitId))].filter(Boolean).sort()
-    return ids.map((id) => ({ id, label: `Jednostka · ${id.slice(0, 6)}` }))
+    return ids.map((id) => ({ id, label: unitName(id) }))
   }, [employees])
 
-  const visibleEmployees = useMemo(
-    () => (unitFilter === ALL_UNITS ? employees : employees.filter((e) => e.unitId === unitFilter)),
-    [employees, unitFilter],
-  )
+  const visibleEmployees = useMemo(() => {
+    // Read-only (PRACOWNIK): the backend already scopes shifts to self, so show ONLY the rows the
+    // employee owns — a "my schedule" view, not the whole roster with 30+ empty rows.
+    if (!canManage) {
+      const own = new Set(shifts.map((s) => s.employeeId))
+      return employees.filter((e) => own.has(e.id))
+    }
+    return unitFilter === ALL_UNITS ? employees : employees.filter((e) => e.unitId === unitFilter)
+  }, [employees, shifts, unitFilter, canManage])
 
   // Location labels (no location-name API → stable short label from the UUID).
-  const locationLabel = useCallback((id: string) => `Lok. ${id.slice(0, 6)}`, [])
+  const locationLabel = useCallback((id: string) => locationName(id), [])
   const locationOptions = useMemo<LocationOption[]>(() => {
     const ids = new Set<string>()
     shifts.forEach((s) => ids.add(s.lokalizacjaId))
@@ -211,11 +231,12 @@ export function GrafikScreen() {
         <div>
           <h1 className="font-display font-extrabold text-[26px] tracking-tightish text-navy leading-tight">Grafik</h1>
           <p className="text-muted text-sm mt-1.5">
-            {weekShiftCount} {weekShiftCount === 1 ? 'zmiana' : 'zmian'} · {weekDemandCount} zapotrzebowań w tym tygodniu
+            {weekShiftCount} {zmianaLabel(weekShiftCount)}
+            {canManage ? ` · ${weekDemandCount} zapotrzebowań w tym tygodniu` : ' w tym tygodniu'}
           </p>
         </div>
         <div className="flex items-center gap-2.5 flex-wrap">
-          {unitOptions.length > 0 ? (
+          {canManage && unitOptions.length > 0 ? (
             <select
               aria-label="Filtr jednostki"
               value={unitFilter}
@@ -230,10 +251,17 @@ export function GrafikScreen() {
               ))}
             </select>
           ) : null}
-          <Button onClick={generate} disabled={solving || loading} className="h-10 px-3.5 text-sm">
-            <IconWand className="w-[17px] h-[17px]" strokeWidth={1.7} />
-            {solving ? 'Generowanie…' : 'Generuj grafik'}
-          </Button>
+          {canManage ? (
+            <Button onClick={generate} disabled={solving || loading} className="h-10 px-3.5 text-sm">
+              <IconWand className="w-[17px] h-[17px]" strokeWidth={1.7} />
+              {solving ? 'Generowanie…' : 'Generuj grafik'}
+            </Button>
+          ) : (
+            <Badge className="h-10 px-3.5 inline-flex items-center gap-1.5 text-[12.5px] bg-card-2 border-line-strong text-muted">
+              <IconCalendar className="w-[15px] h-[15px]" strokeWidth={1.7} />
+              Twój grafik — podgląd
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -313,6 +341,7 @@ export function GrafikScreen() {
           days={days}
           shiftsByCell={shiftsByCell}
           locationLabel={locationLabel}
+          readOnly={!canManage}
           onAddShift={(employeeId, date) => {
             setEditorError(null)
             setEditor({ mode: 'create', employeeId, date })

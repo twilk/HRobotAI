@@ -125,7 +125,9 @@ export function shiftWeek(mondayIso: string, deltaWeeks: number): string {
 
 export const WEEKDAY_LABELS = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Ndz'] as const
 
-const MONTHS_PL = [
+// Exported so other Polish-date formatters (e.g. lib/employee-profile.ts's formatHiredAt) reuse the
+// same month names instead of duplicating them.
+export const MONTHS_PL = [
   'stycznia', 'lutego', 'marca', 'kwietnia', 'maja', 'czerwca',
   'lipca', 'sierpnia', 'września', 'października', 'listopada', 'grudnia',
 ] as const

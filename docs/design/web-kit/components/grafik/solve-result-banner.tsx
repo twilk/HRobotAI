@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { IconCheck, IconClose } from '@/components/icons'
 import { IconAlert } from './grafik-icons'
 import { normalizeDate, type ShiftDemand, type SolveResult } from '@/lib/grafik'
+import { friendlyReason } from '@/lib/demo-locations'
 
 export interface SolveResultBannerProps {
   result: SolveResult
@@ -76,7 +77,7 @@ export function SolveResultBanner({ result, demandsById, locationLabel, onDismis
                           ? `${locationLabel(d.lokalizacjaId)} · ${normalizeDate(d.date)} · ${d.start}–${d.end} · ${d.requiredRole}`
                           : `Zapotrzebowanie ${u.demandId.slice(0, 8)}`}
                       </span>
-                      <span className="text-muted-2">— {u.reason}</span>
+                      <span className="text-muted-2">— {friendlyReason(u.reason)}</span>
                     </li>
                   )
                 })}

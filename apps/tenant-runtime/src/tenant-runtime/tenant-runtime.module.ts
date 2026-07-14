@@ -4,6 +4,7 @@ import { makeCounterProvider } from '@willsoto/nestjs-prometheus'
 import { TenantPrismaModule } from './tenant-prisma/tenant-prisma.module.js'
 import { KeycloakJwtStrategy } from './keycloak/keycloak-jwt.strategy.js'
 import { KeycloakJwtGuard } from './keycloak/keycloak-jwt.guard.js'
+import { KeycloakAdminService } from './keycloak/keycloak-admin.service.js'
 import { TenantContextInterceptor } from './tenant-context/tenant-context.interceptor.js'
 import { RbacGuard } from './rbac/rbac.guard.js'
 import { AuditService } from './audit/audit.service.js'
@@ -18,6 +19,10 @@ import { AuditInterceptor } from './audit/audit.interceptor.js'
   providers: [
     KeycloakJwtStrategy,
     KeycloakJwtGuard,
+    KeycloakAdminService,
+    // FIX-C4-style token: KeycloakAdminService's admin-API calls are unit-tested against a
+    // mocked FETCH (see keycloak-admin.service.spec.ts) — no live Keycloak needed.
+    { provide: 'FETCH', useValue: fetch },
     TenantContextInterceptor,
     RbacGuard,
     AuditService,
@@ -34,6 +39,7 @@ import { AuditInterceptor } from './audit/audit.interceptor.js'
   ],
   exports: [
     KeycloakJwtGuard,
+    KeycloakAdminService,
     TenantContextInterceptor,
     RbacGuard,
     AuditService,

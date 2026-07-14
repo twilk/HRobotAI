@@ -11,6 +11,9 @@
 // env (a static service token). See the PR body.
 
 import { getKeycloakToken } from './keycloak-token'
+import { cookies } from 'next/headers'
+import { refreshAccessToken } from './refresh-token'
+import { SESSION_COOKIE, REFRESH_COOKIE } from './session'
 
 /** Base URL of the tenant-runtime service. Local dev default; override for the compose network. */
 export function tenantRuntimeBaseUrl(): string {
@@ -19,36 +22,41 @@ export function tenantRuntimeBaseUrl(): string {
 }
 
 /**
- * A resolved bearer plus whether it was minted by the Keycloak provider — only a minted token is
- * worth force-refreshing + retrying on a backend 401 (a caller-supplied header/cookie or the static
- * dev token can't be re-minted here).
+ * A resolved bearer plus where it came from — only a minted token is worth force-refreshing +
+ * retrying on a backend 401 (a caller-supplied header or the static dev token can't be re-minted
+ * here); a cookie token can instead be rotated via the user's refresh token.
  */
 interface ResolvedAuth {
   authorization: string
-  minted: boolean
+  source: 'header' | 'cookie' | 'minted' | 'dev'
 }
 
 /** Bearer token to forward, or null if the caller supplied none and nothing else is configured. */
 async function resolveAuthorization(req: Request): Promise<ResolvedAuth | null> {
   const header = req.headers.get('authorization')
-  if (header) return { authorization: header, minted: false }
+  if (header) return { authorization: header, source: 'header' }
 
   const cookie = req.headers.get('cookie')
   const match = cookie ? /(?:^|;\s*)hrobot_token=([^;]+)/.exec(cookie) : null
-  if (match) return { authorization: `Bearer ${decodeURIComponent(match[1])}`, minted: false }
+  if (match) return { authorization: `Bearer ${decodeURIComponent(match[1])}`, source: 'cookie' }
 
   // Mint (or reuse a cached) Keycloak token via the direct grant. Returns null when the four
   // KEYCLOAK_* env vars are unset, so we fall through to the legacy static token below.
   const minted = await getKeycloakToken()
-  if (minted) return { authorization: `Bearer ${minted}`, minted: true }
+  if (minted) return { authorization: `Bearer ${minted}`, source: 'minted' }
 
   const devToken = process.env.TENANT_RUNTIME_DEV_TOKEN
-  if (devToken) return { authorization: `Bearer ${devToken}`, minted: false }
+  if (devToken) return { authorization: `Bearer ${devToken}`, source: 'dev' }
 
   return null
 }
 
-const METHODS_WITH_BODY = new Set(['POST', 'PUT', 'PATCH'])
+// DELETE is included because `DELETE /uzytkownicy/:userId/roles` (revokeRole) carries its
+// `{role, unitId}` selector as the request BODY, not a path/query param (mirrors the DTO
+// `RoleAssignmentDto` shared with the POST grant route) — see UsersController.revokeRole. Every
+// prior DELETE proxied here (grafik shifts/demands/templates) sends no body, so including DELETE is a
+// pure superset: `req.text()` on a bodyless DELETE just resolves to `''`, forwarded as an empty string.
+const METHODS_WITH_BODY = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
 /**
  * Forward `req` to `${TENANT_RUNTIME_URL}/${backendPath}${search}`, preserving method/body and
@@ -87,11 +95,31 @@ export async function proxyToTenantRuntime(req: Request, backendPath: string, se
   try {
     upstream = await sendOnce(resolved.authorization)
 
-    // A minted token can expire in the window between our skew check and its arrival at
-    // tenant-runtime. On a 401 for a minted token, force a fresh mint once and retry.
-    if (upstream.status === 401 && resolved.minted) {
+    // A minted token can expire between our skew check and arrival; re-mint once.
+    if (upstream.status === 401 && resolved.source === 'minted') {
       const refreshed = await getKeycloakToken(true)
       if (refreshed) upstream = await sendOnce(`Bearer ${refreshed}`)
+    }
+
+    // A cookie (logged-in user) token that 401s: rotate it with the refresh token, retry, and
+    // re-set both cookies so the session continues instead of bouncing to /login.
+    if (upstream.status === 401 && resolved.source === 'cookie') {
+      const rc = req.headers.get('cookie')
+      const rm = rc ? /(?:^|;\s*)hrobot_refresh=([^;]+)/.exec(rc) : null
+      const rotated = rm ? await refreshAccessToken(decodeURIComponent(rm[1])) : null
+      const store = await cookies()
+      if (rotated) {
+        upstream = await sendOnce(`Bearer ${rotated.accessToken}`)
+        const base = { httpOnly: true, sameSite: 'lax' as const, secure: process.env.NODE_ENV === 'production', path: '/' }
+        store.set(SESSION_COOKIE, rotated.accessToken, { ...base, maxAge: rotated.refreshExpiresIn })
+        store.set(REFRESH_COOKIE, rotated.refreshToken, { ...base, maxAge: rotated.refreshExpiresIn })
+      } else {
+        // Refresh unavailable or rejected → the session is truly over. Clear both cookies so the next
+        // navigation hits middleware with no cookie and is re-gated to /login, instead of leaving the
+        // user on a stale 401 screen for the length of the (now longer) cookie TTL.
+        store.delete(SESSION_COOKIE)
+        store.delete(REFRESH_COOKIE)
+      }
     }
   } catch (err) {
     return Response.json(

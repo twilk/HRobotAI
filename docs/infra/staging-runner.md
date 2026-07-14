@@ -72,7 +72,25 @@ ever written.
 ### b. GitHub Actions secret
 
 - **`CLOUDFLARE_TUNNEL_TOKEN`** — repo **Settings → Secrets and variables → Actions**. Consumed only by
-  `infra/deploy/edge-up.sh` to run the named tunnel. See step 3.
+  `infra/deploy/edge-up.sh` to run the named tunnel. See step 3. Without the secret `edge-up.sh`
+  degrades to a **quick tunnel** (session-scoped URL, logged to `.staging-run/cloudflared.log`) —
+  the deploy stays green, but the URL changes per session until the named tunnel is configured.
+
+### c. Shared-box layout (registered 2026-07-14 on the dev box)
+
+The box also runs the live demo stack (compose project `hrobot`) and unrelated projects holding the
+default host ports. The staging deploy therefore runs as its **own compose project with fresh
+volumes** and a remapped 48xx port lane — it never adopts or restarts the live demo stack:
+
+- `_work/HRobotAI/HRobotAI/.env` — copy of the dev `.env` **plus `COMPOSE_PROJECT_NAME=hrobot-staging`**;
+- `_work/HRobotAI/HRobotAI/docker-compose.override.yml` — backing services unpublished; control-plane
+  `4800:3000`, tenant-runtime `4801:3001`, keycloak 26.0 `4881:8080` with a project-scoped volume;
+- runner-root `.env` (`C:\actions-runner-hrobot\.env`) — job-level env consumed by the workflow and
+  scripts: `CP_URL`/`TR_URL`/`KEYCLOAK_URL` (48xx), `CONTROL_PLANE_ORIGIN`/`TENANT_RUNTIME_ORIGIN`
+  (the web front's proxy targets).
+
+Both workdir files survive checkouts because `deploy-staging.yml` checks out with `clean: false`
+(the default `git clean -ffdx` would delete these git-ignored operator files).
 
 ## 3. Create the Cloudflare **named** tunnel (stable URL)
 

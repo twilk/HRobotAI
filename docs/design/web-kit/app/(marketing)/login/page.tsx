@@ -13,14 +13,14 @@ export default function LoginPage() {
             </div>
             <h1 className="font-display font-extrabold text-[23px] tracking-tightish text-navy">Zaloguj się</h1>
             <p className="text-muted text-[13.5px] mt-1.5">
-              Witaj ponownie w przestrzeni <b className="text-accent-ink">ACME</b>
+              Witaj ponownie w przestrzeni <b className="text-accent-ink">4Mobility</b>
             </p>
           </div>
 
           <LoginForm />
 
           <div className="mt-[18px] pt-4 border-t border-line flex items-center justify-center font-mono text-[10.5px] text-muted-2">
-            Zabezpieczone · realm: hrobot-acme
+            Zabezpieczone · realm: hrobot-staging
           </div>
         </div>
 

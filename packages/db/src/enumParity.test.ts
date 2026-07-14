@@ -1,6 +1,19 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { Role, EmploymentType, TenantStatus, PlanType, ProvisioningStep } from '@hrobot/shared'
+import {
+  Role,
+  EmploymentType,
+  TenantStatus,
+  PlanType,
+  ProvisioningStep,
+  AutonomyLevel,
+  AiProposalType,
+  AiProposalState,
+  ConsentState,
+  LeaveStatus,
+  AccessType,
+  AccessStatus,
+} from '@hrobot/shared'
 
 // Guards the hand-maintained duplication between the TS domain enums in @hrobot/shared and the
 // Prisma `enum` blocks in the two schemas. Prisma can't import TS, so they are kept in sync by
@@ -27,6 +40,41 @@ describe('enum parity: @hrobot/shared TS enums == Prisma enum blocks', () => {
   it('tenant EmploymentType', () => {
     expect(prismaEnumValues(tenantSchema, 'EmploymentType')).toEqual(
       [...Object.values(EmploymentType)].sort(),
+    )
+  })
+  it('tenant AutonomyLevel', () => {
+    expect(prismaEnumValues(tenantSchema, 'AutonomyLevel')).toEqual(
+      [...Object.values(AutonomyLevel)].sort(),
+    )
+  })
+  it('tenant AiProposalType', () => {
+    expect(prismaEnumValues(tenantSchema, 'AiProposalType')).toEqual(
+      [...Object.values(AiProposalType)].sort(),
+    )
+  })
+  it('tenant AiProposalState', () => {
+    expect(prismaEnumValues(tenantSchema, 'AiProposalState')).toEqual(
+      [...Object.values(AiProposalState)].sort(),
+    )
+  })
+  it('tenant ConsentState', () => {
+    expect(prismaEnumValues(tenantSchema, 'ConsentState')).toEqual(
+      [...Object.values(ConsentState)].sort(),
+    )
+  })
+  it('tenant LeaveStatus', () => {
+    expect(prismaEnumValues(tenantSchema, 'LeaveStatus')).toEqual(
+      [...Object.values(LeaveStatus)].sort(),
+    )
+  })
+  it('tenant AccessType', () => {
+    expect(prismaEnumValues(tenantSchema, 'AccessType')).toEqual(
+      [...Object.values(AccessType)].sort(),
+    )
+  })
+  it('tenant AccessStatus', () => {
+    expect(prismaEnumValues(tenantSchema, 'AccessStatus')).toEqual(
+      [...Object.values(AccessStatus)].sort(),
     )
   })
   it('control-plane TenantStatus', () => {

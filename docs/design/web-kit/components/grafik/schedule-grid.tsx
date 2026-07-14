@@ -12,6 +12,8 @@ export interface ScheduleGridProps {
   locationLabel: (id: string) => string
   onAddShift: (employeeId: string, date: string) => void
   onEditShift: (shift: Shift) => void
+  /** Employee (PRACOWNIK) view: shifts render as static chips, no add/edit affordances. */
+  readOnly?: boolean
 }
 
 const todayLike = (iso: string, today: string): boolean => iso === today
@@ -27,6 +29,7 @@ export function ScheduleGrid({
   locationLabel,
   onAddShift,
   onEditShift,
+  readOnly = false,
 }: ScheduleGridProps) {
   const today = new Date().toISOString().slice(0, 10)
 
@@ -81,12 +84,15 @@ export function ScheduleGrid({
                         <button
                           key={s.id}
                           type="button"
-                          onClick={() => onEditShift(s)}
+                          onClick={readOnly ? undefined : () => onEditShift(s)}
+                          aria-disabled={readOnly || undefined}
                           title={`${locationLabel(s.lokalizacjaId)} · ${s.role}`}
                           className={`w-full text-left rounded-sm px-2 py-1 border transition-colors ${
+                            readOnly ? 'cursor-default ' : ''
+                          }${
                             s.source === 'AUTO'
-                              ? 'bg-accent/[0.07] border-accent/25 hover:border-accent/50'
-                              : 'bg-card-2 border-line-strong hover:border-navy/40'
+                              ? `bg-accent/[0.07] border-accent/25${readOnly ? '' : ' hover:border-accent/50'}`
+                              : `bg-card-2 border-line-strong${readOnly ? '' : ' hover:border-navy/40'}`
                           }`}
                         >
                           <div className="flex items-center justify-between gap-1">
@@ -107,14 +113,16 @@ export function ScheduleGrid({
                         </button>
                       ))}
 
-                      <button
-                        type="button"
-                        onClick={() => onAddShift(emp.id, iso)}
-                        aria-label={`Dodaj zmianę — ${emp.firstName} ${emp.lastName}, ${iso}`}
-                        className="grid place-items-center h-[22px] rounded-sm text-muted-2 opacity-0 group-hover:opacity-100 hover:bg-card-2 hover:text-accent-ink focus:opacity-100 transition-opacity"
-                      >
-                        <IconPlus className="w-[15px] h-[15px]" strokeWidth={1.8} />
-                      </button>
+                      {readOnly ? null : (
+                        <button
+                          type="button"
+                          onClick={() => onAddShift(emp.id, iso)}
+                          aria-label={`Dodaj zmianę — ${emp.firstName} ${emp.lastName}, ${iso}`}
+                          className="grid place-items-center h-[22px] rounded-sm text-muted-2 opacity-0 group-hover:opacity-100 hover:bg-card-2 hover:text-accent-ink focus:opacity-100 transition-opacity"
+                        >
+                          <IconPlus className="w-[15px] h-[15px]" strokeWidth={1.8} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 )

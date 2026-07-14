@@ -8,9 +8,12 @@ const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])
 
 // P3-4 (RODO): the audit_log is append-only/immutable (DB trigger), so PII written there can
 // never be erased or rectified. Recursively redact sensitive fields from request bodies before
-// they are persisted — pesel (Polish national ID) above all, plus credentials/tokens.
+// they are persisted — pesel (Polish national ID) above all, plus credentials/tokens and the
+// access-grant `identifier` (card/key serial — security-sensitive access-control data; the Dostępy
+// module keeps it out of its own audit, and this global request-body audit must do the same).
 const SENSITIVE_KEYS = new Set([
   'pesel', 'password', 'passwordhash', 'token', 'accesstoken', 'refreshtoken', 'secret', 'ssn',
+  'identifier',
 ])
 export function redactAuditPayload(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(redactAuditPayload)

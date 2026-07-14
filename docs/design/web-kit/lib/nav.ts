@@ -7,6 +7,7 @@ import {
   IconKey,
   IconSettings,
   IconUser,
+  IconSparkles,
 } from '@/components/icons'
 
 export type Role = 'PRACOWNIK' | 'MANAGER' | 'HR' | 'ADMIN_KLIENTA'
@@ -17,6 +18,8 @@ export interface NavItem {
   href: string
   icon: Icon
   tag?: string
+  /** Render with an accent treatment so a flagship module stands out from the plain items. */
+  highlight?: boolean
   /** Visible only to these roles. Undefined = visible to everyone. */
   roles?: Role[]
 }
@@ -32,6 +35,17 @@ export const NAV: NavGroup[] = [
       { label: 'Dashboard', href: '/dashboard', icon: IconDashboard },
       { label: 'Pracownicy', href: '/pracownicy', icon: IconUsers },
       { label: 'Grafik', href: '/grafik', icon: IconCalendar },
+      {
+        // Manager-only again (product decision, restoring the SP0 locked scope): the employee's own
+        // AI replacement-consent section moved to /zamiany (PRACOWNIK-visible), so this page — config
+        // + manager inbox + scan trigger — no longer needs to be reachable by a plain PRACOWNIK.
+        label: 'AI Grafik Manager',
+        href: '/ai-grafik-manager',
+        icon: IconSparkles,
+        tag: 'AI',
+        highlight: true,
+        roles: ['MANAGER', 'HR', 'ADMIN_KLIENTA'],
+      },
       { label: 'Zamiany', href: '/zamiany', icon: IconRequests },
       { label: 'Wnioski', href: '/wnioski', icon: IconRequests, tag: '3' },
       { label: 'Dostępy', href: '/dostepy', icon: IconKey, roles: ['MANAGER', 'HR', 'ADMIN_KLIENTA'] },

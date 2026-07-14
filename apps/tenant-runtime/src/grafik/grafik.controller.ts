@@ -23,8 +23,8 @@ import { CreateShiftDemandDto, UpdateShiftDemandDto } from './dto/shift-demand.d
 import { CreateShiftTemplateDto, UpdateShiftTemplateDto } from './dto/shift-template.dto.js'
 import { SolveGrafikDto } from './dto/solve.dto.js'
 
-/** Any scheduling staff role may read the grafik. */
-const READ_ROLES = [Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA] as const
+/** Any scheduling staff role may read the grafik; a PRACOWNIK reads their OWN shifts (scoped in the service). */
+const READ_ROLES = [Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA, Role.PRACOWNIK] as const
 /** Shift mutations: MANAGER allowed but unit-scoped in the service; HR/ADMIN global. */
 const SHIFT_WRITE_ROLES = [Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA] as const
 /** Demand/template mutations: catalog with no unit dimension → HR/ADMIN only. */
@@ -38,7 +38,8 @@ const CATALOG_WRITE_ROLES = [Role.HR, Role.ADMIN_KLIENTA] as const
  * and HTTP-audited. `@Roles(...)` per method sets the coarse role gate; row-level unit scoping for
  * shifts is enforced in GrafikService.
  *
- * NO `POST /grafik/solve` here — the optimizer packing endpoint is M2-A4.
+ * `POST /grafik/solve` (M2-A4) packs the week × scope, calls the optimizer and persists
+ * `Shift(source=AUTO)` — see the Solve section below.
  */
 @Controller('grafik')
 @TenantRoute()
@@ -86,6 +87,18 @@ export class GrafikController {
     return this.grafik.getShift(client, this.actor(user, ip), id)
   }
 
+  @Get('lokalizacje')
+  @Roles(...READ_ROLES)
+  async listLokalizacje(@CurrentTenantClient() client: TenantClient): Promise<unknown[]> {
+    return this.grafik.listLokalizacje(client)
+  }
+
+  @Get('units')
+  @Roles(...READ_ROLES)
+  async listUnits(@CurrentTenantClient() client: TenantClient): Promise<unknown[]> {
+    return this.grafik.listUnits(client)
+  }
+
   @Post('shifts')
   @Roles(...SHIFT_WRITE_ROLES)
   async createShift(
@@ -125,8 +138,8 @@ export class GrafikController {
 
   @Get('demands')
   @Roles(...READ_ROLES)
-  async listDemands(@CurrentTenantClient() client: TenantClient): Promise<unknown[]> {
-    return this.grafik.listDemands(client)
+  async listDemands(@CurrentTenantClient() client: TenantClient, @CurrentUser() user: JwtPayload, @Ip() ip: string): Promise<unknown[]> {
+    return this.grafik.listDemands(client, this.actor(user, ip))
   }
 
   @Get('demands/:id')

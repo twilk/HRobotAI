@@ -19,6 +19,19 @@ describe('redactAuditPayload (P3-4 RODO)', () => {
     expect(first.position).toBe('Dev')
   })
 
+  it('redacts the access-grant identifier (card/key serial) so it never lands in audit_log', () => {
+    const out = redactAuditPayload({
+      type: 'CARD',
+      label: 'Karta biura',
+      employeeId: 'e-1',
+      identifier: 'AC-4M-0001',
+    }) as Record<string, unknown>
+
+    expect(out.identifier).toBe('***')
+    expect(out.type).toBe('CARD')
+    expect(out.employeeId).toBe('e-1')
+  })
+
   it('passes primitives and arrays through unchanged', () => {
     expect(redactAuditPayload('x')).toBe('x')
     expect(redactAuditPayload(42)).toBe(42)

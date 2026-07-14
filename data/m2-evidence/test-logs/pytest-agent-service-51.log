@@ -1,0 +1,69 @@
+=== pytest agent-service (host .venv + żywy optymalizator przez port-forward, 2026-07-14) ===
+============================= test session starts =============================
+platform win32 -- Python 3.13.14, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\Wilk\Documents\WORKSPACE\HRobot-m2\agent-service\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Wilk\Documents\WORKSPACE\HRobot-m2\agent-service
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.14.1
+collecting ... collected 51 items
+
+tests/test_ag1_feasible.py::test_cold_start_proposal_is_locally_feasible PASSED [  1%]
+tests/test_ag1_feasible.py::test_cold_start_proposal_feasible_under_live_solver PASSED [  3%]
+tests/test_ag2_learning.py::test_edit_distance_drops_monotonically_with_feedback PASSED [  5%]
+tests/test_ag2_learning.py::test_no_feedback_stays_flat PASSED           [  7%]
+tests/test_ag2_learning.py::test_acceptance_metric_rises PASSED          [  9%]
+tests/test_ag5_retrain.py::test_batch_retrain_produces_multiple_rising_versions PASSED [ 11%]
+tests/test_ag5_retrain.py::test_batch_retrain_reinforces_ag2_edit_distance_drop PASSED [ 13%]
+tests/test_auth.py::test_missing_bearer_returns_401 PASSED               [ 15%]
+tests/test_auth.py::test_malformed_token_returns_401 PASSED              [ 17%]
+tests/test_auth.py::test_non_hrobot_issuer_returns_403 PASSED            [ 19%]
+tests/test_auth.py::test_tenant_derived_from_issuer_not_body PASSED      [ 21%]
+tests/test_auth.py::test_authenticated_propose_round_trips PASSED        [ 23%]
+tests/test_concurrency.py::test_concurrent_feedback_versions_unique_and_monotonic PASSED [ 25%]
+tests/test_contract_parity.py::test_optimizer_contract_reference_exists PASSED [ 27%]
+tests/test_contract_parity.py::test_models_match_field_for_field PASSED  [ 29%]
+tests/test_contract_parity.py::test_enums_match PASSED                   [ 31%]
+tests/test_demo_router.py::test_corrections_returns_scripted_manager_edits PASSED [ 33%]
+tests/test_demo_router.py::test_corrections_drive_the_edit_distance_down PASSED [ 35%]
+tests/test_demo_router.py::test_corrections_unknown_proposal_404 PASSED  [ 37%]
+tests/test_demo_router.py::test_demo_page_is_self_served_html PASSED     [ 39%]
+tests/test_endpoints.py::test_health PASSED                              [ 41%]
+tests/test_endpoints.py::test_propose_by_problem_input_id PASSED         [ 43%]
+tests/test_endpoints.py::test_propose_requires_input PASSED              [ 45%]
+tests/test_endpoints.py::test_feedback_logs_reward_and_bumps_policy PASSED [ 47%]
+tests/test_endpoints.py::test_feedback_unknown_proposal_404 PASSED       [ 49%]
+tests/test_endpoints.py::test_explain_returns_rationale_and_alternatives PASSED [ 50%]
+tests/test_endpoints.py::test_forecast_weekly_seasonality PASSED         [ 52%]
+tests/test_endpoints.py::test_policy_endpoint PASSED                     [ 54%]
+tests/test_env.py::test_random_rollout_completes PASSED                  [ 56%]
+tests/test_env.py::test_feasible_assignment_beats_unqualified PASSED     [ 58%]
+tests/test_env.py::test_unfilled_action_is_penalised_not_crashing PASSED [ 60%]
+tests/test_env.py::test_double_booking_overlap_is_a_violation PASSED     [ 62%]
+tests/test_env_manager_seam.py::test_seam_zero_weight_is_noop PASSED     [ 64%]
+tests/test_env_manager_seam.py::test_seam_rewards_manager_accepted_slot PASSED [ 66%]
+tests/test_forecast.py::test_forecast_shape_and_horizon PASSED           [ 68%]
+tests/test_forecast.py::test_weekday_peak_above_weekend_trough PASSED    [ 70%]
+tests/test_forecast.py::test_deterministic PASSED                        [ 72%]
+tests/test_heal.py::test_local_validator_flags_the_break PASSED          [ 74%]
+tests/test_heal.py::test_heal_repairs_via_live_solver PASSED             [ 76%]
+tests/test_health.py::test_health PASSED                                 [ 78%]
+tests/test_health.py::test_agent_endpoints_are_implemented PASSED        [ 80%]
+tests/test_reset.py::test_reset_returns_cold_start_gap PASSED            [ 82%]
+tests/test_reset.py::test_reset_is_tenant_scoped PASSED                  [ 84%]
+tests/test_reset.py::test_reset_is_idempotent PASSED                     [ 86%]
+tests/test_reset.py::test_reset_then_replay_converges PASSED             [ 88%]
+tests/test_retrain.py::test_retrain_records_agentpolicyversion_with_metrics_and_artifact PASSED [ 90%]
+tests/test_retrain.py::test_retrain_versions_increment PASSED            [ 92%]
+tests/test_retrain.py::test_batch_refit_folds_accumulated_feedback_from_scratch PASSED [ 94%]
+tests/test_retrain.py::test_retrain_is_tenant_isolated PASSED            [ 96%]
+tests/test_retrain.py::test_retrain_endpoint PASSED                      [ 98%]
+tests/test_tenant_isolation.py::test_feedback_and_policy_isolated_per_tenant PASSED [100%]
+
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  C:\Users\Wilk\Documents\WORKSPACE\HRobot-m2\agent-service\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================== 51 passed, 1 warning in 79.73s (0:01:19) ===================

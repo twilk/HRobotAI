@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Table, Th, Td } from '@/components/ui/table'
 import { IconPlus, IconCheck, IconClose, IconArrowRight, IconShieldCheck } from '@/components/icons'
 import { swapApi, TERMINAL_STATES, type SwapRequest } from '@/lib/swaps'
+import { grafikApi } from '@/lib/grafik'
 import { SwapBadge } from './swap-badge'
 
 const POLL_MS = 4000
@@ -111,14 +112,29 @@ export function SwapWorkspace() {
     setError(null)
     try {
       // Standalone demo shortcut. In the product this is launched from the grafik grid with the two
-      // selected shifts pre-filled (the propose-swap hook the grid provides).
+      // selected shifts pre-filled; here we pull two real shifts (different employees) from the live
+      // grafik API and create against the backend. The backend enforces that the requester shift must
+      // belong to the CALLER's own Employee (RBAC) — so this surfaces a real 403 for a user with no
+      // Employee record, exactly as the state machine intends.
+      const shifts = await grafikApi.shifts()
+      if (shifts.length === 0) throw new Error('Brak zmian w grafiku do zaproponowania zamiany.')
+      const requesterShift = shifts[0]
+      const targetShift = shifts.find((s) => s.employeeId !== requesterShift.employeeId)
       await swapApi.create({
-        requester: { label: 'nd 19.07 · 06:00–14:00 · Produkcja', employeeName: 'Jan Kowalski' },
-        target: { label: 'nd 19.07 · 14:00–22:00 · Produkcja', employeeName: 'Katarzyna Wójcik' },
-        unit: 'Produkcja',
+        requesterShiftId: requesterShift.id,
+        targetShiftId: targetShift?.id,
       })
       setProposing(false)
       await refresh()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : ''
+      setError(
+        /Required roles|Forbidden|403/.test(msg)
+          ? 'Zaproponowanie zamiany z tego widoku wymaga dostępu do grafiku (rola managera). Samodzielne zgłoszenie zamiany ze swojego grafiku dla pracownika jest w przygotowaniu.'
+          : /no employee record/i.test(msg)
+            ? 'Twoje konto nie jest powiązane z pracownikiem — zaloguj się na konto pracownika, aby proponować zamiany.'
+            : msg || 'Nie udało się utworzyć propozycji zamiany',
+      )
     } finally {
       setBusy(null)
     }

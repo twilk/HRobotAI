@@ -33,7 +33,8 @@ function makeClient() {
     },
     employee: { findUnique: jest.fn(), findMany: jest.fn() },
     leaveRequest: { findMany: jest.fn() },
-    lokalizacja: { findMany: jest.fn() },
+    lokalizacja: { findMany: jest.fn(), findUnique: jest.fn() },
+    organizationalUnit: { findMany: jest.fn() },
     userRole: { findMany: jest.fn() },
     $transaction: jest.fn(),
   }
@@ -44,6 +45,7 @@ const asClient = (c: MockClient): TenantClient => c as unknown as TenantClient
 const MANAGER: GrafikActor = { userId: 'kc-mgr', roles: [Role.MANAGER], ipAddress: '10.0.0.1' }
 const HR: GrafikActor = { userId: 'kc-hr', roles: [Role.HR], ipAddress: '10.0.0.2' }
 const ADMIN: GrafikActor = { userId: 'kc-admin', roles: [Role.ADMIN_KLIENTA], ipAddress: '10.0.0.3' }
+const PRACOWNIK: GrafikActor = { userId: 'kc-emp', roles: [Role.PRACOWNIK], ipAddress: '10.0.0.4' }
 
 describe('GrafikService', () => {
   let service: GrafikService
@@ -133,6 +135,16 @@ describe('GrafikService', () => {
       client.shift.findMany.mockClear()
       await service.listShifts(asClient(client), HR)
       expect(client.shift.findMany).toHaveBeenCalledWith(expect.not.objectContaining({ where: expect.anything() }))
+    })
+
+    it('scopes a plain PRACOWNIK list to their own shifts (no managed units)', async () => {
+      client.userRole.findMany.mockResolvedValue([]) // manages nothing
+      client.shift.findMany.mockResolvedValue([])
+
+      await service.listShifts(asClient(client), PRACOWNIK)
+      expect(client.shift.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { employee: { user: { keycloakSub: 'kc-emp' } } } }),
+      )
     })
 
     it('throws NotFound when the target employee does not exist', async () => {
@@ -252,14 +264,22 @@ describe('GrafikService', () => {
   describe('solveGrafik packing', () => {
     const ZERO_METRICS = { commuteTotal: 0, etatDeviation: 0, preferenceViolations: 0, fairnessScore: 0 }
 
-    /** Wire `$transaction` to a tx exposing shift.deleteMany/create, and return those spies. */
-    function wireTransaction(c: MockClient) {
+    /**
+     * Wire `$transaction` to a tx exposing shift.findMany (stale-AUTO lookup), shift.deleteMany/create
+     * and shiftSwapRequest.deleteMany (dependent-swap clear). `staleShifts` seeds the stale-AUTO lookup.
+     */
+    function wireTransaction(c: MockClient, staleShifts: { id: string }[] = []) {
+      const txFindMany = jest.fn().mockResolvedValue(staleShifts)
       const txDeleteMany = jest.fn().mockResolvedValue({ count: 0 })
+      const txSwapDeleteMany = jest.fn().mockResolvedValue({ count: 0 })
       const txCreate = jest.fn().mockImplementation(async (arg: { data: unknown }) => arg.data)
       c.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
-        fn({ shift: { deleteMany: txDeleteMany, create: txCreate } }),
+        fn({
+          shift: { findMany: txFindMany, deleteMany: txDeleteMany, create: txCreate },
+          shiftSwapRequest: { deleteMany: txSwapDeleteMany },
+        }),
       )
-      return { txDeleteMany, txCreate }
+      return { txFindMany, txDeleteMany, txSwapDeleteMany, txCreate }
     }
 
     it('empty-demand solve does not delete out-of-scope AUTO shifts (A1 data-loss guard)', async () => {
@@ -268,13 +288,15 @@ describe('GrafikService', () => {
       client.employee.findMany.mockResolvedValue([])
       client.lokalizacja.findMany.mockResolvedValue([])
       optimizer.solve.mockResolvedValue({ status: SolveStatus.OPTIMAL, assignments: [], unmet: [], metrics: ZERO_METRICS })
-      const { txDeleteMany } = wireTransaction(client)
+      const { txFindMany, txDeleteMany } = wireTransaction(client)
 
       await service.solveGrafik(asClient(client), ADMIN, { weekStart: '2026-07-13' })
 
-      // The delete must be scoped to an EMPTY location list → matches nothing → deletes nothing.
-      const whereArg = txDeleteMany.mock.calls[0]?.[0]?.where
+      // The stale-AUTO lookup must be scoped to an EMPTY location list → matches nothing → nothing to
+      // delete. With no stale shifts, neither the shift delete nor the swap-request clear runs.
+      const whereArg = txFindMany.mock.calls[0]?.[0]?.where
       expect(whereArg.lokalizacjaId).toEqual({ in: [] })
+      expect(txDeleteMany).not.toHaveBeenCalled()
     })
 
     it('packs existing MANUAL shifts as pinned demands (A2)', async () => {
@@ -336,6 +358,65 @@ describe('GrafikService', () => {
       expect(result.assignmentsCreated).toBe(0)
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('GHOST'))
       warn.mockRestore()
+    })
+  })
+
+  // --- Catalog name lookups (Task 3) -------------------------------------------------------------
+
+  describe('catalog name lookups', () => {
+    it('lists lokalizacje as {id,name,typ}', async () => {
+      client.lokalizacja.findMany.mockResolvedValue([{ id: 'L1', name: 'Lotnisko', typ: 'AIRPORT' }])
+      const rows = await service.listLokalizacje(asClient(client))
+      expect(client.lokalizacja.findMany).toHaveBeenCalledWith({
+        select: { id: true, name: true, typ: true },
+        orderBy: { name: 'asc' },
+      })
+      expect(rows).toEqual([{ id: 'L1', name: 'Lotnisko', typ: 'AIRPORT' }])
+    })
+
+    it('lists org units as {id,name}', async () => {
+      client.organizationalUnit.findMany.mockResolvedValue([{ id: 'U1', name: 'Region Centrum' }])
+      const rows = await service.listUnits(asClient(client))
+      expect(client.organizationalUnit.findMany).toHaveBeenCalledWith({
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      })
+      expect(rows).toEqual([{ id: 'U1', name: 'Region Centrum' }])
+    })
+  })
+
+  // --- ShiftDemand scoping (Task 4) ---------------------------------------------------------------
+
+  describe('demand scoping', () => {
+    it('returns all demands for a global actor (HR/ADMIN)', async () => {
+      client.shiftDemand.findMany.mockResolvedValue([])
+      await service.listDemands(asClient(client), HR)
+      expect(client.shiftDemand.findMany).toHaveBeenCalledWith(
+        expect.not.objectContaining({ where: expect.anything() }),
+      )
+    })
+
+    it('scopes a plain PRACOWNIK to demands at their own shift locations', async () => {
+      client.userRole.findMany.mockResolvedValue([]) // manages nothing
+      client.shift.findMany.mockResolvedValue([{ lokalizacjaId: 'L1' }, { lokalizacjaId: 'L1' }, { lokalizacjaId: 'L2' }])
+      client.shiftDemand.findMany.mockResolvedValue([])
+      await service.listDemands(asClient(client), PRACOWNIK)
+      expect(client.shiftDemand.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { lokalizacjaId: { in: ['L1', 'L2'] } } }),
+      )
+    })
+
+    it("scopes a MANAGER to demands at their managed units' staffed locations", async () => {
+      client.userRole.findMany.mockResolvedValue([{ unitId: 'unit-A' }]) // manages unit-A
+      client.shift.findMany.mockResolvedValue([{ lokalizacjaId: 'L3' }, { lokalizacjaId: 'L3' }])
+      client.shiftDemand.findMany.mockResolvedValue([])
+      await service.listDemands(asClient(client), MANAGER)
+      expect(client.shift.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { employee: { unitId: { in: ['unit-A'] } } }, select: { lokalizacjaId: true } }),
+      )
+      expect(client.shiftDemand.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { lokalizacjaId: { in: ['L3'] } } }),
+      )
     })
   })
 })
