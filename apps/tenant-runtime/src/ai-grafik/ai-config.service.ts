@@ -14,7 +14,9 @@ export interface AiConfigActor {
 
 /** Config projection returned when no row exists yet (mirrors the schema defaults). */
 export interface DefaultAiConfig {
-  autonomyLevel: (typeof AutonomyLevel)['SUGGEST_ONLY']
+  /** (2026-07-14 spec §12 Etap 2) Mirrors the `AiSchedulingConfig.autonomyLevel` column default —
+   *  see {@link AiConfigService.defaultConfig}. */
+  autonomyLevel: (typeof AutonomyLevel)['AUTO_ASK_CONSENT']
   consentTtlHours: number
   unitId: string | null
   /** (Codex P1-2) No row yet ⇒ no cap has ever been set for this unit. */
@@ -52,10 +54,11 @@ export class AiConfigService {
     return this.audit.log({ tenantClient: client, actorUserId: actor.userId, action: 'ai_config.updated', entityType: 'AiSchedulingConfig', entityId: id, payload, ipAddress: actor.ipAddress })
   }
 
-  /** The synthetic default a caller sees before any config row has been persisted for `unitId`. */
+  /** The synthetic default a caller sees before any config row has been persisted for `unitId`
+   *  (2026-07-14 spec §12 Etap 2: mirrors the schema column default, AUTO_ASK_CONSENT). */
   private defaultConfig(unitId: string | null): DefaultAiConfig {
     return {
-      autonomyLevel: AutonomyLevel.SUGGEST_ONLY,
+      autonomyLevel: AutonomyLevel.AUTO_ASK_CONSENT,
       consentTtlHours: 24,
       unitId,
       budgetWeeklyCap: null,
@@ -70,7 +73,7 @@ export class AiConfigService {
    * Read the config for `unitId` (undefined = the tenant-wide default row). A GLOBAL actor (HR/ADMIN)
    * may read any unit; a MANAGER only a unit they manage — anything else (including an undefined unit
    * for a MANAGER, which is never in their managed set) is a 403. When no row exists yet, a synthetic
-   * SUGGEST_ONLY default is returned rather than 404.
+   * AUTO_ASK_CONSENT default is returned rather than 404 (2026-07-14 spec §12 Etap 2).
    */
   async getConfig(client: TenantClient, actor: AiConfigActor, unitId?: string): Promise<unknown> {
     if (!isGlobal(actor.roles)) {

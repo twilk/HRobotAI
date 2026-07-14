@@ -122,19 +122,18 @@ export class AiProposalService {
     // the SAME insert (no follow-up update, no transaction needed for the create).
     const candidateSeeds = ranked.map((c) => ({ id: randomUUID(), candidate: c }))
 
-    // Δcost hook (Codex P1-6): computed for the top feasible candidate regardless of autonomy level
-    // or reachability — a DRAFT proposal still shows Δcost for the human to weigh. `null` (not 0)
-    // whenever either side's rate is missing.
-    const estimatedCost = topFeasible
-      ? await this.computeEstimatedCost(client, shift, topFeasible.employeeId, shift.employeeId)
-      : null
-
-    // --- Derive the initial state (autonomy-gated), all through the pure transition machine. -------
+    // --- Derive the initial state (autonomy-gated) AND the candidate whose Δcost becomes
+    // AiProposal.estimatedCost, all through the pure transition machine. (2026-07-14 spec §12 Etap
+    // 2): the COSTED candidate is the ACTIVE one when the autonomy level actually picks one
+    // (AUTO_ASK_CONSENT/AUTO_COMMIT_ON_APPROVAL — which may NOT be `topFeasible`, see Codex P1-3
+    // below), else the top-ranked feasible candidate for a human-reviewed DRAFT. An escalation with
+    // no active candidate costs nothing (`costCandidate` stays undefined). ---------------------------
     let state: AiProposalState
     let auditAction: string
     let escalationReason: string | undefined
     let activeSeedId: string | undefined
     let expiresAt: Date | undefined
+    let costCandidate: RankedCandidate | undefined
 
     if (feasible.length === 0) {
       state = nextProposalState(AiProposalState.DRAFT, AiProposalAction.DirectEscalate)
@@ -152,16 +151,30 @@ export class AiProposalService {
         auditAction = 'ai_proposal.created'
         activeSeedId = candidateSeeds.find((s) => s.candidate.employeeId === active.employeeId)!.id
         expiresAt = new Date(Date.now() + config.consentTtlHours * 60 * 60 * 1000)
+        costCandidate = active
       } else {
         state = nextProposalState(AiProposalState.DRAFT, AiProposalAction.DirectEscalate)
         auditAction = 'ai_proposal.escalated'
         escalationReason = 'EMPLOYEE_UNREACHABLE'
       }
     } else {
-      // SUGGEST_ONLY / AUTO_NOTIFY: a human drives the next step from DRAFT.
+      // SUGGEST_ONLY / AUTO_NOTIFY: a human drives the next step from DRAFT, shown Δcost for the
+      // top-ranked (cheapest total) feasible candidate.
       state = AiProposalState.DRAFT
       auditAction = 'ai_proposal.created'
+      costCandidate = topFeasible
     }
+
+    // Δcost hook (Codex P1-6, extended P2-6): labour Δ (candidate−vacated) for `costCandidate` only —
+    // `null` (not 0) whenever either side's rate is missing. `estimatedCost` on the proposal is the
+    // TOTAL (labour Δ + that SAME candidate's travel cost, already resolved by the ranking engine) so
+    // the manager sees one bottom-line number; the per-candidate breakdown (travelKm/Minutes/Cost) is
+    // persisted separately below via `candidateData` so the UI can always render "praca + dojazd =
+    // razem" even though this total never overwrites/loses either component (2026-07-14 spec §12).
+    const labourDelta = costCandidate
+      ? await this.computeEstimatedCost(client, shift, costCandidate.employeeId, shift.employeeId)
+      : null
+    const estimatedCost = labourDelta != null ? labourDelta.add(costCandidate?.travelCost ?? 0) : null
 
     const now = new Date()
     const proposal = await client.aiProposal.create({
@@ -170,6 +183,10 @@ export class AiProposalService {
         state,
         shiftId,
         vacatedEmployeeId: shift.employeeId,
+        // (Codex P1-2, §12 Etap 2) The vacated shift's ORIGINAL unit, frozen here and NEVER
+        // reassigned — every later authz/audit path reads THIS column, not the shift's current
+        // employee's unit, so a committed cross-unit replacement never "moves" proposal ownership.
+        owningUnitId: unitId,
         ...(reason != null ? { reason } : {}),
         ...(activeSeedId != null ? { activeCandidateId: activeSeedId } : {}),
         ...(expiresAt != null ? { expiresAt } : {}),
@@ -184,6 +201,7 @@ export class AiProposalService {
     await this.writeAudit(client, actor, auditAction, proposal.id, {
       shiftId,
       vacatedEmployeeId: shift.employeeId,
+      owningUnitId: unitId,
       state,
       candidateCount: ranked.length,
       feasibleCount: feasible.length,
@@ -195,13 +213,17 @@ export class AiProposalService {
   }
 
   /**
-   * Δcost for the top feasible candidate replacing the vacated employee on this shift (Codex P1-6):
-   * cost(candidate) − cost(vacated) for the shift's hours. The ranked-candidate shape carries NO
-   * cost inputs (only `employeeId`/`feasible`/`rank`/`score`/`reason`), so this ALWAYS re-reads
-   * `position`/`employmentType` for both employees in one query, then looks up both rates in a
-   * SECOND single query via {@link CostService.findRatesForPairs}. Returns `null` (never 0) the
-   * moment either side's rate is missing — a positive result means the candidate is MORE expensive
-   * than the vacated employee, negative means a saving.
+   * Labour Δcost for the given candidate replacing the vacated employee on this shift (Codex P1-6):
+   * cost(candidate) − cost(vacated) for the shift's hours. `costCandidate` (2026-07-14 spec §12 Etap
+   * 2) is whichever `RankedCandidate` {@link createReplacement} decided is the one to cost — the
+   * ACTIVE candidate when AUTO_ASK_CONSENT/AUTO_COMMIT_ON_APPROVAL picked one, else the top-ranked
+   * feasible candidate for a human-reviewed DRAFT — NEVER just "rank 1" unconditionally. This method
+   * itself carries NO cost inputs (only ids), so it ALWAYS re-reads `position`/`employmentType` for
+   * both employees in one query, then looks up both rates in a SECOND single query via
+   * {@link CostService.findRatesForPairs}. Returns `null` (never 0) the moment either side's rate is
+   * missing — a positive result means the candidate is MORE expensive than the vacated employee,
+   * negative means a saving. Travel cost is DELIBERATELY excluded here (Codex P2-6) — the caller adds
+   * the SAME candidate's `RankedCandidate.travelCost` on top for the proposal's total.
    */
   private async computeEstimatedCost(
     client: TenantClient,
@@ -249,9 +271,11 @@ export class AiProposalService {
    * this NEVER skips consent or manager approval — it only ever moves DRAFT → PENDING_EMPLOYEE_CONSENT
    * (human-in-the-loop preserved) or, when no feasible candidate remains, DRAFT → ESCALATED.
    *
-   * Authorize: GLOBAL (HR/ADMIN) or manages the shift's unit, else 403. Wrong lifecycle state (not
-   * DRAFT) is a 409. The proposal flip is an optimistic-locked `updateMany` guarded on `state: DRAFT`
-   * (same idiom as every other transition in this service).
+   * Authorize: GLOBAL (HR/ADMIN) or manages the proposal's FROZEN `owningUnitId` (Codex P1-2,
+   * 2026-07-14 spec §12 Etap 2 — NEVER the vacated shift's current employee unit, which a committed
+   * cross-unit replacement can have since moved), else 403. Wrong lifecycle state (not DRAFT) is a
+   * 409. The proposal flip is an optimistic-locked `updateMany` guarded on `state: DRAFT` (same idiom
+   * as every other transition in this service).
    */
   async requestConsent(client: TenantClient, actor: AiConfigActor, proposalId: string): Promise<AiProposalRow> {
     const proposal = await client.aiProposal.findUnique({
@@ -260,11 +284,7 @@ export class AiProposalService {
     })
     if (!proposal) throw new NotFoundException('Proposal not found')
 
-    const shift = await client.shift.findUnique({
-      where: { id: proposal.shiftId },
-      select: { employee: { select: { unitId: true } } },
-    })
-    const unitId = shift?.employee.unitId
+    const unitId = proposal.owningUnitId
     if (!isGlobal(actor.roles)) {
       const managed = await managedUnitIds(client, actor.userId)
       if (unitId == null || !managed.includes(unitId)) {
@@ -287,13 +307,14 @@ export class AiProposalService {
       if (flipped.count === 0) throw new ConflictException('Proposal changed concurrently')
       await this.writeAudit(client, actor, 'ai_proposal.escalated', proposal.id, {
         shiftId: proposal.shiftId,
+        owningUnitId: unitId,
         reason: 'NO_FEASIBLE_CANDIDATE',
       })
       return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: { candidates: true } })
     }
 
     const now = new Date()
-    const config = (await this.aiConfig.getConfig(client, actor, unitId)) as ResolvedConfig
+    const config = (await this.aiConfig.getConfig(client, actor, unitId ?? undefined)) as ResolvedConfig
     const expiresAt = new Date(now.getTime() + config.consentTtlHours * 60 * 60 * 1000)
     const pending = nextProposalState(AiProposalState.DRAFT, AiProposalAction.AskConsent)
 
@@ -319,7 +340,12 @@ export class AiProposalService {
     return client.aiProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: { candidates: true } })
   }
 
-  /** One candidate insert row; the active (consent-path) candidate is stamped PENDING at `now`. */
+  /** One candidate insert row; the active (consent-path) candidate is stamped PENDING at `now`.
+   *  (2026-07-14 spec §12 Etap 2) `travelKm`/`travelMinutes`/`travelCost` are copied straight FROM
+   *  the ranked candidate — the engine ({@link ReplacementService}) already computed them, so this
+   *  never recomputes travel; it just persists the breakdown for every candidate (local ones carry
+   *  0s, not null, per the engine's contract) so the UI can render "praca + dojazd" per row, not just
+   *  for the active/costed one. */
   private candidateData(
     id: string,
     candidate: RankedCandidate,
@@ -334,6 +360,9 @@ export class AiProposalService {
       feasible: candidate.feasible,
       ...(candidate.reason != null ? { reason: candidate.reason } : {}),
       ...(candidate.score != null ? { score: candidate.score } : {}),
+      ...(candidate.travelKm != null ? { travelKm: candidate.travelKm } : {}),
+      ...(candidate.travelMinutes != null ? { travelMinutes: candidate.travelMinutes } : {}),
+      ...(candidate.travelCost != null ? { travelCost: candidate.travelCost } : {}),
       consentState: isActive ? ConsentState.PENDING : ConsentState.NOT_ASKED,
       ...(isActive ? { consentRequestedAt: now } : {}),
     }
@@ -341,9 +370,12 @@ export class AiProposalService {
 
   /**
    * List proposals for the actor. A GLOBAL actor sees every proposal; a MANAGER only those whose
-   * vacated shift sits in a unit they manage. A plain employee (`mine: true`) sees ONLY proposals
-   * where THEY are the active candidate whose consent is still PENDING and the proposal is in
-   * PENDING_EMPLOYEE_CONSENT. An optional `state` narrows the manager/global view.
+   * proposal `owningUnitId` — the vacated shift's ORIGINAL unit, FROZEN at creation (Codex P1-2,
+   * 2026-07-14 spec §12 Etap 2) — is one they manage. NOT the shift's current employee unit: a
+   * committed cross-unit replacement never moves a proposal into the candidate's unit's view. A plain
+   * employee (`mine: true`) sees ONLY proposals where THEY are the active candidate whose consent is
+   * still PENDING and the proposal is in PENDING_EMPLOYEE_CONSENT. An optional `state` narrows the
+   * manager/global view.
    */
   async list(client: TenantClient, actor: AiConfigActor, filter: ProposalListFilter = {}): Promise<AiProposalRow[]> {
     const global = isGlobal(actor.roles)
@@ -351,7 +383,7 @@ export class AiProposalService {
 
     if (global || managed.length > 0) {
       const where: TenantPrisma.AiProposalWhereInput = {}
-      if (!global) where.shift = { employee: { unitId: { in: managed } } }
+      if (!global) where.owningUnitId = { in: managed }
       if (filter.state != null) where.state = filter.state as AiProposalState
       const rows = await client.aiProposal.findMany({ where, include: { candidates: true } })
       // Fix 2 — lazy expiry: a stale PENDING_EMPLOYEE_CONSENT row never shows as still-actionable.
@@ -386,13 +418,12 @@ export class AiProposalService {
 
     if (isGlobal(actor.roles)) return proposal
 
+    // (Codex P1-2, §12 Etap 2) Scope by the FROZEN `owningUnitId`, not the vacated shift's CURRENT
+    // employee unit — a committed cross-unit replacement never moves the proposal into the
+    // candidate's unit's view.
     const managed = await managedUnitIds(client, actor.userId)
-    if (managed.length > 0) {
-      const shift = await client.shift.findUnique({
-        where: { id: proposal.shiftId },
-        select: { employee: { select: { unitId: true } } },
-      })
-      if (shift && managed.includes(shift.employee.unitId)) return proposal
+    if (managed.length > 0 && proposal.owningUnitId != null && managed.includes(proposal.owningUnitId)) {
+      return proposal
     }
 
     // Employee path: only their own active PENDING consent request is visible.
@@ -592,7 +623,9 @@ export class AiProposalService {
 
   /**
    * A manager decides a PENDING_MANAGER proposal (Task 1.4). The actor must be GLOBAL (HR/ADMIN) or
-   * manage the vacated shift's unit, else a 403; a wrong lifecycle state is a 409.
+   * manage the proposal's FROZEN `owningUnitId` (Codex P1-2, 2026-07-14 spec §12 Etap 2 — the vacated
+   * shift's ORIGINAL unit, never the current employee's, which a committed cross-unit replacement can
+   * have since moved), else a 403; a wrong lifecycle state is a 409.
    *
    *   - reject  → REJECTED, `decidedByManagerId` recorded (audit `ai_proposal.rejected`).
    *   - approve → the SECURITY-CRITICAL commit: the GRANTED candidate is RE-VETTED through the
@@ -614,12 +647,8 @@ export class AiProposalService {
     })
     if (!proposal) throw new NotFoundException('Proposal not found')
 
-    // Authorize against the vacated shift's unit.
-    const shift = await client.shift.findUnique({
-      where: { id: proposal.shiftId },
-      select: { employee: { select: { unitId: true } } },
-    })
-    const unitId = shift?.employee.unitId
+    // Authorize against the FROZEN owning unit — never the vacated shift's current employee unit.
+    const unitId = proposal.owningUnitId
     if (!isGlobal(actor.roles)) {
       const managed = await managedUnitIds(client, actor.userId)
       if (unitId == null || !managed.includes(unitId)) {

@@ -53,7 +53,7 @@ describe('AiConfigService', () => {
 
       expect(client.aiSchedulingConfig.findFirst).toHaveBeenCalledWith({ where: { unitId: null } })
       expect(result).toEqual({
-        autonomyLevel: AutonomyLevel.SUGGEST_ONLY,
+        autonomyLevel: AutonomyLevel.AUTO_ASK_CONSENT,
         consentTtlHours: 24,
         unitId: null,
         budgetWeeklyCap: null,
@@ -71,14 +71,14 @@ describe('AiConfigService', () => {
       expect(client.aiSchedulingConfig.findFirst).not.toHaveBeenCalled()
     })
 
-    it('returns the SUGGEST_ONLY default when no row exists yet for an in-scope MANAGER', async () => {
+    it('returns the AUTO_ASK_CONSENT default when no row exists yet for an in-scope MANAGER', async () => {
       client.userRole.findMany.mockResolvedValue([{ unitId: 'unit-A' }])
       client.aiSchedulingConfig.findFirst.mockResolvedValue(null)
 
       const result = await service.getConfig(asClient(client), MANAGER, 'unit-A')
 
       expect(result).toEqual({
-        autonomyLevel: AutonomyLevel.SUGGEST_ONLY,
+        autonomyLevel: AutonomyLevel.AUTO_ASK_CONSENT,
         consentTtlHours: 24,
         unitId: 'unit-A',
         budgetWeeklyCap: null,

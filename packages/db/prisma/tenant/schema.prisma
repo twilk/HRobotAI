@@ -373,7 +373,12 @@ model AiSchedulingConfig {
   id              String             @id @default(uuid())
   unitId          String?            @map("unit_id")
   unit            OrganizationalUnit? @relation(fields: [unitId], references: [id])
-  autonomyLevel   AutonomyLevel      @default(SUGGEST_ONLY) @map("autonomy_level")
+  /// (2026-07-14 spec §12 Etap 2) Default AUTO_ASK_CONSENT — a fresh unit's config asks the top
+  /// reachable feasible candidate for consent immediately rather than waiting on a human to push a
+  /// DRAFT proposal forward (SUGGEST_ONLY). Config-level default only; never hardcoded in the
+  /// engine/service logic, which always reads THIS column (or the synthetic default mirroring it —
+  /// see `AiConfigService.defaultConfig`).
+  autonomyLevel   AutonomyLevel      @default(AUTO_ASK_CONSENT) @map("autonomy_level")
   quietHoursStart String?            @map("quiet_hours_start")
   quietHoursEnd   String?            @map("quiet_hours_end")
   consentTtlHours Int                @default(24) @map("consent_ttl_hours")

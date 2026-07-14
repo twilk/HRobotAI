@@ -63,6 +63,7 @@ function makeClient() {
         state: data.state,
         shiftId: data.shiftId,
         vacatedEmployeeId: data.vacatedEmployeeId,
+        owningUnitId: data.owningUnitId ?? null,
         reason: data.reason ?? null,
         activeCandidateId: data.activeCandidateId ?? null,
         expiresAt: data.expiresAt ?? null,
@@ -391,6 +392,115 @@ describe('AiProposalService.createReplacement — Δcost hook (Codex P1-6)', () 
     const data = client.aiProposal.create.mock.calls[0][0].data
     expect(data.estimatedCost).toBeUndefined()
   })
+
+  it('sets owningUnitId to the vacated shift\'s unit at creation time', async () => {
+    const client = makeClient()
+    const { service } = makeService({ ranked: [infeasible('a')] })
+
+    await service.createReplacement(as(client), HR, SHIFT_ID)
+
+    const data = client.aiProposal.create.mock.calls[0][0].data
+    expect(data.owningUnitId).toBe(UNIT)
+  })
+})
+
+// --- 2026-07-14 spec §12 Etap 2: cost breakdown (labour + travel) --------------------------------
+
+describe('AiProposalService.createReplacement — travel Δcost breakdown (2026-07-14 spec §12 Etap 2)', () => {
+  it('estimatedCost = labour Δ + travelCost of the SAME (top feasible) candidate under SUGGEST_ONLY', async () => {
+    const client = makeClient()
+    client.employee.findMany.mockResolvedValue([
+      employeeRow('c1', 'Kasjer', EmploymentType.UMOWA_O_PRACE),
+      employeeRow(VACATED, 'Kucharz', EmploymentType.B2B),
+    ])
+    const crossUnitCandidate: RankedCandidate = {
+      ...feasible('c1', 1),
+      unitId: 'unit-north',
+      travelKm: 7,
+      travelMinutes: 8,
+      travelCost: 16.1,
+    }
+    const { service, cost } = makeService({ ranked: [crossUnitCandidate], autonomyLevel: AutonomyLevel.SUGGEST_ONLY })
+    ;(cost.findRatesForPairs as jest.Mock).mockResolvedValue([
+      costRateRow('Kasjer', EmploymentType.UMOWA_O_PRACE, '20'),
+      costRateRow('Kucharz', EmploymentType.B2B, '15'),
+    ])
+
+    await service.createReplacement(as(client), HR, SHIFT_ID)
+
+    const data = client.aiProposal.create.mock.calls[0][0].data
+    // labour: (20×8h) − (15×8h) = 40.00; +16.10 travel = 56.10 total, breakdown NOT lost (see next test).
+    expect(data.estimatedCost).toBe('56.10')
+  })
+
+  it('persists per-candidate travelKm/travelMinutes/travelCost straight from the ranked candidate (never recomputed)', async () => {
+    const client = makeClient()
+    const local: RankedCandidate = { ...feasible('local-1', 1), travelKm: 0, travelMinutes: 0, travelCost: 0 }
+    const crossUnit: RankedCandidate = {
+      ...feasible('cross-1', 2),
+      travelKm: 287,
+      travelMinutes: 287,
+      travelCost: 660.1,
+    }
+    const rejectedCrossUnit: RankedCandidate = {
+      employeeId: 'cross-2',
+      feasible: false,
+      rank: 0,
+      reason: 'H-TRAVEL: too far',
+      travelKm: 512,
+      travelMinutes: 512,
+      travelCost: 0,
+    }
+    const { service } = makeService({ ranked: [local, crossUnit, rejectedCrossUnit], autonomyLevel: AutonomyLevel.SUGGEST_ONLY })
+
+    await service.createReplacement(as(client), HR, SHIFT_ID)
+
+    const rows = client.aiProposal.create.mock.calls[0][0].data.candidates.create as Array<
+      Record<string, unknown>
+    >
+    const localRow = rows.find((r) => r.employeeId === 'local-1')!
+    expect(localRow.travelKm).toBe(0)
+    expect(localRow.travelMinutes).toBe(0)
+    expect(localRow.travelCost).toBe(0)
+    const crossRow = rows.find((r) => r.employeeId === 'cross-1')!
+    expect(crossRow.travelKm).toBe(287)
+    expect(crossRow.travelMinutes).toBe(287)
+    expect(crossRow.travelCost).toBe(660.1)
+    const rejectedRow = rows.find((r) => r.employeeId === 'cross-2')!
+    expect(rejectedRow.travelKm).toBe(512)
+    expect(rejectedRow.feasible).toBe(false)
+  })
+
+  it('AUTO_ASK_CONSENT: Δcost is computed for the ACTIVE (first reachable) candidate, NOT unconditionally topFeasible (Codex P1-3)', async () => {
+    const client = makeClient()
+    // c1 ranks first (cheapest total) but is UNREACHABLE; c2 is reachable and becomes active — its
+    // OWN labour+travel numbers must drive estimatedCost, not c1's.
+    client.employee.findMany.mockResolvedValue([
+      employeeRow('c2', 'Kasjer', EmploymentType.UMOWA_O_PRACE),
+      employeeRow(VACATED, 'Kucharz', EmploymentType.B2B),
+    ])
+    const unreachableCheap: RankedCandidate = { ...feasible('c1', 1, 0, false), travelKm: 4, travelMinutes: 5, travelCost: 9.2 }
+    const reachableActive: RankedCandidate = { ...feasible('c2', 2, 0, true), travelKm: 20, travelMinutes: 22, travelCost: 46 }
+    const { service, cost } = makeService({
+      ranked: [unreachableCheap, reachableActive],
+      autonomyLevel: AutonomyLevel.AUTO_ASK_CONSENT,
+    })
+    ;(cost.findRatesForPairs as jest.Mock).mockResolvedValue([
+      costRateRow('Kasjer', EmploymentType.UMOWA_O_PRACE, '20'),
+      costRateRow('Kucharz', EmploymentType.B2B, '15'),
+    ])
+
+    await service.createReplacement(as(client), HR, SHIFT_ID)
+
+    // Only c2 (the active candidate) is looked up for labour Δ — never c1.
+    expect(client.employee.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ['c2', VACATED] } },
+      select: { id: true, position: true, employmentType: true },
+    })
+    const data = client.aiProposal.create.mock.calls[0][0].data
+    // labour: (20×8h) − (15×8h) = 40.00; + c2's OWN travel (46) = 86.00.
+    expect(data.estimatedCost).toBe('86.00')
+  })
 })
 
 // --- Fix 1: DRAFT -> request-consent manager action --------------------------------------------
@@ -401,6 +511,7 @@ function draftProposal(overrides: Record<string, unknown> = {}) {
     state: AiProposalState.DRAFT,
     shiftId: SHIFT_ID,
     vacatedEmployeeId: VACATED,
+    owningUnitId: UNIT,
     activeCandidateId: null,
     candidates: [
       { id: 'cand-1', employeeId: 'emp-c1', rank: 1, feasible: true, consentState: ConsentState.NOT_ASKED },
@@ -499,6 +610,34 @@ describe('AiProposalService.requestConsent', () => {
     await expect(service.requestConsent(as(client), MANAGER, 'prop-1')).rejects.toThrow(ForbiddenException)
     expect(client.$transaction).not.toHaveBeenCalled()
   })
+
+  it('(Codex P1-2) authorizes by the FROZEN owningUnitId alone — no shift lookup at all', async () => {
+    const client = makeClient()
+    client.aiProposal.findUnique.mockResolvedValue(draftProposal())
+    client.aiProposal.findUniqueOrThrow.mockResolvedValue({
+      id: 'prop-1',
+      state: AiProposalState.PENDING_EMPLOYEE_CONSENT,
+      candidates: [],
+    })
+    client.userRole.findMany.mockResolvedValue([{ unitId: UNIT }])
+    const { service } = makeService()
+
+    await service.requestConsent(as(client), MANAGER, 'prop-1')
+
+    expect(client.shift.findUnique).not.toHaveBeenCalled()
+  })
+
+  it('(Codex P1-2) a MANAGER outside the FROZEN owningUnitId is forbidden even if it manages the vacated shift', async () => {
+    const client = makeClient()
+    // owningUnitId is a DIFFERENT unit than the manager's — a cross-unit-reassigned shift's CURRENT
+    // employee unit must never re-open approval scope for that manager.
+    client.aiProposal.findUnique.mockResolvedValue(draftProposal({ owningUnitId: 'unit-B' }))
+    client.userRole.findMany.mockResolvedValue([{ unitId: UNIT }])
+    const { service } = makeService()
+
+    await expect(service.requestConsent(as(client), MANAGER, 'prop-1')).rejects.toThrow(ForbiddenException)
+    expect(client.$transaction).not.toHaveBeenCalled()
+  })
 })
 
 describe('AiProposalService.list', () => {
@@ -511,7 +650,7 @@ describe('AiProposalService.list', () => {
     expect(client.aiProposal.findMany).toHaveBeenCalledWith({ where: {}, include: { candidates: true } })
   })
 
-  it('a MANAGER is scoped to their managed units, optionally narrowed by state', async () => {
+  it('a MANAGER is scoped to their managed units (by owningUnitId, Codex P1-2), optionally narrowed by state', async () => {
     const client = makeClient()
     client.userRole.findMany.mockResolvedValue([{ unitId: UNIT }])
     const { service } = makeService()
@@ -519,7 +658,7 @@ describe('AiProposalService.list', () => {
     await service.list(as(client), MANAGER, { state: AiProposalState.DRAFT })
 
     expect(client.aiProposal.findMany).toHaveBeenCalledWith({
-      where: { shift: { employee: { unitId: { in: [UNIT] } } }, state: AiProposalState.DRAFT },
+      where: { owningUnitId: { in: [UNIT] }, state: AiProposalState.DRAFT },
       include: { candidates: true },
     })
   })
@@ -580,6 +719,29 @@ describe('AiProposalService.getById', () => {
     expect(await service.getById(as(client), HR, 'p1')).toBe(proposal)
   })
 
+  it('(Codex P1-2) a MANAGER reads by the FROZEN owningUnitId alone — no shift lookup at all', async () => {
+    const client = makeClient()
+    client.userRole.findMany.mockResolvedValue([{ unitId: UNIT }])
+    const proposal = { id: 'p1', state: AiProposalState.DRAFT, shiftId: SHIFT_ID, owningUnitId: UNIT, candidates: [] }
+    client.aiProposal.findUnique.mockResolvedValue(proposal)
+    const { service } = makeService()
+
+    expect(await service.getById(as(client), MANAGER, 'p1')).toBe(proposal)
+    expect(client.shift.findUnique).not.toHaveBeenCalled()
+  })
+
+  it('(Codex P1-2) a MANAGER outside the FROZEN owningUnitId is forbidden even if it manages the vacated shift', async () => {
+    const client = makeClient()
+    client.userRole.findMany.mockResolvedValue([{ unitId: UNIT }])
+    // owningUnitId is a DIFFERENT unit than the manager's — simulates a cross-unit-reassigned shift
+    // whose CURRENT employee happens to sit in UNIT, but the proposal's ownership never moved there.
+    const proposal = { id: 'p1', state: AiProposalState.DRAFT, shiftId: SHIFT_ID, owningUnitId: 'unit-B', candidates: [] }
+    client.aiProposal.findUnique.mockResolvedValue(proposal)
+    const { service } = makeService()
+
+    await expect(service.getById(as(client), MANAGER, 'p1')).rejects.toThrow(ForbiddenException)
+  })
+
   it('forbids an employee who is not the active PENDING candidate', async () => {
     const client = makeClient()
     client.aiProposal.findUnique.mockResolvedValue({
@@ -608,6 +770,7 @@ function pendingConsentProposal(overrides: Record<string, unknown> = {}) {
     state: AiProposalState.PENDING_EMPLOYEE_CONSENT,
     shiftId: SHIFT_ID,
     vacatedEmployeeId: VACATED,
+    owningUnitId: UNIT,
     activeCandidateId: 'cand-1',
     candidates: [
       { id: 'cand-1', employeeId: C1, rank: 1, feasible: true, consentState: ConsentState.PENDING },
@@ -624,6 +787,7 @@ function pendingManagerProposal(overrides: Record<string, unknown> = {}) {
     state: AiProposalState.PENDING_MANAGER,
     shiftId: SHIFT_ID,
     vacatedEmployeeId: VACATED,
+    owningUnitId: UNIT,
     activeCandidateId: 'cand-1',
     candidates: [
       { id: 'cand-1', employeeId: C1, rank: 1, feasible: true, consentState: ConsentState.GRANTED },
@@ -850,6 +1014,31 @@ describe('AiProposalService.managerDecision', () => {
     const client = makeClient()
     client.aiProposal.findUnique.mockResolvedValue(pendingManagerProposal())
     client.userRole.findMany.mockResolvedValue([{ unitId: 'other-unit' }])
+    const { service } = makeService()
+
+    await expect(service.managerDecision(as(client), MANAGER, 'prop-1', { approve: true })).rejects.toThrow(
+      ForbiddenException,
+    )
+    expect(client.$transaction).not.toHaveBeenCalled()
+  })
+
+  it('(Codex P1-2) authorizes by the FROZEN owningUnitId alone — no shift lookup at all', async () => {
+    const client = makeClient()
+    client.aiProposal.findUnique.mockResolvedValue(pendingManagerProposal())
+    client.userRole.findMany.mockResolvedValue([{ unitId: UNIT }])
+    const { service } = makeService({ feasible: true })
+
+    await service.managerDecision(as(client), MANAGER, 'prop-1', { approve: false })
+
+    expect(client.shift.findUnique).not.toHaveBeenCalled()
+  })
+
+  it('(Codex P1-2) a MANAGER outside the FROZEN owningUnitId is forbidden even if it manages the vacated shift', async () => {
+    const client = makeClient()
+    // owningUnitId is a DIFFERENT unit than the manager's — a cross-unit-reassigned shift's CURRENT
+    // employee unit must never re-open approval scope for that manager.
+    client.aiProposal.findUnique.mockResolvedValue(pendingManagerProposal({ owningUnitId: 'unit-B' }))
+    client.userRole.findMany.mockResolvedValue([{ unitId: UNIT }])
     const { service } = makeService()
 
     await expect(service.managerDecision(as(client), MANAGER, 'prop-1', { approve: true })).rejects.toThrow(
