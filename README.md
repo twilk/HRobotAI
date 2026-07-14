@@ -72,7 +72,8 @@ state machine (`CREATE_DB → RUN_MIGRATIONS → SEED → KEYCLOAK_SETUP → DON
 
 ```bash
 pnpm build     # turbo: packages -> both apps
-pnpm test      # 114 unit tests (shared 13, config 5, db 24, control-plane 30, tenant-runtime 42)
+pnpm test      # 679 unit/integration tests (shared 56, config 5, db 46, control-plane 30, tenant-runtime 542)
+               # web-kit adds 220 vitest (docs/design/web-kit: npx vitest run)
 pnpm lint
 ```
 
@@ -87,12 +88,15 @@ only the backing services and never collides with host apps on :3000 / :3001.
 
 ## Run the M2 demo (4Mobility)
 
-The Grafik + Agent demo runs on synthetic data (tenant `staging`, realm `hrobot-staging`).
-Full walkthrough + talking points: `data/m2-evidence/demo-scenario-4mobility.md`.
+The demo runs on synthetic data (tenant `staging`, realm `hrobot-staging`) and covers **Grafik + AI**
+plus the five M2 modules: **Wnioski · Ustawienia · Dostępy · Użytkownicy · Koszty**.
+- Grafik/AI walkthrough + talking points: `data/m2-evidence/demo-scenario-4mobility.md`.
+- M2 modules walkthrough (user story / actions / expected / proof, across all 3 roles):
+  `docs/demo/M2-demo-walkthrough.md`.
 
 ```bash
 # One command: stack up → wait healthy → rebuild the demo realm (+ sync keycloak_sub) →
-# seed the J5 pending swap. Idempotent; re-run after any "Generuj grafik".
+# seed the J5 pending swap → apply the M2 module schema + demo data. Idempotent; re-run any time.
 node scripts/demo-up.mjs
 
 # Then the demo UI (a host Node process, NOT in compose — forces the correct KEYCLOAK_* +
@@ -104,8 +108,10 @@ cd docs/design/web-kit && node start-prod.mjs      # http://localhost:5601
 
 `demo-up.mjs` wraps `docker compose --profile full up -d` plus `scripts/seed-keycloak-demo.mjs`
 (the dev Keycloak runs start-dev on an ephemeral H2 store, so the realm does NOT survive a
-container recreate — this rebuilds it) and `scripts/seed-demo-swap.sql`. Run those individually
-if you need to.
+container recreate — this rebuilds it), `scripts/seed-demo-swap.sql`, and the M2 step:
+`scripts/apply-m2-tenant-schema.sql` (idempotent schema patch + ownership fix) then
+`scripts/seed-demo-m2-modules.sql` (company, cost rates, access grants, leave decisions, users).
+Run those individually if you need to.
 
 The tenant DB is seeded with a coherent **June–September 2026** dataset (36 employees, ~830
 solver-generated shifts, clustered summer leave, one intentionally INFEASIBLE week — Sep 14, all
@@ -130,3 +136,9 @@ Logins (real gate on :5601 → `/login`): `demo` / `demo-staging-2026` (ADMIN, f
   The dev Keycloak has no mounted volume, so **any** `docker compose down` (even without `-v`)
   drops every realm. After a down/recreate, re-provision tenants (or, for the demo realm, re-run
   `node scripts/seed-keycloak-demo.mjs`).
+- **Tenant migration ownership gotcha:** a fresh tenant gets every migration via the provisioning
+  `RUN_MIGRATIONS` step (`prisma migrate deploy` as the tenant app role → objects owned correctly).
+  But if you hand-apply a migration to an **existing** tenant as `postgres` (e.g. patching the demo
+  tenant), the new tables/types are owned by `postgres` and the app role (`hu_<tenant>`) gets
+  `permission denied` (42501). Fix: `ALTER TABLE/TYPE <obj> OWNER TO hu_<tenant>`. `demo-up.mjs`
+  does this automatically for the M2 objects; `apply-m2-tenant-schema.sql` is the idempotent patch.

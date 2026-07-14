@@ -56,6 +56,29 @@ async function waitFor(name, url, ok) {
   throw new Error(`timed out waiting for ${name} at ${url}`)
 }
 
+/** Mint an admin token from the demo realm and decode its `sub`. Keycloak reassigns user ids on
+ *  every realm rebuild, so the M2 seed's admin User row must be re-pointed to the live id. */
+async function resolveAdminSub() {
+  try {
+    const res = await fetch(`${KC}/realms/hrobot-staging/protocol/openid-connect/token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'password',
+        client_id: 'hrobot-web',
+        username: 'demo',
+        password: 'demo-staging-2026',
+      }),
+    })
+    if (!res.ok) return null
+    const { access_token } = await res.json()
+    const payload = JSON.parse(Buffer.from(access_token.split('.')[1], 'base64url').toString('utf8'))
+    return typeof payload.sub === 'string' ? payload.sub : null
+  } catch {
+    return null
+  }
+}
+
 async function main() {
   step('docker compose --profile full up -d')
   run('docker', ['compose', '-p', 'hrobot', '--profile', 'full', 'up', '-d'])
@@ -89,19 +112,46 @@ async function main() {
   step('seeding J5 pending swap')
   psql(readFileSync(join(root, 'scripts', 'seed-demo-swap.sql'), 'utf8'))
 
+  step('applying M2 module schema + demo data (Wnioski/Ustawienia/Dostępy/Użytkownicy/Koszty)')
+  const ROLE = process.env.TENANT_ROLE || DB.replace(/^hrobot_t_/, 'hu_')
+  // 1) idempotent schema patch (no-op on a fresh, already-migrated tenant)
+  psql(readFileSync(join(root, 'scripts', 'apply-m2-tenant-schema.sql'), 'utf8'))
+  // 2) ownership → tenant app role (objects created here are owned by postgres; idempotent no-op
+  //    when they're already owned by the role, e.g. after a real `prisma migrate deploy`)
+  psql(
+    ['company_settings', 'access_grant', 'position_cost_rates']
+      .map((t) => `ALTER TABLE ${t} OWNER TO ${ROLE};`)
+      .join('\n') + `\nALTER TYPE "AccessType" OWNER TO ${ROLE};\nALTER TYPE "AccessStatus" OWNER TO ${ROLE};`,
+  )
+  // 3) synthetic demo data (idempotent; preserves the APPROVED-leave AI-Grafik anchors)
+  psql(readFileSync(join(root, 'scripts', 'seed-demo-m2-modules.sql'), 'utf8'))
+  // 4) the seed adds a User row for `demo` (so it can be a leave decider / grant issuer); re-point
+  //    its keycloak_sub to the realm's live admin id (same sync class as the users above)
+  const adminSub = await resolveAdminSub()
+  if (adminSub) {
+    psql(`UPDATE users SET keycloak_sub='${adminSub}' WHERE email='admin@staging.hrobot.local';`)
+  } else {
+    console.log('  ⚠ could not resolve admin keycloak_sub (Keycloak down?); admin may not act as a decider')
+  }
+
   console.log(`
-✅ Demo backend ready.
+✅ Demo backend ready (Grafik + AI + M2 modules).
 
    Logins (${'http://localhost:5601'} → /login):
-     demo           / demo-staging-2026   ADMIN      full grafik + swap approval
-     manager.demo   / Manager!2026        MANAGER    unit-scoped + approves swaps
-     pracownik.demo / Pracownik!2026      PRACOWNIK  read-only "my schedule" (Anna Kowalska)
+     demo           / demo-staging-2026   ADMIN      full grafik + swap approval + all M2 modules
+     manager.demo   / Manager!2026        MANAGER    unit-scoped grafik/swaps + wnioski/dostępy (own units)
+     pracownik.demo / Pracownik!2026      PRACOWNIK  read-only "my schedule" + own wnioski (Anna Kowalska)
+
+   M2 modules now populated: Wnioski (6 pending / 26 approved / 1 rejected), Dostępy (15 grants),
+   Ustawienia (4Mobility), Użytkownicy (3 kont), Koszty (10 stawek → pełne pokrycie).
 
    Last step (separate host process by design):
-     cd docs/design/web-kit && node start-live.mjs      # http://localhost:5601
+     cd docs/design/web-kit && node start-prod.mjs     # http://localhost:5601 (demo build)
 
-   Demo week: 13–19 July 2026. Full script: data/m2-evidence/demo-scenario-4mobility.md
-   NB: re-run this script after any "Generuj grafik" to restore the pending swap.
+   Demo week: 13–19 July 2026.
+   Grafik/AI script:  data/m2-evidence/demo-scenario-4mobility.md
+   M2 modules script: docs/demo/M2-demo-walkthrough.md
+   NB: re-run this script after any "Generuj grafik" to restore the pending swap. Idempotent.
 `)
 }
 
