@@ -50,13 +50,16 @@ export interface EmployeesScreenProps {
    *  real `hrobot_roles` claim, mirroring the [id] profile page's `canManage`). Gates the "Dodaj
    *  pracownika" affordance (Task 4b) — a MANAGER/PRACOWNIK never sees the button or the form. */
   canManage?: boolean
+  /** Show the PESEL column in the roster table. False for a plain PRACOWNIK (RODO: no PESEL for them
+   *  → the column is only a placeholder). Computed server-side in the page from `hrobot_roles`. */
+  showPesel?: boolean
 }
 
 /**
  * Real employee roster: fetches the tenant-runtime roster through the same-origin /api/employees
  * proxy (cookie-authenticated), so Pracownicy shows the SAME people as Grafik — not a static mock.
  */
-export function EmployeesScreen({ canManage }: EmployeesScreenProps) {
+export function EmployeesScreen({ canManage, showPesel = true }: EmployeesScreenProps) {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   // Distinct from `loading`: a post-create re-fetch must NOT trip the full-screen "Ładowanie…"
@@ -190,7 +193,7 @@ export function EmployeesScreen({ canManage }: EmployeesScreenProps) {
       {/* Subtle dimming while a background refresh runs — the table stays mounted (scroll/focus kept),
           just visually de-emphasised, instead of being replaced by the full-screen spinner. */}
       <div className={refreshing ? 'opacity-60 transition-opacity' : 'transition-opacity'} aria-busy={refreshing}>
-        <EmployeesTable employees={filtered} />
+        <EmployeesTable employees={filtered} showPesel={showPesel} />
       </div>
     </div>
   )

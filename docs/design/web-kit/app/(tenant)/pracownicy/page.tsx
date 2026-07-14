@@ -14,10 +14,14 @@ export default async function PracownicyPage() {
   // Only HR/ADMIN_KLIENTA may create employees (tenant-runtime POST /employees 403s everyone else) —
   // mirror the same gate the [id] profile page uses for "Edytuj".
   const canManage = roles.some((r) => r === 'HR' || r === 'ADMIN_KLIENTA')
+  // Hide the PESEL column for a plain PRACOWNIK: the roster API never returns a PESEL for them (RODO),
+  // so the column is just a "•••" placeholder with zero value in that context. Keep it for
+  // MANAGER/HR/ADMIN (where it carries the "PESEL exists + protected" signal / future peselLast4).
+  const showPesel = roles.some((r) => r === 'MANAGER' || r === 'HR' || r === 'ADMIN_KLIENTA')
 
   return (
     <AppShell activeHref="/pracownicy" title="Pracownicy" tenant={tenant} user={user} roles={roles}>
-      <EmployeesScreen canManage={canManage} />
+      <EmployeesScreen canManage={canManage} showPesel={showPesel} />
     </AppShell>
   )
 }

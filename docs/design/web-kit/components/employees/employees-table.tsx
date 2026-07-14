@@ -20,7 +20,15 @@ export interface Employee {
   status?: 'active' | 'leave'
 }
 
-export function EmployeesTable({ employees }: { employees: Employee[] }) {
+export function EmployeesTable({
+  employees,
+  showPesel = true,
+}: {
+  employees: Employee[]
+  /** Show the PESEL column. Hidden for a plain PRACOWNIK — the roster API never returns a PESEL for
+   *  them (RODO), so the column is only a "•••" placeholder with no value in that context. */
+  showPesel?: boolean
+}) {
   const router = useRouter()
 
   return (
@@ -31,7 +39,7 @@ export function EmployeesTable({ employees }: { employees: Employee[] }) {
           <Th>Stanowisko</Th>
           <Th>Jednostka</Th>
           <Th>Typ</Th>
-          <Th>PESEL</Th>
+          {showPesel && <Th>PESEL</Th>}
           <Th>Status</Th>
         </tr>
       </thead>
@@ -69,13 +77,15 @@ export function EmployeesTable({ employees }: { employees: Employee[] }) {
               <Td>
                 <Badge>{e.contract}</Badge>
               </Td>
-              <Td>
-                {pesel ? (
-                  <span className="font-mono text-[12.5px] tabular-nums text-muted">{pesel}</span>
-                ) : (
-                  <span className="font-mono text-[12.5px] text-muted-2" title="PESEL nie opuszcza serwera (RODO)">•••••••••</span>
-                )}
-              </Td>
+              {showPesel && (
+                <Td>
+                  {pesel ? (
+                    <span className="font-mono text-[12.5px] tabular-nums text-muted">{pesel}</span>
+                  ) : (
+                    <span className="font-mono text-[12.5px] text-muted-2" title="PESEL nie opuszcza serwera (RODO)">•••••••••</span>
+                  )}
+                </Td>
+              )}
               <Td>{e.status === 'leave' ? <Badge tone="warn">Urlop</Badge> : <Badge tone="ok">Aktywny</Badge>}</Td>
             </tr>
           )
