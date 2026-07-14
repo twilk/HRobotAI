@@ -14,6 +14,7 @@ import {
   isMineToConsent,
   buildProposalEnrichMaps,
   enrichProposalsWith,
+  myTravelText,
   AiGrafikApiError,
   type EnrichedProposal,
   type AiProposalState,
@@ -154,6 +155,7 @@ export function AiConsentSection() {
           <thead>
             <tr>
               <Th>Zmiana do objęcia</Th>
+              <Th>Lokalizacja i dojazd</Th>
               <Th>Status</Th>
               <Th className="text-right pr-4">Twoja decyzja</Th>
             </tr>
@@ -161,10 +163,22 @@ export function AiConsentSection() {
           <tbody>
             {myConsent.map((p) => {
               const actions = aiProposalActions(p.state, 'employee')
+              // The consent screen is only ever reached by the ACTIVE candidate (isMineToConsent), so
+              // this is always "my" travel row — show shift + location + estimated travel BEFORE the
+              // decision, so the employee can judge the ask before Akceptuj/Odrzuć (2026-07-14 spec
+              // §12 Etap 3). RODO: only rounded km/min ever leaves the server — no coordinates/address.
+              const active = p.candidates.find((c) => c.id === p.activeCandidateId)
+              const travel = active ? myTravelText(active) : null
               return (
                 <tr key={p.id}>
                   <Td>
                     <ShiftCell label={p.shiftLabel} sub={p.reason ?? 'Propozycja AI'} />
+                  </Td>
+                  <Td>
+                    <div className="text-[13px]">{p.shiftLocation || '—'}</div>
+                    <div className="text-[11.5px] text-muted-2 mt-0.5">
+                      {travel ?? 'Ta sama jednostka — bez dojazdu'}
+                    </div>
                   </Td>
                   <Td>
                     <ProposalBadge state={p.state} />

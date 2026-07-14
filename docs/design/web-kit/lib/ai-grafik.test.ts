@@ -7,6 +7,11 @@ import {
   proposalStateLabel,
   isMineToConsent,
   shiftLabelOf,
+  travelBadgeText,
+  costBreakdownText,
+  costCellText,
+  myTravelText,
+  NO_CANDIDATE_MESSAGE,
   type AiProposal,
   type AiProposalState,
 } from './ai-grafik'
@@ -201,5 +206,84 @@ describe('isMineToConsent', () => {
 
   it('is false when activeCandidateId does not match any candidate row', () => {
     expect(isMineToConsent(proposal({ activeCandidateId: 'missing' }), 'emp-1')).toBe(false)
+  })
+})
+
+// --- cross-unit travel display (2026-07-14 spec §12 Etap 3) -----------------------------------------
+// Pure formatters over already-ROUNDED server figures — no network, no coordinates (RODO).
+
+describe('travelBadgeText', () => {
+  it('renders "cross-unit · ~N km · ~M min · +X zł" for a non-zero travel candidate', () => {
+    expect(travelBadgeText({ travelKm: 7, travelMinutes: 7, travelCost: 16.1 })).toBe(
+      'cross-unit · ~7 km · ~7 min · +16,10 zł',
+    )
+  })
+
+  it('tolerates Decimal-as-string fields (Prisma over-JSON serialization)', () => {
+    expect(travelBadgeText({ travelKm: '287', travelMinutes: '287', travelCost: '660.10' })).toBe(
+      'cross-unit · ~287 km · ~287 min · +660,10 zł',
+    )
+  })
+
+  it('returns null for a local candidate (travelKm 0, absent, or null)', () => {
+    expect(travelBadgeText({ travelKm: 0, travelMinutes: 0, travelCost: 0 })).toBeNull()
+    expect(travelBadgeText({})).toBeNull()
+    expect(travelBadgeText({ travelKm: null, travelMinutes: null, travelCost: null })).toBeNull()
+  })
+
+  it('treats a non-finite/garbage travelKm as no badge rather than throwing', () => {
+    expect(travelBadgeText({ travelKm: 'not-a-number' as unknown as string })).toBeNull()
+  })
+})
+
+describe('costBreakdownText', () => {
+  it('renders "praca X + dojazd Y = razem Z" when travel cost is non-zero', () => {
+    expect(costBreakdownText(25.6, 16.1)).toBe('praca +9,50 zł + dojazd 16,10 zł = razem +25,60 zł')
+  })
+
+  it('renders the plain total (no breakdown) when travel cost is zero/absent (local candidate)', () => {
+    expect(costBreakdownText(12, 0)).toBe('+12,00 zł')
+    expect(costBreakdownText(12, null)).toBe('+12,00 zł')
+    expect(costBreakdownText(12, undefined)).toBe('+12,00 zł')
+  })
+
+  it('falls back to "brak stawki" when the total itself is null', () => {
+    expect(costBreakdownText(null, 16.1)).toBe('brak stawki')
+  })
+
+  it('handles a negative labour delta inside the breakdown (a cheaper candidate)', () => {
+    // total 10 = labour(-6.1) + travel(16.1)
+    expect(costBreakdownText(10, 16.1)).toBe('praca -6,10 zł + dojazd 16,10 zł = razem +10,00 zł')
+  })
+})
+
+describe('costCellText', () => {
+  it('shows "brak kandydata" (never "brak stawki") when there is no active candidate at all', () => {
+    expect(costCellText(false, null, null)).toBe('brak kandydata')
+    expect(costCellText(false, 25.6, 16.1)).toBe('brak kandydata')
+  })
+
+  it('delegates to costBreakdownText once a candidate exists', () => {
+    expect(costCellText(true, 25.6, 16.1)).toBe(costBreakdownText(25.6, 16.1))
+    expect(costCellText(true, null, null)).toBe('brak stawki')
+  })
+})
+
+describe('myTravelText', () => {
+  it('renders the candidate consent screen travel line for a non-zero travel candidate', () => {
+    expect(myTravelText({ travelKm: 7, travelMinutes: 7 })).toBe(
+      'Twój szacunkowy dojazd (demo): ~7 km · ~7 min',
+    )
+  })
+
+  it('returns null for a local candidate', () => {
+    expect(myTravelText({ travelKm: 0, travelMinutes: 0 })).toBeNull()
+    expect(myTravelText({})).toBeNull()
+  })
+})
+
+describe('NO_CANDIDATE_MESSAGE', () => {
+  it('is a non-empty operator instruction distinct from the missing-rate copy', () => {
+    expect(NO_CANDIDATE_MESSAGE).toBe('Brak dostępnego zastępcy — obsłuż ręcznie w Grafiku')
   })
 })

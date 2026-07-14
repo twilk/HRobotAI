@@ -14,6 +14,9 @@ import {
   shiftLabelOf,
   buildProposalEnrichMaps,
   enrichProposalsWith,
+  travelBadgeText,
+  costCellText,
+  NO_CANDIDATE_MESSAGE,
   AiGrafikApiError,
   type EnrichedProposal,
   type AiProposalState,
@@ -21,7 +24,6 @@ import {
   type VacatedShift,
 } from '@/lib/ai-grafik'
 import { isoDate, addDays, mondayOf } from '@/lib/grafik'
-import { formatCostDelta } from '@/lib/koszty'
 
 const POLL_MS = 4000
 
@@ -311,21 +313,43 @@ export function ProposalInbox({ canManage }: { canManage: boolean }) {
                   {managerInbox.map((p) => {
                     const actions = aiProposalActions(p.state, 'manager')
                     const active = p.candidates.find((c) => c.id === p.activeCandidateId)
+                    // Genuinely ESCALATED with no candidate at all (Codex F3/F4 copy fix) — one clear
+                    // operator message replaces the bare "—" / "brak stawki" across both cells, rather
+                    // than showing two dead-end blanks.
+                    const noCandidateAtAll = p.state === 'ESCALATED' && !active
+                    const badge = active ? travelBadgeText(active) : null
                     return (
                       <tr key={p.id}>
                         <Td>
                           <ShiftCell label={p.shiftLabel} sub={p.vacatedEmployeeName} />
                         </Td>
-                        <Td>
-                          {active ? (
-                            <ShiftCell label={active.employeeName} sub={`ranga ${active.rank}`} />
-                          ) : (
-                            <span className="text-muted-2">—</span>
-                          )}
-                        </Td>
-                        <Td>
-                          <span className="text-[13px] font-mono">{formatCostDelta(p.estimatedCost)}</span>
-                        </Td>
+                        {noCandidateAtAll ? (
+                          <Td colSpan={2}>
+                            <span className="text-warn text-[13px] font-medium">{NO_CANDIDATE_MESSAGE}</span>
+                          </Td>
+                        ) : (
+                          <>
+                            <Td>
+                              {active ? (
+                                <div>
+                                  <ShiftCell label={active.employeeName} sub={`ranga ${active.rank}`} />
+                                  {badge && (
+                                    <Badge tone="role" className="mt-1.5">
+                                      {badge}
+                                    </Badge>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-muted-2">—</span>
+                              )}
+                            </Td>
+                            <Td>
+                              <span className="text-[13px] font-mono">
+                                {costCellText(active != null, p.estimatedCost, active?.travelCost)}
+                              </span>
+                            </Td>
+                          </>
+                        )}
                         <Td>
                           <ProposalBadge state={p.state} />
                         </Td>

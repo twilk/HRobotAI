@@ -10,6 +10,9 @@
  * scheduling policy (autonomy, consent TTL, quiet hours), not personal data.
  */
 
+import { fetchLocationNames } from './locations'
+import { formatCostDelta, formatMoney } from './koszty'
+
 /** Autonomy tiers — parity with the tenant `AutonomyLevel` enum (packages/db tenant schema.prisma). */
 export type AutonomyLevel = 'SUGGEST_ONLY' | 'AUTO_NOTIFY' | 'AUTO_ASK_CONSENT' | 'AUTO_COMMIT_ON_APPROVAL'
 
@@ -167,6 +170,17 @@ export interface AiProposalCandidate {
   consentState: ConsentState
   consentRequestedAt?: string | null
   consentAt?: string | null
+  /**
+   * Cross-unit travel breakdown (2026-07-14 spec §12 Etap 2/3) — already ROUNDED server-side
+   * (`travel.util.ts` roundKm/roundMinutes/roundCost) before persisting to `AiProposalCandidate`; a
+   * local (same-unit) candidate carries `0`, never `null`, so `0`/absent both mean "no travel badge".
+   * Prisma `Decimal` serializes as a string over JSON (same tolerance as `estimatedCost`). RODO: these
+   * three numbers are the ONLY travel data that ever leaves the server — never home coordinates or
+   * address (Codex P2-7/P2-8) — label any user-facing surface "szacunkowy dojazd (demo)".
+   */
+  travelKm?: string | number | null
+  travelMinutes?: string | number | null
+  travelCost?: string | number | null
 }
 
 /** A raw AiProposal row as returned by the tenant-runtime `/ai-grafik/proposals*` routes (ids only). */
@@ -202,6 +216,8 @@ export interface EnrichedProposal extends Omit<AiProposal, 'candidates'> {
   candidates: EnrichedCandidate[]
   vacatedEmployeeName: string
   shiftLabel: string
+  /** Lokalizacja name for the shift (or `''` when unknown) — see {@link ProposalEnrichMaps.shiftLocation}. */
+  shiftLocation: string
 }
 
 /** One APPROVED-leave interval covering a {@link VacatedShift}'s employee (RODO-safe). */
@@ -292,6 +308,84 @@ export function isMineToConsent(
   return active != null && active.employeeId === myEmployeeId && active.consentState === 'PENDING'
 }
 
+// --- cross-unit travel display (2026-07-14 spec §12 Etap 3) ----------------------------------------
+//
+// Pure formatters over the already-ROUNDED server figures on an {@link AiProposalCandidate}/
+// {@link AiProposal} — never recompute travel client-side, never touch coordinates (RODO, Codex
+// P2-7/P2-8). All copy is labelled "szacunkowy dojazd (demo)" wherever it's spelled out in full.
+
+/** Manager-inbox / consent-screen copy for a proposal that is genuinely ESCALATED with no candidate
+ *  left to propose at all — replaces the bare "—" (KANDYDAT) / "brak stawki" (Δ koszt) with one clear
+ *  operator instruction (Codex F3/F4, 2026-07-14 spec §6 "Fix copy"). */
+export const NO_CANDIDATE_MESSAGE = 'Brak dostępnego zastępcy — obsłuż ręcznie w Grafiku'
+
+function toFiniteNumber(v: string | number | null | undefined): number | null {
+  if (v === null || v === undefined) return null
+  const n = typeof v === 'number' ? v : Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+/**
+ * "cross-unit · ~7 km · ~7 min · +16,10 zł" badge for a candidate whose travel is non-zero
+ * (cross-unit); `null` for a local candidate (`travelKm` `0`/absent/non-finite) — the caller renders
+ * no badge then. Figures are already rounded server-side (RODO — never raw coordinates).
+ */
+export function travelBadgeText(
+  candidate: Pick<AiProposalCandidate, 'travelKm' | 'travelMinutes' | 'travelCost'>,
+): string | null {
+  const km = toFiniteNumber(candidate.travelKm)
+  if (km === null || km <= 0) return null
+  const min = toFiniteNumber(candidate.travelMinutes) ?? 0
+  const cost = toFiniteNumber(candidate.travelCost) ?? 0
+  return `cross-unit · ~${km} km · ~${min} min · +${formatMoney(cost)}`
+}
+
+/**
+ * The Δ koszt cell's text for a proposal that HAS an active candidate: a "praca X + dojazd Y = razem
+ * Z" breakdown when that candidate's travel cost is non-zero (cross-unit), else the plain total (a
+ * local candidate's travel is always 0, so a breakdown would be noise). `estimatedCost` is the total
+ * persisted on `AiProposal` (labour Δ + travel, per `computeEstimatedCost` — never overwritten); the
+ * labour component is derived here by subtracting the candidate's own `travelCost` back out, NOT
+ * recomputed (Codex P2-6 — travel stays a separate, additive component).
+ */
+export function costBreakdownText(
+  estimatedCost: string | number | null | undefined,
+  travelCost: string | number | null | undefined,
+): string {
+  const total = toFiniteNumber(estimatedCost)
+  if (total === null) return formatCostDelta(estimatedCost)
+  const travel = toFiniteNumber(travelCost) ?? 0
+  if (travel <= 0) return formatCostDelta(estimatedCost)
+  const labour = total - travel
+  return `praca ${formatCostDelta(labour)} + dojazd ${formatMoney(travel)} = razem ${formatCostDelta(total)}`
+}
+
+/**
+ * The manager inbox's Δ koszt cell text, given whether the row has an active candidate at all —
+ * "brak kandydata" (never "brak stawki") when there is none (Codex F3 copy fix: a missing candidate
+ * is NOT a missing-rate bug), else {@link costBreakdownText}.
+ */
+export function costCellText(
+  hasActiveCandidate: boolean,
+  estimatedCost: string | number | null | undefined,
+  travelCost: string | number | null | undefined,
+): string {
+  if (!hasActiveCandidate) return 'brak kandydata'
+  return costBreakdownText(estimatedCost, travelCost)
+}
+
+/**
+ * "Twój szacunkowy dojazd (demo): ~7 km · ~7 min" for the candidate consent screen — `null` when the
+ * proposed shift is local (no travel). Never shows cost (the employee doesn't need their own travel
+ * reimbursement math to decide) or any coordinate/address.
+ */
+export function myTravelText(candidate: Pick<AiProposalCandidate, 'travelKm' | 'travelMinutes'>): string | null {
+  const km = toFiniteNumber(candidate.travelKm)
+  if (km === null || km <= 0) return null
+  const min = toFiniteNumber(candidate.travelMinutes) ?? 0
+  return `Twój szacunkowy dojazd (demo): ~${km} km · ~${min} min`
+}
+
 // --- enrichment: backend ids → UI labels/names (mirrors lib/swaps.ts) ------------------------------
 
 interface EmployeeLite {
@@ -305,11 +399,16 @@ interface ShiftLite {
   start: string
   end: string
   role: string
+  lokalizacjaId?: string
 }
 
 export interface ProposalEnrichMaps {
   empName: Map<string, string>
   shiftLabel: Map<string, string>
+  /** shiftId → lokalizacja name (falls back to the raw `lokalizacjaId` if the location catalog fetch
+   *  fails or the id is unknown) — feeds the candidate consent screen's "location" line (2026-07-14
+   *  spec §12 Etap 3). Never PII: a lokalizacja name, not an employee's home address. */
+  shiftLocation: Map<string, string>
 }
 
 const WEEKDAY_SHORT_PL = ['nd', 'pon', 'wt', 'śr', 'czw', 'pt', 'sob'] as const
@@ -336,15 +435,20 @@ export function shiftLabelOf(s: ShiftLite): string {
  * re-fetching /api/employees + /api/grafik/shifts on its own.
  */
 export async function buildProposalEnrichMaps(): Promise<ProposalEnrichMaps> {
-  const [emps, shifts] = await Promise.all([
+  const [emps, shifts, locationNames] = await Promise.all([
     aiFetch<EmployeeLite[]>('/api/employees'),
     aiFetch<ShiftLite[]>('/api/grafik/shifts'),
+    fetchLocationNames(),
   ])
   const empName = new Map<string, string>()
   for (const e of emps) empName.set(e.id, `${e.firstName} ${e.lastName}`.trim())
   const shiftLabel = new Map<string, string>()
-  for (const s of shifts) shiftLabel.set(s.id, shiftLabelOf(s))
-  return { empName, shiftLabel }
+  const shiftLocation = new Map<string, string>()
+  for (const s of shifts) {
+    shiftLabel.set(s.id, shiftLabelOf(s))
+    if (s.lokalizacjaId) shiftLocation.set(s.id, locationNames[s.lokalizacjaId] ?? s.lokalizacjaId)
+  }
+  return { empName, shiftLabel, shiftLocation }
 }
 
 /** Project a raw backend proposal row onto the {@link EnrichedProposal} shape the UI renders. */
@@ -358,6 +462,7 @@ function enrichProposal(row: AiProposal, maps: ProposalEnrichMaps): EnrichedProp
     })),
     vacatedEmployeeName: maps.empName.get(row.vacatedEmployeeId) ?? row.vacatedEmployeeId.slice(0, 8),
     shiftLabel: maps.shiftLabel.get(row.shiftId) ?? row.shiftId.slice(0, 8),
+    shiftLocation: maps.shiftLocation.get(row.shiftId) ?? '',
   }
 }
 
