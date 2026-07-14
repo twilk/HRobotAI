@@ -58,9 +58,9 @@ jobs:
 
     steps:
       # 0. Make `bash` resolve to Git Bash for every subsequent step (GITHUB_PATH entries are
-      #    PREPENDED to PATH). Runs under pwsh so it does not itself depend on bash.
+      #    PREPENDED to PATH). Runs under Windows PowerShell (pwsh 7 is absent on this box).
       - name: Put Git Bash first on PATH
-        shell: pwsh
+        shell: powershell
         run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
 
       # 1. Checkout the exact green `main` that CI validated.
