@@ -137,6 +137,60 @@ export function developmentSlope(series: { t: number; score: number }[], minVali
 }
 
 // ---------------------------------------------------------------------------------------------
+// normalizeToPeerGroup
+// ---------------------------------------------------------------------------------------------
+
+export type PeerGroupConfig = {
+  /** Minimum peer-group size below which the normalization is not trusted (M10). */
+  minPeerGroupSize: number
+}
+
+/**
+ * The outcome of peer-normalizing a single value against its peer group.
+ *  - `value`: the 0..100 mid-rank percentile of `value` within `peerValues`, or `null` when there
+ *    are no peers at all (nothing to rank against).
+ *  - `meaningful`: `false` when the peer group is smaller than `cfg.minPeerGroupSize` — the caller
+ *    MUST then treat the number as indicative only (apply a confidence penalty / disclose "group too
+ *    small — normalization approximate" in the UI). A `false` here is the M10 re-identification and
+ *    small-sample guardrail, NOT an error.
+ */
+export type PeerNormalization = { value: number | null; meaningful: boolean }
+
+/**
+ * [M10] Normalize `value` to a 0..100 percentile within its peer group (`rola|lokalizacja|etat`,
+ * or a coarser fallback key chosen by the caller). Uses the mid-rank ("Hazen"-style) percentile —
+ * `100 * (belowCount + 0.5 * equalCount) / n` — so it is deterministic, order-independent, always
+ * lands in `[0, 100]`, and maps the median of a symmetric group to ~50 and all-equal groups to
+ * exactly 50 (no element is unfairly pushed to an extreme just because ties exist).
+ *
+ * Guardrails:
+ *  - Empty `peerValues` ⇒ `{ value: null, meaningful: false }` — nothing to rank against.
+ *  - `peerValues.length < cfg.minPeerGroupSize` ⇒ still returns a computed percentile, but
+ *    `meaningful: false` so the caller applies a confidence penalty / UI disclosure. A
+ *    single-element group is therefore never meaningful.
+ *
+ * Pure function: no I/O, no state. `peerValues` is expected to INCLUDE `value`'s own observation
+ * (the full peer group), but the math is well-defined either way.
+ */
+export function normalizeToPeerGroup(
+  value: number,
+  peerValues: number[],
+  cfg: PeerGroupConfig,
+): PeerNormalization {
+  const n = peerValues.length
+  if (n === 0) return { value: null, meaningful: false }
+
+  let below = 0
+  let equal = 0
+  for (const p of peerValues) {
+    if (p < value) below += 1
+    else if (p === value) equal += 1
+  }
+  const percentile = (100 * (below + 0.5 * equal)) / n
+  return { value: percentile, meaningful: n >= cfg.minPeerGroupSize }
+}
+
+// ---------------------------------------------------------------------------------------------
 // confidence
 // ---------------------------------------------------------------------------------------------
 

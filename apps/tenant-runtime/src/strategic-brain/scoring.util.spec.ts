@@ -6,6 +6,7 @@ import {
   developmentSlope,
   confidence,
   retentionSignal,
+  normalizeToPeerGroup,
 } from './scoring.util'
 
 describe('scoring.util', () => {
@@ -239,6 +240,57 @@ describe('scoring.util', () => {
 
     it('deterministyczne dla tych samych wejść', () => {
       expect(retentionSignal(35, 5, 0.9, cfg)).toBe(retentionSignal(35, 5, 0.9, cfg))
+    })
+  })
+
+  describe('normalizeToPeerGroup (M10)', () => {
+    const cfg = { minPeerGroupSize: 5 }
+
+    it('meaningful:false gdy grupa < minPeerGroupSize (nie ufamy normalizacji)', () => {
+      const r = normalizeToPeerGroup(50, [10, 50, 90], cfg) // n=3 < 5
+      expect(r.meaningful).toBe(false)
+      // wartość wciąż zwrócona (do ewentualnego wyświetlenia „orientacyjnie"), ale nie-wiarygodna
+      expect(r.value).not.toBeNull()
+    })
+
+    it('single-element -> not meaningful', () => {
+      const r = normalizeToPeerGroup(42, [42], cfg)
+      expect(r.meaningful).toBe(false)
+    })
+
+    it('pusta grupa -> value:null, meaningful:false', () => {
+      const r = normalizeToPeerGroup(42, [], cfg)
+      expect(r.value).toBeNull()
+      expect(r.meaningful).toBe(false)
+    })
+
+    it('sensowny percentyl dla grupy >= min: wyższa wartość -> wyższy percentyl', () => {
+      const peers = [10, 20, 30, 40, 50] // n=5 >= min
+      const top = normalizeToPeerGroup(50, peers, cfg)
+      const bottom = normalizeToPeerGroup(10, peers, cfg)
+      expect(top.meaningful).toBe(true)
+      expect(bottom.meaningful).toBe(true)
+      expect(top.value!).toBeGreaterThan(bottom.value!)
+      // wynik w zakresie 0..100
+      expect(top.value!).toBeLessThanOrEqual(100)
+      expect(bottom.value!).toBeGreaterThanOrEqual(0)
+    })
+
+    it('mediana grupy -> ~środek skali (mid-rank percentyl)', () => {
+      const peers = [10, 20, 30, 40, 50]
+      expect(normalizeToPeerGroup(30, peers, cfg).value!).toBeCloseTo(50)
+    })
+
+    it('wszyscy równi w dużej grupie -> 50 i meaningful', () => {
+      const peers = [50, 50, 50, 50, 50]
+      const r = normalizeToPeerGroup(50, peers, cfg)
+      expect(r.value!).toBeCloseTo(50)
+      expect(r.meaningful).toBe(true)
+    })
+
+    it('deterministyczne dla tych samych wejść', () => {
+      const peers = [1, 2, 3, 4, 5, 6]
+      expect(normalizeToPeerGroup(4, peers, cfg)).toEqual(normalizeToPeerGroup(4, peers, cfg))
     })
   })
 })
