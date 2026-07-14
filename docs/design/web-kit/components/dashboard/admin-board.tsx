@@ -17,28 +17,27 @@ async function fetchJson<T>(url: string): Promise<T> {
   return (await res.json()) as T
 }
 
-interface HealthData {
-  unitsWithoutManager: number
-  usersWithoutRoles: number
-}
-
 /**
  * HR/ADMIN "governance first" dashboard board — the role-adaptive `/dashboard`'s body for a global
  * (HR or ADMIN_KLIENTA) caller, rendered BEFORE <DashboardKpis/> (see app/(tenant)/dashboard/page.tsx).
  * Deliberately just ONE section: "Zdrowie organizacji" — two structural-health signals (units missing a
- * manager, users missing any role) that are cheap to compute from data these roles already have full
- * read access to, and that a governance-first landing should surface ahead of raw KPI counts. NOT an
- * "AI feed" — no such engine exists yet (see the SP4 task doc).
+ * manager, users missing any role). NOT an "AI feed" — no such engine exists yet (see the SP4 task doc).
  *
- * Mirrors components/dashboard/pracownik-board.tsx's fetch/cancelledRef/loading/error/Card shape. A
- * failed endpoint degrades the whole card to an error line rather than partially rendering one signal —
- * both reads come from admin-only endpoints so a failure here means auth/network trouble, not a
- * per-tile RBAC gap.
+ * Mirrors components/dashboard/manager-board.tsx's per-tile degradation: the two signals come from
+ * DIFFERENT RBAC scopes — `GET /ustawienia/units` is readable by MANAGER/HR/ADMIN_KLIENTA, but
+ * `GET /uzytkownicy` is a deliberately ADMIN_KLIENTA-only whole-controller gate (see
+ * apps/tenant-runtime/src/users/users.controller.ts's docstring — that gate is a LOCKED decision, not
+ * changed here). So an HR caller (this board's other target audience per the commit doc) will always
+ * 403 on the users read. Each tile therefore fetches and degrades independently: a failed/403
+ * "Użytkownicy bez ról" tile just omits itself rather than blanking the whole "Zdrowie organizacji"
+ * card, so HR still sees the units-without-manager signal it does have access to.
  */
 export function AdminBoard() {
-  const [data, setData] = useState<HealthData | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [unitsWithoutManager, setUnitsWithoutManager] = useState<number | null>(null)
+  const [unitsError, setUnitsError] = useState(false)
+
+  const [usersWithoutRoles, setUsersWithoutRoles] = useState<number | null>(null)
+  const [usersUnavailable, setUsersUnavailable] = useState(false)
 
   const cancelledRef = useRef(false)
   useEffect(() => {
@@ -51,26 +50,26 @@ export function AdminBoard() {
   useEffect(() => {
     void (async () => {
       try {
-        const [units, users] = await Promise.all([
-          fetchJson<OrgUnit[]>('/api/ustawienia/units'),
-          fetchJson<UserRoleRow[]>('/api/uzytkownicy'),
-        ])
+        const units = await fetchJson<OrgUnit[]>('/api/ustawienia/units')
         if (cancelledRef.current) return
-        const tree = buildUnitTree(units)
-        setData({
-          unitsWithoutManager: countUnitsWithoutManager(tree),
-          usersWithoutRoles: countUsersWithoutRoles(users),
-        })
-        setError(null)
+        setUnitsWithoutManager(countUnitsWithoutManager(buildUnitTree(units)))
       } catch {
-        if (!cancelledRef.current) setError('Brak połączenia z serwerem. Spróbuj ponownie.')
-      } finally {
-        if (!cancelledRef.current) setLoading(false)
+        if (!cancelledRef.current) setUnitsError(true)
+      }
+    })()
+
+    void (async () => {
+      try {
+        const users = await fetchJson<UserRoleRow[]>('/api/uzytkownicy')
+        if (cancelledRef.current) return
+        setUsersWithoutRoles(countUsersWithoutRoles(users))
+      } catch {
+        // ADMIN_KLIENTA-only endpoint (403 for HR) or a genuine network failure — either way this
+        // tile just hides itself, it never blanks the units-without-manager signal above.
+        if (!cancelledRef.current) setUsersUnavailable(true)
       }
     })()
   }, [])
-
-  if (loading) return <div className="grid place-items-center py-16 text-muted text-sm">Ładowanie…</div>
 
   return (
     <Card className="p-5">
@@ -78,50 +77,60 @@ export function AdminBoard() {
         <IconShield className="w-[17px] h-[17px] text-accent-ink" strokeWidth={1.7} />
         Zdrowie organizacji
       </h2>
-      {error ? (
-        <div role="alert" className="text-sm text-warn border border-warn/30 bg-warn/[0.08] rounded-lg px-3.5 py-2.5">
-          {error}
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div>
+          {unitsError ? (
+            <p className="text-sm text-muted">Brak połączenia z serwerem. Spróbuj ponownie.</p>
+          ) : unitsWithoutManager === null ? (
+            <p className="text-sm text-muted">Ładowanie…</p>
+          ) : (
+            <>
+              <div
+                className={
+                  'font-display font-extrabold text-[26px] leading-none tabular-nums ' +
+                  (unitsWithoutManager > 0 ? 'text-warn' : 'text-verified')
+                }
+              >
+                {unitsWithoutManager}
+              </div>
+              <p className="mt-1 text-[13px] text-muted">Jednostki bez managera</p>
+              <Link
+                href="/ustawienia"
+                className="mt-2 inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent-ink"
+              >
+                Przejdź do ustawień
+                <IconArrowRight className="w-[14px] h-[14px]" strokeWidth={2} />
+              </Link>
+            </>
+          )}
         </div>
-      ) : !data ? null : (
-        <div className="grid sm:grid-cols-2 gap-4">
+        {!usersUnavailable && (
           <div>
-            <div
-              className={
-                'font-display font-extrabold text-[26px] leading-none tabular-nums ' +
-                (data.unitsWithoutManager > 0 ? 'text-warn' : 'text-verified')
-              }
-            >
-              {data.unitsWithoutManager}
-            </div>
-            <p className="mt-1 text-[13px] text-muted">Jednostki bez managera</p>
-            <Link
-              href="/ustawienia"
-              className="mt-2 inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent-ink"
-            >
-              Przejdź do ustawień
-              <IconArrowRight className="w-[14px] h-[14px]" strokeWidth={2} />
-            </Link>
+            {usersWithoutRoles === null ? (
+              <p className="text-sm text-muted">Ładowanie…</p>
+            ) : (
+              <>
+                <div
+                  className={
+                    'font-display font-extrabold text-[26px] leading-none tabular-nums ' +
+                    (usersWithoutRoles > 0 ? 'text-warn' : 'text-verified')
+                  }
+                >
+                  {usersWithoutRoles}
+                </div>
+                <p className="mt-1 text-[13px] text-muted">Użytkownicy bez ról</p>
+                <Link
+                  href="/ustawienia/uzytkownicy"
+                  className="mt-2 inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent-ink"
+                >
+                  Przejdź do użytkowników
+                  <IconArrowRight className="w-[14px] h-[14px]" strokeWidth={2} />
+                </Link>
+              </>
+            )}
           </div>
-          <div>
-            <div
-              className={
-                'font-display font-extrabold text-[26px] leading-none tabular-nums ' +
-                (data.usersWithoutRoles > 0 ? 'text-warn' : 'text-verified')
-              }
-            >
-              {data.usersWithoutRoles}
-            </div>
-            <p className="mt-1 text-[13px] text-muted">Użytkownicy bez ról</p>
-            <Link
-              href="/ustawienia/uzytkownicy"
-              className="mt-2 inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent-ink"
-            >
-              Przejdź do użytkowników
-              <IconArrowRight className="w-[14px] h-[14px]" strokeWidth={2} />
-            </Link>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </Card>
   )
 }

@@ -15,19 +15,23 @@ import {
 
 /**
  * MANAGER "operational, scoped" dashboard board — the role-adaptive `/dashboard`'s body for a
- * MANAGER who isn't also HR/ADMIN_KLIENTA (see app/(tenant)/dashboard/page.tsx). Three sections:
+ * MANAGER who isn't also HR/ADMIN_KLIENTA (see app/(tenant)/dashboard/page.tsx). Three sections, in
+ * this order (per docs/superpowers/specs/2026-07-14-role-dashboards-component-audit.md §E point 6,
+ * OBOWIĄZUJĄCA: "Wyjątki dziś/7 dni jako pierwszy panel" — staffing exceptions are the manager's
+ * primary job, so they lead, ahead of the decisions inbox):
  *
- *  a. "Skrzynka decyzji" — a single glanceable queue combining pending wnioski, shift-swaps and AI
- *     proposals, each linking to its own screen for the real action.
- *  b. "Wyjątki obsady" — vacated shifts (approved leave over an assigned shift) in the next 14 days,
+ *  a. "Wyjątki obsady" — vacated shifts (approved leave over an assigned shift) in the next 7 days,
  *     via the same `/ai-grafik/replacements/scan` the manager's AI Grafik screen uses (read-only scan,
  *     no mutation from this board).
+ *  b. "Skrzynka decyzji" — a single glanceable queue combining pending wnioski, shift-swaps and AI
+ *     proposals, each linking to its own screen for the real action.
  *  c. "Koszt jednostki" — this week's cost + budget status for the manager's first unit, reusing
  *     lib/koszty.ts's `formatMoney`/`kosztyApi.getWeek` (Codex P1-3: a MANAGER call MUST pass unitId).
  *
  * Mirrors components/dashboard/pracownik-board.tsx's fetch/cancelledRef/loading/error/Card shape. Each
  * tile degrades independently — a failed/403 endpoint just hides its section rather than erroring the
- * whole board, since a MANAGER's unit/role scoping can legitimately make some of these empty.
+ * whole board, since a MANAGER's unit/role scoping can legitimately make some of these empty. A manager
+ * with zero units similarly omits the cost tile entirely rather than spinning forever.
  */
 
 interface WniosekRow {
@@ -126,7 +130,7 @@ export function ManagerBoard() {
         const vacated = await fetchJson<VacatedShiftRow[]>('/api/ai-grafik/replacements/scan', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ from: today, to: addDaysIso(today, 14) }),
+          body: JSON.stringify({ from: today, to: addDaysIso(today, 7) }),
         })
         if (cancelledRef.current) return
         setExceptionsCount(vacated.length)
@@ -138,7 +142,10 @@ export function ManagerBoard() {
     void (async () => {
       try {
         const units = await fetchJson<UnitRow[]>('/api/grafik/units')
-        if (units.length === 0) return
+        if (units.length === 0) {
+          if (!cancelledRef.current) setCostUnavailable(true)
+          return
+        }
         const unit = units[0]
         const week = await fetchJson<WeekCostRow>(
           `/api/koszty/week?unitId=${unit.id}&weekStart=${mondayOf(today)}`,
@@ -158,6 +165,34 @@ export function ManagerBoard() {
   return (
     <div className="grid md:grid-cols-2 gap-4">
       <Card className="p-5 md:col-span-2">
+        <h2 className="flex items-center gap-2.5 text-base font-semibold tracking-tightish mb-3">
+          <IconCalendar className="w-[17px] h-[17px] text-accent-ink" strokeWidth={1.7} />
+          Wyjątki obsady (najbliższe 7 dni)
+        </h2>
+        {exceptionsError ? (
+          <p className="text-sm text-muted">Brak połączenia z serwerem. Spróbuj ponownie.</p>
+        ) : exceptionsCount === null ? (
+          <p className="text-sm text-muted">Ładowanie…</p>
+        ) : exceptionsCount === 0 ? (
+          <p className="text-sm text-muted">Brak zagrożeń obsady.</p>
+        ) : (
+          <>
+            <p className="text-sm">
+              Zagrożona obsada: <span className="font-semibold tabular-nums">{exceptionsCount}</span>{' '}
+              {exceptionsCount === 1 ? 'zmiana' : 'zmiany'} (urlop pracownika)
+            </p>
+            <Link
+              href="/ai-grafik-manager"
+              className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent-ink"
+            >
+              Przejdź do AI Grafik Manager
+              <IconArrowRight className="w-[15px] h-[15px]" strokeWidth={2} />
+            </Link>
+          </>
+        )}
+      </Card>
+
+      <Card className="p-5">
         <h2 className="flex items-center gap-2.5 text-base font-semibold tracking-tightish mb-3">
           <IconRequests className="w-[17px] h-[17px] text-accent-ink" strokeWidth={1.7} />
           Skrzynka decyzji
@@ -189,34 +224,6 @@ export function ManagerBoard() {
               </li>
             ))}
           </ul>
-        )}
-      </Card>
-
-      <Card className="p-5">
-        <h2 className="flex items-center gap-2.5 text-base font-semibold tracking-tightish mb-3">
-          <IconCalendar className="w-[17px] h-[17px] text-accent-ink" strokeWidth={1.7} />
-          Wyjątki obsady (najbliższe 14 dni)
-        </h2>
-        {exceptionsError ? (
-          <p className="text-sm text-muted">Brak połączenia z serwerem. Spróbuj ponownie.</p>
-        ) : exceptionsCount === null ? (
-          <p className="text-sm text-muted">Ładowanie…</p>
-        ) : exceptionsCount === 0 ? (
-          <p className="text-sm text-muted">Brak zagrożeń obsady.</p>
-        ) : (
-          <>
-            <p className="text-sm">
-              Zagrożona obsada: <span className="font-semibold tabular-nums">{exceptionsCount}</span>{' '}
-              {exceptionsCount === 1 ? 'zmiana' : 'zmiany'} (urlop pracownika)
-            </p>
-            <Link
-              href="/ai-grafik-manager"
-              className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent-ink"
-            >
-              Przejdź do AI Grafik Manager
-              <IconArrowRight className="w-[15px] h-[15px]" strokeWidth={2} />
-            </Link>
-          </>
         )}
       </Card>
 
