@@ -10,6 +10,7 @@
 // HEALTH_TIMEOUT_MS, HEALTH_INTERVAL_MS.
 
 import net from 'node:net'
+import { execFile } from 'node:child_process'
 
 const TIMEOUT_MS = Number(process.env.HEALTH_TIMEOUT_MS ?? 180_000)
 const INTERVAL_MS = Number(process.env.HEALTH_INTERVAL_MS ?? 3_000)
@@ -48,10 +49,25 @@ function tcpOpen(host, port) {
   })
 }
 
+// Backing services (postgres/redis) are probed INSIDE their containers via `docker compose exec`:
+// on a shared box their ports are deliberately unpublished (see docker-compose.override.yml), so a
+// host TCP probe either refuses or — worse — hits a DIFFERENT project's database on the default
+// port and reports a false positive. Host-port TCP probing remains available via PG_HOST/REDIS_HOST.
+function composeExecOk(service, cmd) {
+  return new Promise((resolve, reject) => {
+    execFile('docker', ['compose', 'exec', '-T', service, ...cmd], { timeout: 8_000 }, (err) =>
+      err ? reject(new Error(`${service} probe failed: ${err.message.split('\n')[0]}`)) : resolve(true))
+  })
+}
+
 // Each check throws on failure; the poller retries until it passes or the deadline hits.
 const CHECKS = [
-  { name: 'postgres', run: () => tcpOpen(process.env.PG_HOST ?? 'localhost', Number(process.env.PG_PORT ?? 5432)) },
-  { name: 'redis', run: () => tcpOpen(process.env.REDIS_HOST ?? 'localhost', Number(process.env.REDIS_PORT ?? 6379)) },
+  { name: 'postgres', run: () => process.env.PG_HOST
+      ? tcpOpen(process.env.PG_HOST, Number(process.env.PG_PORT ?? 5432))
+      : composeExecOk('postgres', ['pg_isready', '-U', 'postgres']) },
+  { name: 'redis', run: () => process.env.REDIS_HOST
+      ? tcpOpen(process.env.REDIS_HOST, Number(process.env.REDIS_PORT ?? 6379))
+      : composeExecOk('redis', ['redis-cli', 'ping']) },
   { name: 'keycloak', run: () => httpOk(`${KEYCLOAK_URL}/realms/master`) },
   { name: 'control-plane', run: () => httpOk(`${CP_URL}/api/health/ready`) },
   { name: 'tenant-runtime', run: () => httpOk(`${TR_URL}/api/health/ready`) },
