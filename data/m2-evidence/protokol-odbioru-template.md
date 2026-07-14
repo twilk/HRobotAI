@@ -48,4 +48,4 @@ Odbiorca Technologii (4Mobility): ______________________ data: __________
 - Dowody journeyów (screeny/nagrania): `./` (pliki [CAPTURE])
 - Znane ograniczenia: `./known-limitations.md`
 - Checklista RODO: `./rodo-security-checklist.md`
-- Dowód testów: 107 TS + 51 py zielonych (PR #31, twilk/HRobotAI)
+- Dowód testów: 855/855 TS (76 suit) + 51 pytest agent-service + pytest grafik-optimizer (logi: `m2-evidence/test-logs/`, bieg 2026-07-14)

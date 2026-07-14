@@ -17,13 +17,14 @@
 - Metryka akceptacji online jest in-sample (samozwrotna) — traktować jako sygnał uczenia, nie absolutną jakość.
 
 ## Zamiany (c)
-- Backend (model, state machine, walidacja solverem H1–H4+H3, RBAC, blokada optymistyczna) — gotowy i przetestowany (PR #31).
-- **UI Zamian obecnie na in-memory mocku** (`docs/design/web-kit/lib/swaps.ts`) — nie podłączony do `/api/shift-swap`. Do demo J5 przez UI wymaga podłączenia (zadanie osobne). Real-time (WebSocket/SSE) + AI-mediacja par → M3.
+- Backend (model, state machine, walidacja solverem H1–H4+H3, RBAC, blokada optymistyczna) — gotowy i przetestowany (PR #31; 62/62 testów PASS, bieg 2026-07-14).
+- UI Zamian **podłączone do realnego API** (`lib/swaps.ts` → proxy → `/shift-swap/*`; UI-1 domknięte) — aktualizacja 14.07, wcześniejszy zapis o mocku nieaktualny. Ograniczenie warstwy demo: pole `mineRole` bez endpointu `/me` (konto demo ADMIN_KLIENTA bez rekordu Employee). Real-time (WebSocket/SSE) + AI-mediacja par → M3.
 
 ## CI/CD (d) + Staging (e)
-- `ci.yml` + turbo targety napisane, **niezmergowane na `main`** (PR #9 — token bez scope `workflow`). Do czasu merge: brak automatycznej bramki CI; testy uruchamiane lokalnie (dowód: 107 TS + 51 py zielonych, PR #31).
-- Staging (docker-compose full + tunel) działa; auto-deploy (`deploy-staging.yml` + self-hosted runner) do domknięcia.
-- Izolacja tenantów (G6) udowodniona tylko unit-testem (mock) — brak testu integracyjnego na ≥2 realnych bazach. → do dodania.
+- `ci.yml` **zmergowany na `main`** (PR #9, 11.07) — bramki lint/typecheck/unit blokują integrację; zielone runy: 29166512951 (PR), 29166696122 (main). Job pytest dla serwisów Pythona dodany 14.07. Lane integracyjny (G6 na ≥2 bazach) i smoke Playwright świadomie odroczone do czasu powstania realnych testów (CI-4/CI-5).
+- Testy (pełny bieg lokalny 2026-07-14): **855/855 TS w 76 suitach** + agent-service 48 passed/3 skipped (51/51 w kontenerze z żywym optymalizatorem) + grafik-optimizer w kontenerze python:3.12 — logi w `test-logs/`.
+- Staging (docker-compose full + tunel) działa i utrzymuje żywy tenant 4Mobility; auto-deploy (`deploy-staging.yml` na main, PR #18) — aktywacja po rejestracji self-hosted runnera (w toku 14.07).
+- Izolacja tenantów (G6) udowodniona unit-testem (mock) — test integracyjny na ≥2 realnych bazach → do dodania (CI-4).
 
 ## Poza zakresem M2 (świadomie → M3)
 Pełne H5/H6/fairness · produkcyjny RL agenta · real-time zamiany · OSRM · self-hosted geokoder · pełna suita E2E/Playwright · produkcyjny K8s/Terraform.

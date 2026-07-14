@@ -28,7 +28,7 @@
 ## J5 — Pracownik zgłasza zamianę → peer akceptuje → menadżer zatwierdza
 - Kroki: zgłoś zamianę → peer accept → manager approve.
 - **Pass:** happy-path DRAFT→APPROVED mutuje obie zmiany + audyt; zamiana łamiąca H1–H4/urlop (H3) odrzucona przez walidację solverem; menadżer spoza obu jednostek nie zatwierdzi (RBAC). **Fail:** reguły przechodzą / cross-unit approve.
-- Stan: backend + walidacja naprawione i przetestowane (PR #31, SW1–SW4 zielone). **UWAGA:** UI Zamian obecnie na mocku (`lib/swaps.ts`) — do zademonstrowania J5 przez UI trzeba podłączyć front na `/api/shift-swap` (patrz known-limitations); do czasu tego — demo przez API/backend.
+- Stan: backend + walidacja naprawione i przetestowane (PR #31; 62/62 testów PASS, bieg 2026-07-14). UI Zamian podłączone do realnego API (`lib/swaps.ts` → `/api/shift-swap/*`, UI-1 domknięte 14.07) — J5 demonstrowalne w całości przez UI; seed `scripts/seed-demo-swap.sql` przygotowuje zamianę w stanie PENDING_MANAGER.
 - `[CAPTURE]` przebieg przez UI (po podłączeniu) lub log API.
 
 ---

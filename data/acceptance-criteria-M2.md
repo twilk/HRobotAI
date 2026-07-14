@@ -21,9 +21,9 @@ Do czasu uzupełnienia [4M] poniższe mapowanie zakłada odbiór na poziomie UAT
 |:--:|------|------------------------------|------------------|:------:|
 | **a** | Moduł Grafik (auto-scheduler) | solver CP-SAT (H1–H4 twarde, H5 miękki proxy, dojazdy haversine, odchyłka etatu), tenant-runtime `/grafik/*`, web-kit siatka | `m2-evidence/uat-journeys.md` J1–J3 + screeny; żywy solve `201 OPTIMAL, 0 unmet` | ✅ demonstrowalne |
 | **b** | Agent AI Grafik Manager | serwis Python: `/agent/propose|feedback|heal|explain|forecast`, pętla uczenia (affinity-learner + batch re-fit), wersjonowana polityka | J4 (live demo + Reset&Replay), wykres AG2 spadku edit-distance | ✅ demo · ⚠️ ujęcie uczciwe (patrz known-limitations) |
-| **c** | Zamiany zmian | model `ShiftSwapRequest` + state machine + endpointy + walidacja solverem (H1–H4) | J5; **UWAGA: UI Zamian obecnie na mocku** (patrz known-limitations) | ⚠️ backend gotowy, UI do podłączenia |
-| **d** | CI/CD | `ci.yml` napisany (turbo targety + gates) | **⚠️ niezmergowany na `main` (PR #9, token bez scope `workflow`)** | ❌ do domknięcia |
-| **e** | Środowisko testowe Etapu 2 | `docker-compose --profile full` + `deploy-staging.yml` + Cloudflare tunnel; stack stoi (7 kontenerów) | URL stagingu + health; runner do rejestracji | 🟡 stack działa, auto-deploy do domknięcia |
+| **c** | Zamiany zmian | model `ShiftSwapRequest` + state machine + endpointy + walidacja solverem (H1–H4) + **UI web-kit `/zamiany` na realnym API** (UI-1 domknięte: `lib/swaps.ts` → proxy → `/shift-swap/*`) | J5; 62/62 testów PASS (bieg 2026-07-14); seed demo `scripts/seed-demo-swap.sql` | ✅ demonstrowalne |
+| **d** | CI/CD | `ci.yml` na `main` (PR #9, merged 11.07): lint → typecheck → unit przez turbo; job pytest (agent-service + grafik-optimizer) dodany 14.07 | zielone runy: [29166512951](https://github.com/twilk/HRobotAI/actions/runs/29166512951) (PR), [29166696122](https://github.com/twilk/HRobotAI/actions/runs/29166696122) (main); branch protection włączana po merge linii demo | ✅ pipeline działa · 🟡 branch protection w toku |
+| **e** | Środowisko testowe Etapu 2 | `docker-compose --profile full` + `deploy-staging.yml` na `main` (PR #18) + komplet skryptów `infra/deploy/`; stack żywy (kontenery healthy, tenant 4Mobility) | health-check :3001 → 200; rejestracja runnera `staging-dev-box` w toku (14.07) | 🟡 stack działa, aktywacja auto-deploy w toku |
 | **f** | UAT Etapu 2 | scenariusze J1–J5 + skrypt UAT | sesja z 4Mobility + protokół | 🟡 przygotowane, sesja do przeprowadzenia |
 
 ## 3. Kryteria techniczne (z specyfikacji) — stan po testach
@@ -36,11 +36,12 @@ Do czasu uzupełnienia [4M] poniższe mapowanie zakłada odbiór na poziomie UAT
 | G4 INFEASIBLE jawnie | ✅ | zwraca `unmet[]` |
 | G5 web-kit na realnym API | ✅ | zweryfikowane wizualnie (:5601, 52 AUTO-zmiany) |
 | G6 izolacja tenantów | ⚠️ | tylko unit-test mock; **brak testu integracyjnego na ≥2 bazach** |
-| AG1–AG5 (agent) | ✅ | 51 testów pytest zielonych (po fixach PR #31) |
-| SW1–SW4 (zamiany) | ✅ | testy zielone; H3/rest/RBAC/race naprawione w PR #31 |
-| CI-1..4, ENV-1..3 | ❌/🟡 | zależne od domknięcia CI (pkt d) + rejestracji runnera |
+| AG1–AG5 (agent) | ✅ | 51 testów pytest: 48 passed / 3 skipped lokalnie (skipy = guardy integracyjne „live optimizer"); pełny bieg 51/51 w kontenerze z żywym optymalizatorem — log w `m2-evidence/test-logs/` |
+| SW1–SW4 (zamiany) | ✅ | 62/62 testów PASS (bieg 2026-07-14); H3/rest/RBAC/race naprawione w PR #31 |
+| CI-1..4, ENV-1..3 | 🟡 | CI-1 ✅ (zielone runy na main); CI-4/CI-5 świadomie odroczone (integration/Playwright — realne testy najpierw); CI-6 dodane 14.07; ENV: runner w rejestracji |
 
 ## 4. Powiązane
 - Pełny Evidence Pack: `data/m2-evidence/` (README, uat-journeys, known-limitations, rodo-security-checklist, protokol-odbioru-template).
 - Review przedodbiorowe: `docs/superpowers/specs/2026-07-11-m2-review-findings.md`.
-- Fixy correctness/security: PR #31 (twilk/HRobotAI) — 107 TS + 51 py testów zielonych.
+- Fixy correctness/security: PR #31 (twilk/HRobotAI).
+- Stan testów (pełny bieg lokalny 2026-07-14, linia demo): **855/855 testów TS zielonych w 76 suitach** (tenant-runtime 718, control-plane 30, pakiety współdzielone 107) + agent-service 48 passed / 3 skipped z 51 pytest — logi w `m2-evidence/test-logs/`.

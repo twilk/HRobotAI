@@ -9,7 +9,7 @@
 | `../acceptance-criteria-M2.md` | Kryteria odbioru + mapowanie a–f → dowód | 🟡 (sloty [4M]) |
 | `README.md` (ten) | Indeks + dashboard statusu + macierz a–f | 🟡 |
 | `uat-journeys.md` | 5 user-journey J1–J5 (pass/fail) + skrypt UAT + gdzie robić screeny | 🟡 [CAPTURE] |
-| `known-limitations.md` | Uczciwy zakres: H1–H4 twarde, AI=affinity-learner nie SB3/RL, UI Zamian mock, CI status | ✅ |
+| `known-limitations.md` | Uczciwy zakres: H1–H4 twarde, AI=affinity-learner nie SB3/RL, statusy c/d/e (aktualizacja 14.07) | ✅ |
 | `rodo-security-checklist.md` | Checklista RODO/bezpieczeństwo stagingu | ✅ |
 | `protokol-odbioru-template.md` | Szablon protokołu do podpisu 4Mobility | 🟡 [4M] |
 
@@ -18,8 +18,8 @@
 |---|:--:|:--:|:--:|---|
 | a Grafik | ✅ | ✅ (:5601, solve OPTIMAL) | 🟡 screeny do zrobienia | — |
 | b Agent AI | ✅ | ✅ (:8010 J4) | 🟡 wykres AG2 istnieje w repo | ujęcie „nie SB3/RL" |
-| c Zamiany | ✅ backend | ⚠️ UI mock | ❌ | podłączyć UI |
-| d CI | 🟡 napisane | — | ❌ | PR #9 niezmergowany (scope `workflow`) |
+| c Zamiany | ✅ backend + UI na realnym API | ✅ 62/62 testów (14.07) | 🟡 | screeny J5 z sesji UAT |
+| d CI | ✅ na main (PR #9) + job pytest | ✅ zielone runy 29166512951 / 29166696122 | 🟡 | branch protection po merge linii demo |
 | e Staging | ✅ stoi | ✅ | 🟡 URL do wpisania | auto-deploy/runner |
 | f UAT | 🟡 skrypt | — | ❌ | sesja z 4Mobility |
 

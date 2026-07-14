@@ -1,0 +1,41 @@
+=== pnpm test — pełny bieg suit TS (2026-07-14T19:35Z, branch feat/demo-4mobility, HEAD 2fa9f40) ===
+
+--- apps/tenant-runtime ---
+
+Test Suites: 54 passed, 54 total
+Tests:       718 passed, 718 total
+Snapshots:   0 total
+Time:        96.024 s
+Ran all test suites.
+
+--- apps/control-plane ---
+
+Test Suites: 10 passed, 10 total
+Tests:       30 passed, 30 total
+Snapshots:   0 total
+Time:        49.527 s, estimated 52 s
+Ran all test suites.
+
+--- packages/db ---
+
+Test Suites: 7 passed, 7 total
+Tests:       46 passed, 46 total
+Snapshots:   0 total
+Time:        28.26 s
+Ran all test suites.
+
+--- packages/shared ---
+
+Test Suites: 4 passed, 4 total
+Tests:       56 passed, 56 total
+Snapshots:   0 total
+Time:        14.141 s
+Ran all test suites.
+
+--- packages/config ---
+
+Test Suites: 1 passed, 1 total
+Tests:       5 passed, 5 total
+Snapshots:   0 total
+Time:        3.814 s
+Ran all test suites.
