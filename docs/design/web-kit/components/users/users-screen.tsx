@@ -20,6 +20,7 @@ import {
   type UserRoleGrant,
   type Role,
   type InviteFormState,
+  type UnitLite,
 } from '@/lib/uzytkownicy'
 
 /** Surface the backend's already-humanized message (RBAC 403, duplicate-email / last-admin 409, …) —
@@ -85,6 +86,11 @@ export function UsersScreen() {
 
   const [roleForms, setRoleForms] = useState<Record<string, RoleFormState>>({})
 
+  // Unit picker for the per-row role-grant mini-form: falls back to the raw UUID text input if the
+  // unit catalog fetch fails (empty selection is still valid — a global role).
+  const [units, setUnits] = useState<UnitLite[]>([])
+  const [unitsFailed, setUnitsFailed] = useState(false)
+
   // Tied to the component's lifetime: a fetch/action can resolve after unmount (mirrors
   // dostepy-screen.tsx's / ai-config-panel.tsx's cancelledRef guard).
   const cancelledRef = useRef(false)
@@ -112,6 +118,17 @@ export function UsersScreen() {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  useEffect(() => {
+    uzytkownicyApi
+      .listUnitsForSelect()
+      .then((rows) => {
+        if (!cancelledRef.current) setUnits(rows)
+      })
+      .catch(() => {
+        if (!cancelledRef.current) setUnitsFailed(true)
+      })
+  }, [])
 
   /** Run a mutation under a busy-key lock, surfacing failures as the shared banner and refreshing the
    *  roster on both success and failure (a failed grant/revoke can still have partially landed on one
@@ -341,13 +358,29 @@ export function UsersScreen() {
                           </option>
                         ))}
                       </select>
-                      <input
-                        aria-label="Jednostka (opcjonalnie)"
-                        value={rf.unitId}
-                        onChange={(e) => patchRoleForm(u.id, { unitId: e.target.value })}
-                        placeholder="uuid jednostki"
-                        className="h-8 w-28 px-2 rounded-sm border border-line-strong bg-card text-[12.5px] text-ink placeholder:text-muted-2 focus:outline-none focus:border-accent"
-                      />
+                      {unitsFailed ? (
+                        <input
+                          aria-label="Jednostka (opcjonalnie)"
+                          value={rf.unitId}
+                          onChange={(e) => patchRoleForm(u.id, { unitId: e.target.value })}
+                          placeholder="uuid jednostki"
+                          className="h-8 w-28 px-2 rounded-sm border border-line-strong bg-card text-[12.5px] text-ink placeholder:text-muted-2 focus:outline-none focus:border-accent"
+                        />
+                      ) : (
+                        <select
+                          aria-label="Jednostka (opcjonalnie)"
+                          value={rf.unitId}
+                          onChange={(e) => patchRoleForm(u.id, { unitId: e.target.value })}
+                          className="h-8 px-2 rounded-sm border border-line-strong bg-card text-[12.5px] text-ink focus:outline-none focus:border-accent"
+                        >
+                          <option value="">— wybierz —</option>
+                          {units.map((unit) => (
+                            <option key={unit.id} value={unit.id}>
+                              {unit.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                       <Button
                         type="button"
                         variant="ghost"

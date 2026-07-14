@@ -159,6 +159,14 @@ export interface RoleAssignmentInput {
   unitId?: string
 }
 
+/** `{id,name}` row from `GET /grafik/units` — feeds the per-row role-grant mini-form's optional Unit
+ *  `<select>` (see {@link uzytkownicyApi.listUnitsForSelect}). ADMIN_KLIENTA (this screen's sole
+ *  audience) is one of `GrafikController`'s READ_ROLES, so the same-role fetch is safe. */
+export interface UnitLite {
+  id: string
+  name: string
+}
+
 /**
  * The Użytkownicy API the screen talks to — same-origin `fetch` calls to the tenant-runtime proxy.
  * The backend RBAC + saga ordering + guards (self-escalation, last-admin, JWT-cache re-check) have the
@@ -196,6 +204,12 @@ export const uzytkownicyApi = {
   /** Keycloak `setEnabled(false)` first, then `User.active = false`; last-admin guarded server-side. */
   deactivate(userId: string): Promise<void> {
     return usersFetch<void>(`/api/uzytkownicy/${userId}/deactivate`, { method: 'POST' })
+  },
+
+  /** Catalog for the role-grant mini-form's optional Unit `<select>` — a separate fetch against the
+   *  `/grafik/units` proxy (not a `/uzytkownicy` route). */
+  listUnitsForSelect(): Promise<UnitLite[]> {
+    return usersFetch<UnitLite[]>('/api/grafik/units')
   },
 }
 

@@ -106,6 +106,14 @@ function humanizeError(body: string): string {
   return body
 }
 
+/** `{id,email}` row from `GET /uzytkownicy` — feeds the org-unit editor's optional Manager `<select>`
+ *  (see {@link ustawieniaApi.listUsersForSelect}). This screen is already ADMIN_KLIENTA-gated (see the
+ *  page), same as `UsersController`'s whole-controller role gate, so the same-role fetch is safe. */
+export interface UserLite {
+  id: string
+  email: string
+}
+
 export const ustawieniaApi = {
   getCompany(): Promise<CompanySettings> {
     return ustawieniaFetch<CompanySettings>('/api/ustawienia/company')
@@ -130,6 +138,11 @@ export const ustawieniaApi = {
       method: 'PATCH',
       body: JSON.stringify(input),
     })
+  },
+  /** Roster for the org-unit editor's optional Manager `<select>` — a separate fetch against the
+   *  `/uzytkownicy` proxy (not an `/ustawienia/*` route). */
+  listUsersForSelect(): Promise<UserLite[]> {
+    return ustawieniaFetch<UserLite[]>('/api/uzytkownicy')
   },
 }
 

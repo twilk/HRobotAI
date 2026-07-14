@@ -20,6 +20,7 @@ import {
   type AccessGrant,
   type AccessStatus,
   type IssueFormState,
+  type LocationLite,
 } from '@/lib/dostepy'
 
 const STATUS_TONE: Record<AccessStatus, 'ok' | 'warn' | 'muted' | 'default'> = {
@@ -85,6 +86,11 @@ export function DostepyScreen() {
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
   const [employeesError, setEmployeesError] = useState<string | null>(null)
 
+  // Lokalizacja picker: falls back to the raw UUID text input if the catalog fetch fails (optional
+  // field either way — the empty "— wybierz —" option always stays valid).
+  const [lokalizacje, setLokalizacje] = useState<LocationLite[]>([])
+  const [lokalizacjeFailed, setLokalizacjeFailed] = useState(false)
+
   const [form, setForm] = useState<IssueFormState>(EMPTY_ISSUE_FORM)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
@@ -125,6 +131,17 @@ export function DostepyScreen() {
       })
       .catch((e) => {
         if (!cancelledRef.current) setEmployeesError(actionErrorMessage(e))
+      })
+  }, [])
+
+  useEffect(() => {
+    dostepyApi
+      .listLokalizacjeForSelect()
+      .then((rows) => {
+        if (!cancelledRef.current) setLokalizacje(rows)
+      })
+      .catch(() => {
+        if (!cancelledRef.current) setLokalizacjeFailed(true)
       })
   }, [])
 
@@ -250,13 +267,29 @@ export function DostepyScreen() {
                 placeholder="KART-00123"
               />
             </Field>
-            <Field label="Lokalizacja" htmlFor="accessLokalizacja" className="mb-0" hint="ID lokalizacji, UUID (opcjonalnie).">
-              <Input
-                id="accessLokalizacja"
-                value={form.lokalizacjaId}
-                onChange={(e) => patch({ lokalizacjaId: e.target.value })}
-                placeholder="uuid lokalizacji"
-              />
+            <Field label="Lokalizacja" htmlFor="accessLokalizacja" className="mb-0" hint="Opcjonalnie.">
+              {lokalizacjeFailed ? (
+                <Input
+                  id="accessLokalizacja"
+                  value={form.lokalizacjaId}
+                  onChange={(e) => patch({ lokalizacjaId: e.target.value })}
+                  placeholder="uuid lokalizacji"
+                />
+              ) : (
+                <select
+                  id="accessLokalizacja"
+                  value={form.lokalizacjaId}
+                  onChange={(e) => patch({ lokalizacjaId: e.target.value })}
+                  className={employeeSelectClass}
+                >
+                  <option value="">— wybierz —</option>
+                  {lokalizacje.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </Field>
             <Field label="Notatki" htmlFor="accessNotes" className="mb-0" hint="Opcjonalnie.">
               <Input

@@ -227,6 +227,13 @@ interface EmployeeLite {
   lastName: string
 }
 
+/** `{id,name}` row from `GET /grafik/lokalizacje` — feeds the issue form's optional Lokalizacja
+ *  `<select>` (see {@link dostepyApi.listLokalizacjeForSelect}). */
+export interface LocationLite {
+  id: string
+  name: string
+}
+
 // --- dostepyApi: real fetch against /api/dostepy/* + /api/employees ----------------------------------
 
 /**
@@ -267,5 +274,11 @@ export const dostepyApi = {
    *  already on each row); this is a separate fetch to offer every employee in scope as a target. */
   listEmployeesForSelect(): Promise<EmployeeLite[]> {
     return accessFetch<EmployeeLite[]>('/api/employees')
+  },
+
+  /** Catalog for the issue form's optional Lokalizacja `<select>` (`GrafikController.listLokalizacje`,
+   *  READ_ROLES — every role this screen is already gated to can read it). */
+  listLokalizacjeForSelect(): Promise<LocationLite[]> {
+    return accessFetch<LocationLite[]>('/api/grafik/lokalizacje')
   },
 }

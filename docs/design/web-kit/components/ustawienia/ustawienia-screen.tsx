@@ -14,6 +14,7 @@ import {
   type CompanySettings,
   type OrgUnit,
   type OrgUnitNode,
+  type UserLite,
 } from '@/lib/ustawienia'
 
 /** Surface the backend's already-humanized `message` (400 validation/cycle, 403, 409). */
@@ -63,8 +64,9 @@ function toUnitEdit(u: UnitLike): UnitEditState {
  *      <select> for a unit being edited excludes itself and its descendants via
  *      {@link wouldCreateCycle} so the UI can never even OFFER an invalid reparent — the backend still
  *      has the final say (transactional cycle guard) and a rejection surfaces as the same banner.
- *      `managerUserId` has no directory to pick from (tenant-runtime exposes no `/users` listing), so
- *      it's a raw UUID text field; a bad id trips the backend's FK check (400).
+ *      `managerUserId` is picked from a `<select>` populated from `GET /api/uzytkownicy` (option label
+ *      = email, value = id); if that fetch fails, the field degrades to the previous raw UUID text
+ *      input so editing still works — a bad id either way trips the backend's FK check (400).
  */
 export function UstawieniaScreen() {
   const [company, setCompany] = useState<CompanyForm | null>(null)
@@ -85,6 +87,10 @@ export function UstawieniaScreen() {
   const [edit, setEdit] = useState<UnitEditState | null>(null)
   const [savingUnit, setSavingUnit] = useState(false)
   const [unitError, setUnitError] = useState<string | null>(null)
+
+  // Manager picker: falls back to the raw UUID text input if the user catalog fetch fails.
+  const [users, setUsers] = useState<UserLite[]>([])
+  const [usersFailed, setUsersFailed] = useState(false)
 
   const cancelledRef = useRef(false)
   useEffect(() => {
@@ -112,6 +118,17 @@ export function UstawieniaScreen() {
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    ustawieniaApi
+      .listUsersForSelect()
+      .then((rows) => {
+        if (!cancelledRef.current) setUsers(rows)
+      })
+      .catch(() => {
+        if (!cancelledRef.current) setUsersFailed(true)
+      })
+  }, [])
 
   async function handleCompanySubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -323,6 +340,8 @@ export function UstawieniaScreen() {
                   edit={edit}
                   savingUnit={savingUnit}
                   unitError={unitError}
+                  users={users}
+                  usersFailed={usersFailed}
                   onStartEdit={startEdit}
                   onCancelEdit={cancelEdit}
                   onSave={handleSaveUnit}
@@ -383,6 +402,8 @@ interface UnitRowProps {
   edit: UnitEditState | null
   savingUnit: boolean
   unitError: string | null
+  users: UserLite[]
+  usersFailed: boolean
   onStartEdit: (unit: UnitLike) => void
   onCancelEdit: () => void
   onSave: (e: React.FormEvent) => void
@@ -399,6 +420,8 @@ function UnitRow({
   edit,
   savingUnit,
   unitError,
+  users,
+  usersFailed,
   onStartEdit,
   onCancelEdit,
   onSave,
@@ -433,13 +456,29 @@ function UnitRow({
                 ))}
               </select>
             </Field>
-            <Field label="Manager (User ID)" htmlFor={`manager-${node.id}`} className="mb-0">
-              <Input
-                id={`manager-${node.id}`}
-                value={edit!.managerUserId}
-                onChange={(e) => onEditChange({ ...edit!, managerUserId: e.target.value })}
-                placeholder="UUID użytkownika"
-              />
+            <Field label="Manager" htmlFor={`manager-${node.id}`} className="mb-0" hint="Opcjonalnie.">
+              {usersFailed ? (
+                <Input
+                  id={`manager-${node.id}`}
+                  value={edit!.managerUserId}
+                  onChange={(e) => onEditChange({ ...edit!, managerUserId: e.target.value })}
+                  placeholder="UUID użytkownika"
+                />
+              ) : (
+                <select
+                  id={`manager-${node.id}`}
+                  value={edit!.managerUserId}
+                  onChange={(e) => onEditChange({ ...edit!, managerUserId: e.target.value })}
+                  className={employeeSelectClass}
+                >
+                  <option value="">— wybierz —</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.email}
+                    </option>
+                  ))}
+                </select>
+              )}
             </Field>
             <div className="flex gap-2">
               <Button type="submit" disabled={savingUnit}>
@@ -487,6 +526,8 @@ function UnitRow({
               edit={edit}
               savingUnit={savingUnit}
               unitError={unitError}
+              users={users}
+              usersFailed={usersFailed}
               onStartEdit={onStartEdit}
               onCancelEdit={onCancelEdit}
               onSave={onSave}
