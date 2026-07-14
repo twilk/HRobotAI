@@ -28,6 +28,14 @@ WHERE NOT EXISTS (
   WHERE user_id = 'a1d00000-0000-4000-8000-00000000ad11' AND role = 'ADMIN_KLIENTA'::"Role" AND unit_id IS NULL
 );
 
+-- 2c) USTAWIENIA org-chart managers: Region Centrum is managed by manager.demo (matching his MANAGER
+--     UserRole scope); the other units have no org-chart manager assigned yet — a realistic governance
+--     gap the Admin dashboard's "Zdrowie organizacji" surfaces as "Jednostki bez managera".
+UPDATE organizational_units SET manager_user_id = (SELECT id FROM users WHERE email = 'manager.demo@demo.hrobot.local')
+  WHERE name = 'Region Centrum';
+UPDATE organizational_units SET manager_user_id = NULL
+  WHERE name IN ('4Mobility — Operacje', 'Region Południe', 'Region Północ');
+
 -- 3) KOSZTY — a cost rate for every (position, employment_type) present in the roster, so the weekly
 --    cost calculator has full coverage (no missing rates). PLN/h, plausible 2026 values.
 INSERT INTO position_cost_rates (id, position, employment_type, hourly_rate, overtime_multiplier, currency, created_at, updated_at) VALUES
