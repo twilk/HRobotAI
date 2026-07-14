@@ -23,7 +23,7 @@
 ## CI/CD (d) + Staging (e)
 - `ci.yml` **zmergowany na `main`** (PR #9, 11.07) — bramki lint/typecheck/unit blokują integrację; zielone runy: 29166512951 (PR), 29166696122 (main). Job pytest dla serwisów Pythona dodany 14.07. Lane integracyjny (G6 na ≥2 bazach) i smoke Playwright świadomie odroczone do czasu powstania realnych testów (CI-4/CI-5).
 - Testy (pełny bieg lokalny 2026-07-14): **855/855 TS w 76 suitach** + agent-service 48 passed/3 skipped (51/51 w kontenerze z żywym optymalizatorem) + grafik-optimizer w kontenerze python:3.12 — logi w `test-logs/`.
-- Staging (docker-compose full + tunel) działa i utrzymuje żywy tenant 4Mobility; auto-deploy (`deploy-staging.yml` na main, PR #18) — aktywacja po rejestracji self-hosted runnera (w toku 14.07).
+- Staging: auto-deploy DZIAŁA end-to-end (run [29374277217](https://github.com/twilk/HRobotAI/actions/runs/29374277217): 14/14 kroków, provisioning tenanta automatyczny po fixie #33, health-check 6/6) — osobny projekt compose `hrobot-staging` (porty 48xx), żywy stack demo 4Mobility nietknięty. Publiczny URL: quick tunnel (sesyjny) do czasu konfiguracji named tunnel.
 - Izolacja tenantów (G6) udowodniona unit-testem (mock) — test integracyjny na ≥2 realnych bazach → do dodania (CI-4).
 
 ## Poza zakresem M2 (świadomie → M3)
