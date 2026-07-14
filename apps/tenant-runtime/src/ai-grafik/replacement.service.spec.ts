@@ -21,7 +21,7 @@ type PoolRow = {
   homeLng?: number | null
   userId?: string | null
 }
-type WeekShiftRow = { employeeId: string; start: string; end: string }
+type WeekShiftRow = { employeeId: string; start: string; end: string; date?: Date }
 type LokalizacjaRow = { lat: number | null; lng: number | null } | null
 type CostEmployeeRow = { id: string; position: string; employmentType: string }
 
@@ -368,6 +368,94 @@ describe('ReplacementService.rankCandidatesForShift', () => {
       expect(feasible.map((r) => r.employeeId)).toEqual(['cheap-labour-far', 'costly-labour-near'])
       expect(feasible[0]?.workCostDelta).toBe(0)
       expect(feasible[1]?.workCostDelta).toBe(990)
+    })
+
+    // ----------------------------------------------------------------------------------------------
+    // Codex finding 1 (§12 Etap 1 reconciliation): the maxTravelMinutes ceiling alone doesn't check
+    // that the candidate can actually ARRIVE on time given a nearby shift they already hold that week.
+    // ----------------------------------------------------------------------------------------------
+    describe('H-TRAVEL arrival gap (Codex finding 1)', () => {
+      it('a candidate within maxTravelMinutes is still infeasible when a same-day prior shift + rest + travel do not fit before the vacated shift start', async () => {
+        // "cross-a" home is ~1.1km away (well within the 120min default ceiling), but already works
+        // 00:00-06:00 THAT SAME DAY (2026-07-15) — only a 2h gap before the vacated shift's 08:00
+        // start, far short of the required ≥11h rest + travel.
+        const client = makeClient([], [{ employeeId: 'cross-a', start: '00:00', end: '06:00', date: new Date('2026-07-15T00:00:00.000Z') }], {
+          crossPool: [{ id: 'cross-a', preferredShiftStart: [], homeLat: 0.01, homeLng: 0, userId: 'u1' }],
+          lokalizacja: LOKALIZACJA,
+        })
+        const service = new ReplacementService(allowAll, noCost)
+
+        const result = await service.rankCandidatesForShift(as(client), makeShift())
+
+        expect(result).toHaveLength(1)
+        expect(result[0]?.feasible).toBe(false)
+        expect(result[0]?.rank).toBe(0)
+        expect(result[0]?.reason).toMatch(/H-TRAVEL/)
+        // Travel WAS computed (the candidate cleared the maxTravelMinutes ceiling) — only the arrival
+        // gap fails, so travelKm/Minutes are populated but travelCost is zeroed like every other
+        // infeasible H-TRAVEL rejection.
+        expect(result[0]?.travelKm).toBeGreaterThan(0)
+        expect(result[0]?.travelCost).toBe(0)
+      })
+
+      it('a candidate whose prior shift ends well before the vacated shift start (>=11h + travel gap) remains feasible', async () => {
+        // Same candidate/travel distance as above, but the prior shift is on the Monday of the same
+        // ISO week (2026-07-13), ending long before the Wednesday 08:00 vacated shift — ample gap.
+        const client = makeClient([], [{ employeeId: 'cross-a', start: '08:00', end: '16:00', date: new Date('2026-07-13T00:00:00.000Z') }], {
+          crossPool: [{ id: 'cross-a', preferredShiftStart: [], homeLat: 0.01, homeLng: 0, userId: 'u1' }],
+          lokalizacja: LOKALIZACJA,
+        })
+        const service = new ReplacementService(allowAll, noCost)
+
+        const result = await service.rankCandidatesForShift(as(client), makeShift())
+
+        expect(result).toHaveLength(1)
+        expect(result[0]).toEqual(expect.objectContaining({ employeeId: 'cross-a', feasible: true, rank: 1 }))
+      })
+
+      it('a candidate with no OTHER shift that week is unaffected by the arrival-gap check', async () => {
+        const client = makeClient([], [], {
+          crossPool: [{ id: 'cross-a', preferredShiftStart: [], homeLat: 0.01, homeLng: 0, userId: 'u1' }],
+          lokalizacja: LOKALIZACJA,
+        })
+        const service = new ReplacementService(allowAll, noCost)
+
+        const result = await service.rankCandidatesForShift(as(client), makeShift())
+
+        expect(result[0]).toEqual(expect.objectContaining({ employeeId: 'cross-a', feasible: true }))
+      })
+    })
+
+    // ----------------------------------------------------------------------------------------------
+    // Codex finding 3: `computeWorkCostDeltas` must normalize BOTH the rate-map build side and every
+    // lookup side, or a whitespace-only `Employee.position` difference silently drops labour Δcost.
+    // ----------------------------------------------------------------------------------------------
+    it('normalizes Employee.position before the rate lookup so whitespace-only differences do not silently drop labour Δcost (Codex finding 3)', async () => {
+      const cost: CostService = {
+        findRatesForPairs: jest.fn().mockResolvedValue([
+          { position: 'Kasjer zmianowy', employmentType: 'UOP', hourlyRate: new Decimal(20), currency: 'PLN' },
+        ]),
+        shiftCost: jest.fn((rate: { hourlyRate: number | string }) => new Decimal(rate.hourlyRate).mul(8)),
+      } as unknown as CostService
+      const client = makeClient([], [], {
+        crossPool: [{ id: 'cross-a', preferredShiftStart: [], homeLat: 0.01, homeLng: 0, userId: 'u1' }],
+        lokalizacja: LOKALIZACJA,
+        costEmployees: [
+          // The vacated employee's raw position has irregular whitespace — normalizes to the SAME
+          // catalog position as the candidate's and the rate's.
+          { id: VACATED_EMP, position: '  Kasjer   zmianowy  ', employmentType: 'UOP' },
+          { id: 'cross-a', position: 'Kasjer zmianowy', employmentType: 'UOP' },
+        ],
+      })
+      const service = new ReplacementService(allowAll, cost)
+
+      const result = await service.rankCandidatesForShift(as(client), makeShift())
+
+      const candidate = result.find((r) => r.employeeId === 'cross-a')!
+      expect(candidate.feasible).toBe(true)
+      // Pre-fix: the raw (unnormalized) vacated-employee lookup missed the rate entirely, so
+      // `workCostDelta` came back `null` (map lookup omitted) instead of the correct `0`.
+      expect(candidate.workCostDelta).toBe(0)
     })
   })
 })

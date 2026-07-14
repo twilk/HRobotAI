@@ -7,9 +7,10 @@ import {
 } from '../shift-swap/swap-feasibility-validator.js'
 import { isGlobal, managedUnitIds } from '../tenant-runtime/rbac/unit-scope.js'
 import { CostService } from '../cost/cost.service.js'
+import { normalizePosition } from '../cost/position.util.js'
 import { haversineKm, roundCost, roundKm, roundMinutes, travelCost, travelMinutes } from '../cost/travel.util.js'
 import type { AiConfigActor } from './ai-config.service.js'
-import { isoWeekRange, windowMinutes } from './week-range.util.js'
+import { isoWeekRange, toMinutes, windowMinutes } from './week-range.util.js'
 
 /**
  * A vacated shift with its assigned employee and that employee's APPROVED leaves pre-loaded — the
@@ -125,6 +126,15 @@ export const DEFAULT_TRAVEL_POLICY: TravelPolicy = {
 }
 
 /**
+ * H4's ≥11h daily rest (see `OptimizerSwapFeasibilityValidator`), mirrored here for the H-TRAVEL
+ * arrival-gap check (Codex finding 1, 2026-07-14 spec §12 Etap 1): a cross-unit candidate must not
+ * only be within `maxTravelMinutes`, they must actually be able to REACH the vacated shift's start
+ * given any nearby shift they already hold that week — end-of-that-shift + this rest + the travel
+ * itself must fit before `shift.start`.
+ */
+const REQUIRED_REST_MINUTES = 11 * 60
+
+/**
  * The minimal Shift view {@link ReplacementService.rankCandidatesForShift} needs. `employee.unitId`
  * may be pre-loaded by the caller (via a Prisma `include`); when it is absent the service resolves
  * the unit from `employeeId` itself, so a bare Shift row works too. Same optional-preload convention
@@ -217,46 +227,62 @@ export class ReplacementService {
       (await client.employee.findUniqueOrThrow({ where: { id: shift.employeeId }, select: { unitId: true } }))
         .unitId
 
-    // --- Tier 1: local pool (same unit, qualified, ≠ vacated). Always evaluated. ---------------------
+    // --- Tier 1: local pool (same unit, qualified, ≠ vacated). Always evaluated. Local candidates
+    // never travel, so no week-shift data is needed to vet them. -------------------------------------
     const localPool = await this.loadPool(client, { unitId, role: shift.role, excludeId: shift.employeeId, crossUnit: false })
     let localEvaluated: EvaluatedCandidate[] = []
     if (localPool.length > 0) {
       localEvaluated = await Promise.all(
-        localPool.map((c) => this.vetCandidate(client, shift, c, true, null, travelPolicy)),
+        localPool.map((c) => this.vetCandidate(client, shift, c, true, null, travelPolicy, [])),
       )
     }
     const localFeasible = localEvaluated.filter((c) => c.feasible)
 
-    // --- Tier 2: cross-unit — ONLY when tier 1 has no feasible candidate. lokalizacja is resolved
-    // lazily HERE (never for a local-only resolution) since it's only needed for the H-TRAVEL gate. --
-    let crossEvaluated: EvaluatedCandidate[] = []
+    // --- Tier 2 pool: cross-unit — ONLY when tier 1 has no feasible candidate. lokalizacja is
+    // resolved lazily HERE (never for a local-only resolution) since it's only needed for H-TRAVEL. --
+    let crossPool: PoolRow[] = []
+    let lokalizacja: { lat: number | null; lng: number | null } | null = null
     if (localFeasible.length === 0) {
-      const crossPool = await this.loadPool(client, { unitId, role: shift.role, excludeId: shift.employeeId, crossUnit: true })
+      crossPool = await this.loadPool(client, { unitId, role: shift.role, excludeId: shift.employeeId, crossUnit: true })
       if (crossPool.length > 0) {
-        const lokalizacja =
+        lokalizacja =
           shift.lokalizacja !== undefined
             ? shift.lokalizacja
             : await client.lokalizacja.findUnique({ where: { id: shift.lokalizacjaId }, select: { lat: true, lng: true } })
-        crossEvaluated = await Promise.all(
-          crossPool.map((c) => this.vetCandidate(client, shift, c, false, lokalizacja, travelPolicy)),
-        )
       }
     }
 
-    const evaluated = [...localEvaluated, ...crossEvaluated]
-    if (evaluated.length === 0) return []
+    const poolIds = [...localPool, ...crossPool].map((c) => c.id)
+    if (poolIds.length === 0) return []
 
-    // Already-scheduled hours per candidate within the shift's ISO week (one query, no N+1).
+    // Already-scheduled shifts per candidate within the shift's ISO week — ONE query (no N+1), fetched
+    // BEFORE cross-unit vetting so it can double as the H-TRAVEL arrival-gap input (does the candidate
+    // have a nearby shift that, plus rest plus travel, doesn't leave enough room before `shift.start`?
+    // Codex finding 1) as well as the hours tie-break used later for every evaluated candidate.
     const { weekStart, weekEndExcl } = isoWeekRange(shift.date)
-    const candidateIds = evaluated.map((c) => c.id)
     const weekShifts = await client.shift.findMany({
-      where: { employeeId: { in: candidateIds }, date: { gte: weekStart, lt: weekEndExcl } },
-      select: { employeeId: true, start: true, end: true },
+      where: { employeeId: { in: poolIds }, date: { gte: weekStart, lt: weekEndExcl } },
+      select: { employeeId: true, start: true, end: true, date: true },
     })
+    const weekShiftsByEmployee = new Map<string, { start: string; end: string; date: Date }[]>()
     const hoursByEmployee = new Map<string, number>()
     for (const s of weekShifts) {
+      const list = weekShiftsByEmployee.get(s.employeeId) ?? []
+      list.push(s)
+      weekShiftsByEmployee.set(s.employeeId, list)
       hoursByEmployee.set(s.employeeId, (hoursByEmployee.get(s.employeeId) ?? 0) + windowMinutes(s.start, s.end) / 60)
     }
+
+    let crossEvaluated: EvaluatedCandidate[] = []
+    if (crossPool.length > 0) {
+      crossEvaluated = await Promise.all(
+        crossPool.map((c) =>
+          this.vetCandidate(client, shift, c, false, lokalizacja, travelPolicy, weekShiftsByEmployee.get(c.id) ?? []),
+        ),
+      )
+    }
+
+    const evaluated = [...localEvaluated, ...crossEvaluated]
 
     // Labour Δcost (candidate − vacated) for every FEASIBLE candidate, one batched rates query
     // (Codex P2-6: kept SEPARATE from travelCost — summed only for the sort key below).
@@ -332,8 +358,11 @@ export class ReplacementService {
    * shape — the candidate is the INCOMING holder of the vacated shift, no counterparty shift), then
    * for a CROSS-UNIT candidate applies the additive H-TRAVEL gate: infeasible when either the
    * candidate's home or the shift's lokalizacja has no coordinates (travel cannot be honestly
-   * computed), or when the estimated travel time exceeds `travelPolicy.maxTravelMinutes`. A LOCAL
-   * candidate's travel is always 0 and is never travel-gated.
+   * computed), when the estimated travel time exceeds `travelPolicy.maxTravelMinutes`, OR (Codex
+   * finding 1, §12 Etap 1) when the candidate's nearest preceding shift in `candidateWeekShifts`
+   * doesn't leave enough gap — end-of-that-shift + the H4 ≥11h rest + the travel itself — before
+   * `shift.start` (see {@link checkArrivalGap}). A LOCAL candidate's travel is always 0 and is never
+   * travel- or arrival-gated.
    */
   private async vetCandidate(
     client: TenantClient,
@@ -342,6 +371,7 @@ export class ReplacementService {
     isLocal: boolean,
     lokalizacja: { lat: number | null; lng: number | null } | null,
     travelPolicy: TravelPolicy,
+    candidateWeekShifts: { start: string; end: string; date: Date }[],
   ): Promise<EvaluatedCandidate> {
     const decision = await this.feasibility.validate({
       client,
@@ -397,6 +427,20 @@ export class ReplacementService {
       }
     }
 
+    // Within the travel-time ceiling; still must actually be able to ARRIVE on time given any nearby
+    // shift already held that week (Codex finding 1) — the ceiling alone doesn't check this.
+    const gapReason = this.checkArrivalGap(shift, rawMinutes, candidateWeekShifts)
+    if (gapReason != null) {
+      return {
+        ...base,
+        feasible: false,
+        reason: gapReason,
+        travelKm: roundKm(rawKm),
+        travelMinutes: roundMinutes(rawMinutes),
+        travelCost: 0,
+      }
+    }
+
     const costDecimal = travelCost(rawKm, travelPolicy.perKmRatePln, travelPolicy.roundTrip)
     return {
       ...base,
@@ -405,6 +449,41 @@ export class ReplacementService {
       travelMinutes: roundMinutes(rawMinutes),
       travelCost: roundCost(costDecimal).toNumber(),
     }
+  }
+
+  /**
+   * H-TRAVEL arrival gap (Codex finding 1): among `candidateWeekShifts` (the candidate's OTHER shifts
+   * in the vacated shift's ISO week), finds the one ending closest to — but no later than — the
+   * vacated shift's start, and checks that end-of-that-shift + {@link REQUIRED_REST_MINUTES} +
+   * `travelMins` still fits before `shift.start`. Absolute instants are `shift.date` (UTC-midnight
+   * `@db.Date`) plus minutes-since-midnight, so an overnight shift (`end < start`) is handled the same
+   * way {@link windowMinutes} already handles it elsewhere in this file. Returns `null` (no conflict)
+   * when the candidate has no shift ending at/before the vacated shift's start that week.
+   */
+  private checkArrivalGap(
+    shift: RankableShift,
+    travelMins: number,
+    candidateWeekShifts: { start: string; end: string; date: Date }[],
+  ): string | null {
+    const vacatedStartAbs = shift.date.getTime() + toMinutes(shift.start) * 60_000
+    let latestPrevEndAbs: number | null = null
+    for (const s of candidateWeekShifts) {
+      const startAbs = s.date.getTime() + toMinutes(s.start) * 60_000
+      const endAbs = startAbs + windowMinutes(s.start, s.end) * 60_000
+      if (endAbs <= vacatedStartAbs && (latestPrevEndAbs == null || endAbs > latestPrevEndAbs)) {
+        latestPrevEndAbs = endAbs
+      }
+    }
+    if (latestPrevEndAbs == null) return null
+
+    const gapMinutes = (vacatedStartAbs - latestPrevEndAbs) / 60_000
+    const requiredMinutes = REQUIRED_REST_MINUTES + travelMins
+    if (gapMinutes >= requiredMinutes) return null
+
+    return (
+      `H-TRAVEL: poprzednia zmiana kończy się za blisko startu — dostępne ${Math.round(gapMinutes)} min ` +
+      `(odpoczynek+dojazd), wymagane ${Math.round(requiredMinutes)} min`
+    )
   }
 
   /**
@@ -430,7 +509,11 @@ export class ReplacementService {
     const vacatedEmp = byId.get(shift.employeeId)
     if (!vacatedEmp) return result
 
-    const pairKey = (position: string, employmentType: EmploymentType) => `${position} ${employmentType}`
+    // Codex finding 3: normalize on BOTH sides of the map (build via `rates`' own position, and every
+    // lookup below) so a whitespace-only difference from the raw `Employee.position` never silently
+    // misses the rate — mirrors `AiProposalService.computeEstimatedCost` and `CostService.weekCost`.
+    const pairKey = (position: string, employmentType: EmploymentType) =>
+      `${normalizePosition(position)} ${employmentType}`
     const pairs = candidateIds
       .map((id) => byId.get(id))
       .filter((e): e is NonNullable<typeof e> => e != null)

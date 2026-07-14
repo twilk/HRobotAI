@@ -52,9 +52,10 @@ interface ResolvedConfig {
  *
  *   - no feasible candidate            → ESCALATED (audit `ai_proposal.escalated`, NO_FEASIBLE_CANDIDATE)
  *   - SUGGEST_ONLY / AUTO_NOTIFY       → DRAFT (a human picks/notifies from here)
- *   - AUTO_ASK_CONSENT / AUTO_COMMIT   → PENDING_EMPLOYEE_CONSENT for the top feasible candidate IF
- *                                        that employee has a login (reachable); otherwise ESCALATED
- *                                        (EMPLOYEE_UNREACHABLE).
+ *   - AUTO_ASK_CONSENT / AUTO_COMMIT   → PENDING_EMPLOYEE_CONSENT for the FIRST feasible candidate (in
+ *                                        rank order) that has a login (reachable) — Codex finding 2 —
+ *                                        or ESCALATED (EMPLOYEE_UNREACHABLE) only when NONE of the
+ *                                        feasible candidates are reachable.
  *
  * Every state is derived through the pure {@link nextProposalState} machine so no illegal transition
  * can be persisted. Audit payloads carry IDs only — never PESEL/home or other PII.
@@ -140,16 +141,16 @@ export class AiProposalService {
       auditAction = 'ai_proposal.escalated'
       escalationReason = 'NO_FEASIBLE_CANDIDATE'
     } else if (level === AutonomyLevel.AUTO_ASK_CONSENT || level === AutonomyLevel.AUTO_COMMIT_ON_APPROVAL) {
-      const top = topFeasible! // feasible is non-empty here
-      const topEmployee = await client.employee.findUnique({
-        where: { id: top.employeeId },
-        select: { userId: true },
-      })
-      const reachable = topEmployee?.userId != null
-      if (reachable) {
+      // Codex finding 2 (P1-3, §12 Etap 2): pick the first feasible REACHABLE candidate — in rank
+      // order, NOT just the top (cost-cheapest) one — as the active candidate. `RankedCandidate.
+      // reachable` is already resolved by `ReplacementService` (has an `Employee.userId` ⇒ a login),
+      // so a higher-ranked but unreachable candidate (e.g. a cheaper cross-unit match with no account)
+      // no longer forces an escalation while a reachable candidate exists further down the ranking.
+      const active = feasible.find((c) => c.reachable === true)
+      if (active) {
         state = nextProposalState(AiProposalState.DRAFT, AiProposalAction.AskConsent)
         auditAction = 'ai_proposal.created'
-        activeSeedId = candidateSeeds.find((s) => s.candidate.employeeId === top.employeeId)!.id
+        activeSeedId = candidateSeeds.find((s) => s.candidate.employeeId === active.employeeId)!.id
         expiresAt = new Date(Date.now() + config.consentTtlHours * 60 * 60 * 1000)
       } else {
         state = nextProposalState(AiProposalState.DRAFT, AiProposalAction.DirectEscalate)

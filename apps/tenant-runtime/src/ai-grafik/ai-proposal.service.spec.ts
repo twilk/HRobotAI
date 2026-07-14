@@ -117,7 +117,15 @@ function makeService(overrides: {
   return { service, replacement, aiConfig, audit, validator, validate, cost }
 }
 
-const feasible = (id: string, rank: number, score = 0): RankedCandidate => ({ employeeId: id, feasible: true, rank, score })
+// `reachable` defaults to `true` — the SUGGEST_ONLY/AUTO_NOTIFY/escalation tests never consult it, only
+// the AUTO_ASK_CONSENT ones below override it to exercise Codex finding 2 (first REACHABLE feasible).
+const feasible = (id: string, rank: number, score = 0, reachable = true): RankedCandidate => ({
+  employeeId: id,
+  feasible: true,
+  rank,
+  score,
+  reachable,
+})
 const infeasible = (id: string, reason = 'H1'): RankedCandidate => ({ employeeId: id, feasible: false, rank: 0, reason })
 
 describe('AiProposalService.createReplacement', () => {
@@ -166,7 +174,6 @@ describe('AiProposalService.createReplacement', () => {
 
   it('AUTO_ASK_CONSENT + reachable top → PENDING_EMPLOYEE_CONSENT, active candidate PENDING, expiresAt set', async () => {
     const client = makeClient()
-    client.employee.findUnique.mockResolvedValue({ userId: 'kc-c1' }) // top candidate has a login
     const { service, audit } = makeService({
       ranked: [feasible('c1', 1), feasible('c2', 2)],
       autonomyLevel: AutonomyLevel.AUTO_ASK_CONSENT,
@@ -195,11 +202,10 @@ describe('AiProposalService.createReplacement', () => {
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'ai_proposal.created' }))
   })
 
-  it('AUTO_ASK_CONSENT + top has NO login → ESCALATED (EMPLOYEE_UNREACHABLE)', async () => {
+  it('AUTO_ASK_CONSENT + top has NO login → ESCALATED (EMPLOYEE_UNREACHABLE) when NO feasible candidate is reachable', async () => {
     const client = makeClient()
-    client.employee.findUnique.mockResolvedValue({ userId: null }) // unreachable
     const { service, audit } = makeService({
-      ranked: [feasible('c1', 1)],
+      ranked: [feasible('c1', 1, 0, false)], // unreachable, and the ONLY feasible candidate
       autonomyLevel: AutonomyLevel.AUTO_ASK_CONSENT,
     })
 
@@ -214,6 +220,28 @@ describe('AiProposalService.createReplacement', () => {
         payload: expect.objectContaining({ reason: 'EMPLOYEE_UNREACHABLE' }),
       }),
     )
+  })
+
+  it('AUTO_ASK_CONSENT + top-ranked candidate UNREACHABLE → falls through to the next reachable one (Codex P1-3)', async () => {
+    // c1 ranks first (cheapest) but has no login; c2 is reachable. The bug this fix closes: picking
+    // ONLY the top-ranked candidate's reachability caused escalation here even though c2 could still
+    // be asked — the whole point of the cross-unit fallback pool.
+    const client = makeClient()
+    const { service, audit } = makeService({
+      ranked: [feasible('c1', 1, 0, false), feasible('c2', 2, 0, true)],
+      autonomyLevel: AutonomyLevel.AUTO_ASK_CONSENT,
+    })
+
+    const result = await service.createReplacement(as(client), HR, SHIFT_ID)
+
+    expect(result.state).toBe(AiProposalState.PENDING_EMPLOYEE_CONSENT)
+    const data = client.aiProposal.create.mock.calls[0][0].data
+    const rows = data.candidates.create as CreatedCandidate[]
+    const active = rows.find((r) => r.id === data.activeCandidateId)!
+    expect(active.employeeId).toBe('c2') // NOT the unreachable rank-1 c1
+    expect(active.consentState).toBe(ConsentState.PENDING)
+    expect(rows.find((r) => r.employeeId === 'c1')!.consentState).toBe(ConsentState.NOT_ASKED)
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'ai_proposal.created' }))
   })
 
   it('forbids a MANAGER who does not manage the shift unit', async () => {
