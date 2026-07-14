@@ -49,8 +49,11 @@ jobs:
 
     defaults:
       run:
-        # Git Bash on the Windows dev box (installed alongside git for the runner + checkout).
-        shell: bash
+        # EXPLICIT Git Bash path: on this box a bare `shell: bash` resolves to the WSL shim
+        # (C:\WINDOWS\system32\bash.EXE), whose relay fails with "execvpe(/bin/bash) failed"
+        # (no default WSL distro for the runner user). Pinning the Git for Windows bash removes
+        # the PATH-order dependency entirely.
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
 
     steps:
       # 1. Checkout the exact green `main` that CI validated.
