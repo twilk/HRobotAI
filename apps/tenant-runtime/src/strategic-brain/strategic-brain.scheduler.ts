@@ -53,10 +53,11 @@ export class StrategicBrainScheduler {
     private readonly configService: PerformanceConfigService,
   ) {}
 
-  // Demo cadence: every 5 minutes, so a live walkthrough visibly sees the feed refresh without a
-  // long wait. Prod cadence (swap before a real deploy): CronExpression.EVERY_DAY_AT_2AM — nightly,
-  // off-hours, once the analysis runs against real operational volume instead of the demo seed.
-  @Cron(CronExpression.EVERY_5_MINUTES)
+  // Cadence: nightly, off-hours. The autonomous "ciągle i sam z siebie" analysis runs once a day and
+  // MATERIALIZES snapshots/recommendations; the UI serves them PULL-side from persisted rows, so the
+  // feed is always "already computed" without a manual trigger. Nightly (not every-5-min) keeps a
+  // live demo deterministic — the seeded/materialized state is not silently recomputed mid-walkthrough.
+  @Cron(CronExpression.EVERY_DAY_AT_2AM)
   async run(): Promise<void> {
     const tenants = await this.controlPlanePrisma.tenant.findMany({
       where: { status: TenantStatus.ACTIVE },
