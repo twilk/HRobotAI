@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import type { ComponentType, SVGProps } from 'react'
 import { Card } from '@/components/ui/card'
-import { IconUserPlus, IconCalendar, IconMail, IconArrowRight } from '@/components/icons'
+import { IconUserPlus, IconCalendar, IconMail, IconRequests, IconArrowRight } from '@/components/icons'
+import type { Role } from '@/lib/nav'
 
 interface Action {
   title: string
@@ -10,16 +11,51 @@ interface Action {
   icon: ComponentType<SVGProps<SVGSVGElement>>
 }
 
-const ACTIONS: Action[] = [
+const PRACOWNIK_ACTIONS: Action[] = [
+  { title: 'Mój grafik', desc: 'Zobacz swoje nadchodzące zmiany i godziny pracy.', href: '/grafik', icon: IconCalendar },
+  { title: 'Złóż wniosek', desc: 'Wyślij wniosek urlopowy lub inny do akceptacji.', href: '/wnioski', icon: IconRequests },
+]
+
+const MANAGER_ACTIONS: Action[] = [
+  { title: 'Skonfiguruj grafik', desc: 'Zaplanuj zmiany, dyżury i godziny pracy zespołu.', href: '/grafik', icon: IconCalendar },
+  { title: 'Wnioski do akceptacji', desc: 'Zatwierdź lub odrzuć wnioski oczekujące zespołu.', href: '/wnioski', icon: IconRequests },
+  { title: 'Zamiany', desc: 'Przejrzyj propozycje zamian i zastępstw.', href: '/zamiany', icon: IconRequests },
+]
+
+const HR_ACTIONS: Action[] = [
+  { title: 'Dodaj pracownika', desc: 'Zacznij budować swój zespół i kartoteki kadrowe.', href: '/pracownicy', icon: IconUserPlus },
+  { title: 'Skonfiguruj grafik', desc: 'Zaplanuj zmiany, dyżury i godziny pracy zespołu.', href: '/grafik', icon: IconCalendar },
+]
+
+const ADMIN_ACTIONS: Action[] = [
   { title: 'Dodaj pracownika', desc: 'Zacznij budować swój zespół i kartoteki kadrowe.', href: '/pracownicy', icon: IconUserPlus },
   { title: 'Skonfiguruj grafik', desc: 'Zaplanuj zmiany, dyżury i godziny pracy zespołu.', href: '/grafik', icon: IconCalendar },
   { title: 'Zaproś użytkowników', desc: 'Dodaj HR i menedżerów do przestrzeni roboczej.', href: '/ustawienia/uzytkownicy', icon: IconMail },
 ]
 
-export function QuickActions() {
+/**
+ * Actions offered for the caller's roles — mirrors nav.ts's RBAC-visibility convention but for the
+ * dashboard's shortcut tiles. Fixes the bug where a plain PRACOWNIK saw all 3 admin shortcuts
+ * (worst case "Zaproś użytkowników" dead-ends at "Brak dostępu"; see
+ * docs/superpowers/specs/2026-07-14-role-dashboards-component-audit.md §A/§E-2). Priority:
+ * ADMIN_KLIENTA > HR > MANAGER > PRACOWNIK (a user with multiple roles gets the highest tier's set).
+ */
+export function actionsForRoles(roles: Role[]): Action[] {
+  const isAdmin = roles.includes('ADMIN_KLIENTA')
+  const isGlobal = isAdmin || roles.includes('HR')
+  const canManage = isGlobal || roles.includes('MANAGER')
+
+  if (isAdmin) return ADMIN_ACTIONS
+  if (isGlobal) return HR_ACTIONS
+  if (canManage) return MANAGER_ACTIONS
+  return PRACOWNIK_ACTIONS
+}
+
+export function QuickActions({ roles }: { roles: Role[] }) {
+  const actions = actionsForRoles(roles)
   return (
     <div className="grid sm:grid-cols-3 gap-4">
-      {ACTIONS.map((a) => {
+      {actions.map((a) => {
         const Icon = a.icon
         return (
           <Link key={a.href} href={a.href} className="group">
