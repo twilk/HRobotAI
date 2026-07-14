@@ -3,6 +3,8 @@ import { QuickActions } from '@/components/dashboard/quick-actions'
 import { DashboardKpis } from '@/components/dashboard/dashboard-kpis'
 import { DataProtectionPanel } from '@/components/dashboard/data-protection-panel'
 import { PracownikBoard } from '@/components/dashboard/pracownik-board'
+import { ManagerBoard } from '@/components/dashboard/manager-board'
+import { AdminBoard } from '@/components/dashboard/admin-board'
 import type { Role } from '@/lib/nav'
 import { getSession } from '@/lib/session'
 
@@ -11,10 +13,12 @@ import { getSession } from '@/lib/session'
 // pulls live tenant numbers from the API, so the dashboard reflects real state — not a static onboarding.
 //
 // ROLE-ADAPTIVE: ONE route, sections conditioned on `session.roles` — NOT three separate route files
-// (see docs/superpowers/specs/2026-07-14-role-dashboards-component-audit.md §A). A plain PRACOWNIK
-// gets the self-service board (PracownikBoard) instead of org-wide KPIs + the RODO panel, which are
-// not relevant to their job and (for the RODO panel) not their data to see. Everyone with MANAGER+
-// keeps the existing KPI/quick-actions/RODO body — DashboardKpis already scopes server-side per role.
+// (see docs/superpowers/specs/2026-07-14-role-dashboards-component-audit.md §A). Three branches:
+//   - plain PRACOWNIK (!canManage)         -> PracownikBoard (self-service signals only).
+//   - MANAGER (canManage && !isGlobal)     -> ManagerBoard (operational, unit-scoped: decisions queue,
+//                                             staffing exceptions, unit cost).
+//   - HR/ADMIN_KLIENTA (isGlobal)          -> AdminBoard (governance first) then DashboardKpis.
+// Every branch keeps QuickActions. DataProtectionPanel stays HR/ADMIN-only (not a MANAGER's data to see).
 
 export default async function DashboardPage() {
   const session = await getSession()
@@ -33,14 +37,20 @@ export default async function DashboardPage() {
           Pulpit <span className="text-accent-ink">4Mobility</span>
         </h1>
         <p className="text-muted text-[15px] mt-2 max-w-[52ch]">
-          {canManage
-            ? `Cześć, ${firstName}. Przegląd zespołu i grafiku na żywo — dane syntetyczne, zgodnie z RODO.`
-            : `Cześć, ${firstName}. Twój grafik, godziny i wnioski — na żywo.`}
+          {isGlobal
+            ? `Cześć, ${firstName}. Stan organizacji i grafiku na żywo — dane syntetyczne, zgodnie z RODO.`
+            : canManage
+              ? `Cześć, ${firstName}. Decyzje, obsada i koszty Twojego zespołu — na żywo.`
+              : `Cześć, ${firstName}. Twój grafik, godziny i wnioski — na żywo.`}
         </p>
 
-        {canManage ? (
+        {isGlobal ? (
           <>
             <div className="mt-6">
+              <AdminBoard />
+            </div>
+
+            <div className="mt-4">
               <DashboardKpis />
             </div>
 
@@ -50,6 +60,16 @@ export default async function DashboardPage() {
 
             <div className="mt-4">
               <DataProtectionPanel />
+            </div>
+          </>
+        ) : canManage ? (
+          <>
+            <div className="mt-6">
+              <ManagerBoard />
+            </div>
+
+            <div className="mt-4">
+              <QuickActions roles={roles} />
             </div>
           </>
         ) : (
