@@ -252,3 +252,136 @@ describe('SnapshotService', () => {
     })
   })
 })
+
+// --- READ paths (Task 9): overview heatmap + employee cards + self-lookup -----------------------
+function makeReadClient() {
+  return {
+    employee: { findMany: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn() },
+    employeePerformanceSnapshot: { findMany: jest.fn() },
+    performanceConfig: { findFirst: jest.fn().mockResolvedValue(null) }, // → schema defaults
+  }
+}
+type ReadClient = ReturnType<typeof makeReadClient>
+const asReadClient = (c: ReadClient): TenantClient => c as unknown as TenantClient
+
+function readSnap(over: { employeeId: string; windowEnd: string } & Partial<Record<string, unknown>>) {
+  const { windowEnd, ...rest } = over
+  return {
+    windowStart: new Date('2026-06-01T00:00:00.000Z'),
+    windowEnd: new Date(windowEnd),
+    throughput: 5,
+    slaHitRate: 0.9,
+    defectRate: 0.05,
+    compositeScore: 80,
+    developmentSlope: 1,
+    confidence: 0.9,
+    isNewHire: false,
+    excludedReason: null,
+    ...rest,
+  }
+}
+
+describe('SnapshotService (read paths)', () => {
+  let service: SnapshotService
+  let client: ReadClient
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [SnapshotService, PerformanceConfigService],
+    }).compile()
+    service = module.get(SnapshotService)
+    client = makeReadClient()
+    jest.clearAllMocks()
+    client.performanceConfig.findFirst.mockResolvedValue(null)
+  })
+
+  describe('overview', () => {
+    it('HR (scope null) reads every employee unfiltered, latest snapshot per employee', async () => {
+      client.employee.findMany.mockResolvedValue([{ id: 'e1' }, { id: 'e2' }])
+      client.employeePerformanceSnapshot.findMany.mockResolvedValue([
+        readSnap({ employeeId: 'e1', windowEnd: '2026-06-15T00:00:00.000Z', compositeScore: 90 }),
+        readSnap({ employeeId: 'e1', windowEnd: '2026-06-01T00:00:00.000Z', compositeScore: 70 }),
+        readSnap({ employeeId: 'e2', windowEnd: '2026-06-15T00:00:00.000Z', compositeScore: 60 }),
+      ])
+
+      const rows = (await service.overview(asReadClient(client), null)) as Array<Record<string, unknown>>
+
+      // scope null ⇒ empty where (no unit filter)
+      expect(client.employee.findMany).toHaveBeenCalledWith({ where: {}, select: { id: true } })
+      expect(rows).toHaveLength(2)
+      const e1 = rows.find((r) => r.employeeId === 'e1')!
+      expect(e1.compositeScore).toBe(90) // newest window wins
+    })
+
+    it('MANAGER (scope=[u1]) filters employees to the managed unit(s)', async () => {
+      client.employee.findMany.mockResolvedValue([{ id: 'e1' }])
+      client.employeePerformanceSnapshot.findMany.mockResolvedValue([
+        readSnap({ employeeId: 'e1', windowEnd: '2026-06-15T00:00:00.000Z' }),
+      ])
+
+      await service.overview(asReadClient(client), ['u1'])
+
+      expect(client.employee.findMany).toHaveBeenCalledWith({ where: { unitId: { in: ['u1'] } }, select: { id: true } })
+    })
+
+    it('an empty scope array returns zero rows and never queries snapshots (in:[] ≠ bypass)', async () => {
+      client.employee.findMany.mockResolvedValue([])
+      const rows = await service.overview(asReadClient(client), [])
+      expect(rows).toEqual([])
+      expect(client.employeePerformanceSnapshot.findMany).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('employeeCard', () => {
+    it('returns the series (asc) + derived retentionSignal for an in-scope employee', async () => {
+      client.employee.findUnique.mockResolvedValue({ id: 'e1', unitId: 'u1' })
+      client.employeePerformanceSnapshot.findMany.mockResolvedValue([
+        readSnap({ employeeId: 'e1', windowEnd: '2026-06-15T00:00:00.000Z', compositeScore: 85, developmentSlope: 1 }),
+      ])
+
+      const card = (await service.employeeCard(asReadClient(client), 'e1', ['u1'])) as Record<string, unknown>
+
+      expect(card.employeeId).toBe('e1')
+      expect((card.series as unknown[]).length).toBe(1)
+      expect(card.retentionSignal).toBe('UTRZYMAC') // high score, non-negative slope
+      expect((card.factors as Record<string, unknown>).compositeScore).toBe(85)
+    })
+
+    it('404s for an unknown id BEFORE any scope check', async () => {
+      client.employee.findUnique.mockResolvedValue(null)
+      await expect(service.employeeCard(asReadClient(client), 'nope', ['u1'])).rejects.toThrow(/not found/i)
+    })
+
+    it('403s for an existing employee OUTSIDE the manager scope', async () => {
+      client.employee.findUnique.mockResolvedValue({ id: 'e1', unitId: 'u2' })
+      await expect(service.employeeCard(asReadClient(client), 'e1', ['u1'])).rejects.toThrow(/scope/i)
+    })
+
+    it('a GLOBAL actor (scope null) is never scope-checked', async () => {
+      client.employee.findUnique.mockResolvedValue({ id: 'e1', unitId: 'u2' })
+      client.employeePerformanceSnapshot.findMany.mockResolvedValue([])
+      const card = (await service.employeeCard(asReadClient(client), 'e1', null)) as Record<string, unknown>
+      expect(card.employeeId).toBe('e1')
+      expect(card.retentionSignal).toBeNull() // no snapshots ⇒ null signal
+    })
+  })
+
+  describe('employeeCardByKeycloakSub', () => {
+    it('resolves the caller via keycloakSub and returns their own card (no scope)', async () => {
+      client.employee.findFirst.mockResolvedValue({ id: 'self' })
+      client.employeePerformanceSnapshot.findMany.mockResolvedValue([
+        readSnap({ employeeId: 'self', windowEnd: '2026-06-15T00:00:00.000Z' }),
+      ])
+
+      const card = (await service.employeeCardByKeycloakSub(asReadClient(client), 'kc-self')) as Record<string, unknown>
+
+      expect(client.employee.findFirst).toHaveBeenCalledWith({ where: { user: { keycloakSub: 'kc-self' } }, select: { id: true } })
+      expect(card.employeeId).toBe('self')
+    })
+
+    it('404s when the login has no linked Employee', async () => {
+      client.employee.findFirst.mockResolvedValue(null)
+      await expect(service.employeeCardByKeycloakSub(asReadClient(client), 'kc-x')).rejects.toThrow(/no employee/i)
+    })
+  })
+})

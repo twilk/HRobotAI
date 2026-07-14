@@ -21,6 +21,7 @@ import { LeaveModule } from './leave/leave.module.js'
 import { DostepyModule } from './dostepy/dostepy.module.js'
 import { UstawieniaModule } from './ustawienia/ustawienia.module.js'
 import { UsersModule } from './users/users.module.js'
+import { StrategicBrainModule } from './strategic-brain/strategic-brain.module.js'
 import { RedisService } from './common/redis/redis.service.js'
 
 @Module({
@@ -57,6 +58,7 @@ import { RedisService } from './common/redis/redis.service.js'
     DostepyModule,
     UstawieniaModule,
     UsersModule,
+    StrategicBrainModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

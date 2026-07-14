@@ -1,10 +1,12 @@
-import { Injectable } from '@nestjs/common'
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
 import {
   medianCycleMinutes,
   defectRate,
   compositeScore,
   confidence,
+  retentionSignal,
+  type RetentionSignal,
   type ScoreDimensions,
   type ScoreWeights,
 } from './scoring.util.js'
@@ -102,6 +104,28 @@ interface LeaveShape {
 export interface SnapshotWindow {
   start: Date
   end: Date
+}
+
+/** Confidence (0..1) below which a card's retention signal is forced to `OBSERWOWAC`. Mirrors
+ * `RecommendationService.RETENTION_CONFIDENCE_MIN` by VALUE (not import) so the read-side card and
+ * the write-side feed stay in agreement without a `snapshot ↔ recommendation` import cycle
+ * (`recommendation.service` already imports `ALGORITHM_VERSION` from here). */
+const CARD_RETENTION_CONFIDENCE_MIN = 0.5
+
+/** The subset of an `EmployeePerformanceSnapshot` row the read paths (`overview`, cards) project.
+ * Decimals arrive as Prisma `Decimal`; the read methods coerce via `Number()`. */
+interface SnapshotReadRow {
+  employeeId: string
+  windowStart: Date
+  windowEnd: Date
+  throughput: number
+  slaHitRate: number | null
+  defectRate: number | null
+  compositeScore: number | null
+  developmentSlope: number | null
+  confidence: number
+  isNewHire: boolean
+  excludedReason: string | null
 }
 
 @Injectable()
@@ -221,6 +245,125 @@ export class SnapshotService {
       update: data,
       create: { employeeId, windowStart: window.start, windowEnd: window.end, ...data },
     })
+  }
+
+  /**
+   * [READ] Heatmap feed for `/strategic-brain/overview`: the LATEST snapshot per employee, optionally
+   * scoped to a MANAGER's `scopeUnitIds` (M16 — the scope is decided by the caller and enforced HERE,
+   * at the service, not by the coarse-role `RbacGuard`). `scopeUnitIds === null` means a GLOBAL actor
+   * (HR/ADMIN) and returns every employee's latest snapshot; a non-null array (possibly empty) means a
+   * scoped actor — an empty array yields zero rows (`in: []` matches nothing), never a bypass.
+   *
+   * Read-only projection: only `employeeId` + numeric metrics leave the DB (M18 — no PII), and this
+   * method never writes (M13 write-boundary: `strategic-brain` never mutates `Employee`/`Shift`).
+   */
+  async overview(client: TenantClient, scopeUnitIds: string[] | null): Promise<unknown[]> {
+    const employees = (await client.employee.findMany({
+      where: scopeUnitIds === null ? {} : { unitId: { in: scopeUnitIds } },
+      select: { id: true },
+    })) as Array<{ id: string }>
+    if (employees.length === 0) return []
+    const ids = employees.map((e) => e.id)
+
+    const snaps = (await client.employeePerformanceSnapshot.findMany({
+      where: { employeeId: { in: ids } },
+      orderBy: { windowEnd: 'desc' },
+    })) as unknown as SnapshotReadRow[]
+
+    // Keep only the newest window per employee (rows arrive windowEnd-desc, so the first wins).
+    const latest = new Map<string, SnapshotReadRow>()
+    for (const s of snaps) if (!latest.has(s.employeeId)) latest.set(s.employeeId, s)
+    return [...latest.values()].map((s) => this.toHeatCell(s))
+  }
+
+  /**
+   * [READ] Single-employee trajectory card for `/strategic-brain/employee/:id`. Returns the full
+   * snapshot SERIES (windowEnd-asc, for the sparkline) plus the latest window's derived
+   * `retentionSignal` and explainable `factors`. A scoped (MANAGER) caller passes `scopeUnitIds`; an
+   * employee outside that scope is a 404-then-403 (unknown id 404s first, an in-existence-but-out-of-
+   * scope id 403s — same ordering as `EmployeesService.getById`). `scopeUnitIds === null` = GLOBAL.
+   */
+  async employeeCard(client: TenantClient, employeeId: string, scopeUnitIds: string[] | null): Promise<unknown> {
+    const employee = (await client.employee.findUnique({
+      where: { id: employeeId },
+      select: { id: true, unitId: true },
+    })) as { id: string; unitId: string } | null
+    if (!employee) throw new NotFoundException(`Employee ${employeeId} not found`)
+    if (scopeUnitIds !== null && !scopeUnitIds.includes(employee.unitId)) {
+      throw new ForbiddenException('Employee is outside your scope')
+    }
+    return this.buildCard(client, employeeId)
+  }
+
+  /**
+   * [READ, M17] The caller's OWN card for `/strategic-brain/employee/me`, resolved from their Keycloak
+   * subject (no id in the path, no scope check — self is always allowed, that is the whole point of
+   * the PRACOWNIK self-view). 404 when the login has no linked `Employee`.
+   */
+  async employeeCardByKeycloakSub(client: TenantClient, keycloakSub: string): Promise<unknown> {
+    const me = (await client.employee.findFirst({
+      where: { user: { keycloakSub } },
+      select: { id: true },
+    })) as { id: string } | null
+    if (!me) throw new NotFoundException('No employee record for the current user')
+    return this.buildCard(client, me.id)
+  }
+
+  /** Shared card builder: the snapshot series + the latest window's retention signal + factors. Pure
+   * read + a deterministic derivation (no writes). The signal is recomputed from the persisted
+   * snapshot exactly as {@link RecommendationService.emitRetention} does, so the card and the feed
+   * never disagree. */
+  private async buildCard(client: TenantClient, employeeId: string): Promise<unknown> {
+    const series = (await client.employeePerformanceSnapshot.findMany({
+      where: { employeeId },
+      orderBy: { windowEnd: 'asc' },
+    })) as unknown as SnapshotReadRow[]
+
+    const latest = series.length > 0 ? series[series.length - 1] : null
+    let signal: RetentionSignal | null = null
+    let factors: Record<string, unknown> | null = null
+    if (latest) {
+      const cfg = (await this.configService.getEffectiveConfig(client, null)) as { minSlopeForGrowth: unknown }
+      const composite = latest.compositeScore == null ? null : Number(latest.compositeScore)
+      const slope = latest.developmentSlope == null ? null : Number(latest.developmentSlope)
+      const conf = Number(latest.confidence)
+      signal =
+        composite == null
+          ? 'OBSERWOWAC'
+          : retentionSignal(composite, slope, conf, {
+              minSlopeForGrowth: Number(cfg.minSlopeForGrowth),
+              confidenceMin: CARD_RETENTION_CONFIDENCE_MIN,
+            })
+      factors = {
+        compositeScore: composite,
+        developmentSlope: slope,
+        confidence: conf,
+        slaHitRate: latest.slaHitRate == null ? null : Number(latest.slaHitRate),
+        defectRate: latest.defectRate == null ? null : Number(latest.defectRate),
+        throughput: latest.throughput,
+        isNewHire: latest.isNewHire,
+        excludedReason: latest.excludedReason,
+      }
+    }
+
+    return { employeeId, series: series.map((s) => this.toHeatCell(s)), retentionSignal: signal, factors }
+  }
+
+  /** Numeric-only projection of one snapshot row for the heatmap / sparkline (M18: no PII). */
+  private toHeatCell(s: SnapshotReadRow): Record<string, unknown> {
+    return {
+      employeeId: s.employeeId,
+      windowStart: s.windowStart,
+      windowEnd: s.windowEnd,
+      throughput: s.throughput,
+      slaHitRate: s.slaHitRate == null ? null : Number(s.slaHitRate),
+      defectRate: s.defectRate == null ? null : Number(s.defectRate),
+      compositeScore: s.compositeScore == null ? null : Number(s.compositeScore),
+      developmentSlope: s.developmentSlope == null ? null : Number(s.developmentSlope),
+      confidence: Number(s.confidence),
+      isNewHire: s.isNewHire,
+      excludedReason: s.excludedReason,
+    }
   }
 
   /** peerGroupKey = `role|unit|etat` (spec §3.3). `Employee` has no direct `lokalizacjaId`

@@ -275,6 +275,48 @@ export class RecommendationService {
   }
 
   /**
+   * [READ, M16] The CURRENT (head) recommendation per scope for `/strategic-brain/recruitment`,
+   * optionally filtered to a MANAGER's `scopeIds`. "Current" = the newest event per `(scopeType,
+   * scopeId)` (B3 — recency, not a `supersededAt` flag). `scopeIds === null` = a GLOBAL actor
+   * (HR/ADMIN, every scope); a non-null array keeps only recommendations whose `scopeId` is in it
+   * (an empty array ⇒ zero rows, never a bypass).
+   *
+   * Demo limitation (documented): recommendations are emitted at `LOKALIZACJA` scope while a MANAGER's
+   * `managedUnitIds` are UNIT ids; the filter is a pure `scopeId ∈ scopeIds` membership test, so a
+   * manager sees a recommendation only where a location id coincides with a managed unit id. The
+   * location↔unit mapping is a seed/data concern (Faza 2/3), not this HTTP-layer task — the
+   * enforcement PRIMITIVE (service-level scope filter) is what M16 requires and is in place here.
+   */
+  async listRecruitment(client: TenantClient, scopeIds: string[] | null): Promise<unknown[]> {
+    const rows = (await client.recruitmentRecommendation.findMany({
+      orderBy: { computedAt: 'desc' },
+    })) as Array<{ scopeType: string; scopeId: string } & Record<string, unknown>>
+
+    const head = new Map<string, (typeof rows)[number]>()
+    for (const r of rows) {
+      const key = `${r.scopeType}|${r.scopeId}`
+      if (!head.has(key)) head.set(key, r) // rows are computedAt-desc, first per scope is the head
+    }
+    let list = [...head.values()]
+    if (scopeIds !== null) list = list.filter((r) => scopeIds.includes(r.scopeId))
+    return list
+  }
+
+  /**
+   * [WRITE — OWN TABLE ONLY, M13] Record a human's acknowledgement of a recommendation: stamp
+   * `acknowledgedByUserId` / `acknowledgedAt` on the `RecruitmentRecommendation` row itself. This is
+   * the ONLY mutation the acknowledge flow performs — it does NOT touch `Employee`/`Shift`/any
+   * personnel-execution state (RODO art. 22: the AI recommends, a human decides, and the decision is
+   * merely logged, never auto-actioned). The ids-only AUDIT entry is written by the controller (M19).
+   */
+  async acknowledge(client: TenantClient, id: string, userId: string): Promise<unknown> {
+    return client.recruitmentRecommendation.update({
+      where: { id },
+      data: { acknowledgedByUserId: userId, acknowledgedAt: new Date() },
+    } as never)
+  }
+
+  /**
    * The current (head) recommendation for `scope` — the newest event, i.e. the head of the
    * replaces-chain. "Current" is defined by recency (B3), NOT by a `supersededAt` flag.
    */

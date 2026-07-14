@@ -302,3 +302,58 @@ describe('RecommendationService', () => {
     })
   })
 })
+
+// --- READ/ACK paths (Task 9): listRecruitment head-per-scope + acknowledge (own-table write) -----
+describe('RecommendationService (read + acknowledge)', () => {
+  let service: RecommendationService
+  let client: MockClient
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [RecommendationService, PerformanceConfigService, CapacityGapService],
+    }).compile()
+    service = module.get(RecommendationService)
+    client = makeClient()
+    jest.clearAllMocks()
+  })
+
+  describe('listRecruitment', () => {
+    it('returns the HEAD (newest) recommendation per scope (computedAt-desc dedup)', async () => {
+      ;(client.recruitmentRecommendation as unknown as { findMany: jest.Mock }).findMany = jest.fn().mockResolvedValue([
+        { id: 'r2', scopeType: 'LOKALIZACJA', scopeId: 'lok-1', verdict: 'WSTRZYMAJ', computedAt: new Date('2026-06-20') },
+        { id: 'r1', scopeType: 'LOKALIZACJA', scopeId: 'lok-1', verdict: 'WZNOW', computedAt: new Date('2026-06-13') },
+        { id: 'r3', scopeType: 'LOKALIZACJA', scopeId: 'lok-2', verdict: 'WZNOW', computedAt: new Date('2026-06-20') },
+      ])
+
+      const list = (await service.listRecruitment(asClient(client), null)) as Array<{ id: string }>
+      const ids = list.map((r) => r.id).sort()
+      expect(ids).toEqual(['r2', 'r3']) // r1 superseded by r2 for lok-1; one head per scope
+    })
+
+    it('a non-null scope keeps only recommendations whose scopeId is in it', async () => {
+      ;(client.recruitmentRecommendation as unknown as { findMany: jest.Mock }).findMany = jest.fn().mockResolvedValue([
+        { id: 'r2', scopeType: 'LOKALIZACJA', scopeId: 'lok-1', computedAt: new Date('2026-06-20') },
+        { id: 'r3', scopeType: 'LOKALIZACJA', scopeId: 'lok-2', computedAt: new Date('2026-06-20') },
+      ])
+
+      const list = (await service.listRecruitment(asClient(client), ['lok-2'])) as Array<{ id: string }>
+      expect(list.map((r) => r.id)).toEqual(['r3'])
+    })
+  })
+
+  describe('acknowledge', () => {
+    it('stamps acknowledgedBy/At on the recommendation`s OWN row (no personnel-table write)', async () => {
+      ;(client.recruitmentRecommendation as unknown as { update: jest.Mock }).update = jest
+        .fn()
+        .mockResolvedValue({ id: 'r1', acknowledgedByUserId: 'kc-1' })
+
+      const res = (await service.acknowledge(asClient(client), 'r1', 'kc-1')) as { id: string }
+
+      expect(res.id).toBe('r1')
+      const arg = (client.recruitmentRecommendation as unknown as { update: jest.Mock }).update.mock.calls[0]![0]
+      expect(arg.where).toEqual({ id: 'r1' })
+      expect(arg.data.acknowledgedByUserId).toBe('kc-1')
+      expect(arg.data.acknowledgedAt).toBeInstanceOf(Date)
+    })
+  })
+})
