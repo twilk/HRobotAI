@@ -1,3 +1,4 @@
+import * as path from 'node:path'
 import { Test, TestingModule } from '@nestjs/testing'
 import { RunMigrationsStep } from './run-migrations.step.js'
 import { ControlPlanePrismaService } from '../../common/prisma/control-plane-prisma.service.js'
@@ -45,9 +46,13 @@ describe('RunMigrationsStep', () => {
     expect(mockExec).toHaveBeenCalledTimes(1)
     const [bin, args, opts] = mockExec.mock.calls[0]
     expect(bin).toBe(process.execPath)
-    expect(args).toEqual(
-      expect.arrayContaining(['migrate', 'deploy', '--schema=packages/db/prisma/tenant/schema.prisma']),
-    )
+    expect(args).toEqual(expect.arrayContaining(['migrate', 'deploy']))
+    // --schema must be ABSOLUTE: the child inherits the app's cwd (/app/apps/control-plane in the
+    // image), where a relative packages/db/… path does not exist.
+    const schemaArg = String(args.find((a: unknown) => String(a).startsWith('--schema=')) ?? '')
+    const schemaPath = schemaArg.slice('--schema='.length)
+    expect(path.isAbsolute(schemaPath)).toBe(true)
+    expect(schemaPath.replace(/\\/g, '/')).toMatch(/packages\/db\/prisma\/tenant\/schema\.prisma$/)
     expect(String(args[0])).toMatch(/prisma[\\/].*index\.js$/)
     expect(opts.env.DATABASE_URL).toBe(plainUrl)
     expect(mockPrisma.provisioningJob.update).toHaveBeenCalledWith({
