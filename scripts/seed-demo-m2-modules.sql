@@ -3,6 +3,8 @@
 -- SYNTHETIC only. Idempotent (fixed ids / guarded inserts). Applied to hrobot_t_900d948b.
 -- Preserves anchors: employees (36), shifts (832), and the 26 APPROVED leaves that drive the
 -- AI-Grafik drop-out scan (status unchanged; only decider attribution is backfilled).
+-- Additive: +1 employee (Katarzyna Zając / pracownica.demo, §6 below) — the cross-unit travel
+-- demo candidate from the 2026-07-14 replacement-travel spec; does not touch the 36 anchors.
 --
 -- Ownership note (raw-SQL apply as postgres): the target tables already exist and are owned by
 -- hu_900d948b (created by the create-only migrations, ownership fixed), so no ALTER OWNER needed here.
@@ -135,5 +137,39 @@ FROM (
   LIMIT 1
 ) pick
 ON CONFLICT (id) DO NOTHING;
+
+-- 6) CROSS-UNIT TRAVEL DEMO (2026-07-14 spec §7/§12) — pracownica.demo / Katarzyna Zając:
+--    a KOORDYNATOR in Region Północ (cross-unit vs Anna Kowalska's Region Centrum), reachable
+--    (linked User with a login) and living ~7km from Lot. Chopina — Anna's 14.07 14:00-22:00 shift
+--    location — so the replacement engine's tiered pool + H-travel feasibility finds her as a cheap
+--    cross-unit candidate and AUTO_ASK_CONSENT can reach her (Employee.userId -> login).
+--    keycloak_sub is a PLACEHOLDER: Keycloak reassigns user ids on every realm rebuild, so
+--    demo-up.mjs re-syncs it to the live id right after this script runs via resolveSub()
+--    (mirrors the admin keycloak_sub sync already there — see scripts/demo-up.mjs).
+--    pesel/pesel_hash: this is a SQL-only seed stage with no access to the app's
+--    EncryptionService/blind-index key, so these are clearly-marked, non-decryptable placeholders
+--    (NOT real ciphertext). Safe: employees.service only ever decrypts pesel for a masked
+--    `peselLast4` shown to global actors, and wraps that in try/catch — a decrypt failure is logged
+--    and the field is simply omitted, never thrown. No PESEL-format validation runs on a raw INSERT.
+INSERT INTO users (id, email, keycloak_sub, active, created_at)
+VALUES ('a1d00000-0000-4000-8000-00000000bc02', 'pracownica.demo@demo.hrobot.local',
+        'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee02', true, now())
+ON CONFLICT (email) DO NOTHING;
+
+INSERT INTO employees
+  (id, user_id, first_name, last_name, pesel, pesel_hash, position, employment_type, hired_at,
+   unit_id, home_address, home_lat, home_lng, etat, qualifications, created_at, updated_at)
+SELECT
+  'a1d00000-0000-4000-8000-00000000ec02',
+  (SELECT id FROM users WHERE email = 'pracownica.demo@demo.hrobot.local'),
+  'Katarzyna', 'Zając',
+  'DEMO-PLACEHOLDER-UNENCRYPTED-PESEL-KZAJAC',
+  'demo-placeholder-pesel-hash-katarzyna-zajac-cross-unit-001',
+  'Koordynator zmiany', 'UMOWA_O_PRACE'::"EmploymentType", DATE '2022-03-01',
+  (SELECT id FROM organizational_units WHERE name = 'Region Północ'),
+  'ul. Demo Testowa 7, 00-001 Warszawa', 52.20, 20.95, 1,
+  ARRAY['KOORDYNATOR']::TEXT[],
+  now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM employees WHERE id = 'a1d00000-0000-4000-8000-00000000ec02');
 
 COMMIT;

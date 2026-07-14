@@ -27,6 +27,14 @@ const USERS = [
   { username: 'demo', email: 'admin@staging.hrobot.local', password: 'demo-staging-2026', role: 'ADMIN_KLIENTA', firstName: 'Demo', lastName: 'Admin' },
   { expectSub: 'a1912c35-776b-419b-b992-fe7ef1a45edb', username: 'pracownik.demo', email: 'pracownik.demo@demo.hrobot.local', password: 'Pracownik!2026', role: 'PRACOWNIK', firstName: 'Anna', lastName: 'Kowalska' },
   { expectSub: '8f5c2877-2e1c-4675-9118-a108e96558b5', username: 'manager.demo', email: 'manager.demo@demo.hrobot.local', password: 'Manager!2026', role: 'MANAGER', firstName: 'Marek', lastName: 'Manager' },
+  // Cross-unit travel demo candidate (2026-07-14 spec §7/§12): reachable KOORDYNATOR in Region
+  // Północ, ~7km from Lot. Chopina — the AUTO_ASK_CONSENT candidate for Anna's vacated shift.
+  // No `expectSub`: her tenant-DB `User` row is created later by seed-demo-m2-modules.sql (M2
+  // module seed step), which runs AFTER this realm seed in demo-up.mjs, so the generic
+  // expectSub→UPDATE reconciliation below would run before her row exists. demo-up.mjs instead
+  // re-syncs her keycloak_sub explicitly right after the SQL seed (same pattern as admin's
+  // resolveAdminSub()).
+  { username: 'pracownica.demo', email: 'pracownica.demo@demo.hrobot.local', password: 'Pracownica!2026', role: 'PRACOWNIK', firstName: 'Katarzyna', lastName: 'Zając' },
 ]
 
 async function adminToken() {
@@ -124,7 +132,7 @@ async function main() {
     if (u.expectSub && u.expectSub !== userId) syncPairs.push({ email: u.email, from: u.expectSub, to: userId })
   }
 
-  console.log('\nDONE — realm hrobot-staging rebuilt. Logins: demo/demo-staging-2026, pracownik.demo/Pracownik!2026, manager.demo/Manager!2026')
+  console.log('\nDONE — realm hrobot-staging rebuilt. Logins: demo/demo-staging-2026, pracownik.demo/Pracownik!2026, manager.demo/Manager!2026, pracownica.demo/Pracownica!2026')
   if (syncPairs.length) {
     console.log('\n-- SYNC tenant DB users.keycloak_sub to the real Keycloak ids:')
     for (const p of syncPairs) {

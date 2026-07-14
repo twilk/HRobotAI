@@ -56,9 +56,14 @@ async function waitFor(name, url, ok) {
   throw new Error(`timed out waiting for ${name} at ${url}`)
 }
 
-/** Mint an admin token from the demo realm and decode its `sub`. Keycloak reassigns user ids on
- *  every realm rebuild, so the M2 seed's admin User row must be re-pointed to the live id. */
-async function resolveAdminSub() {
+/** Mint a token for `username`/`password` in the demo realm and decode its `sub`. Keycloak
+ *  reassigns user ids on every realm rebuild, so any M2-seed User row created by SQL (which only
+ *  knows a placeholder keycloak_sub) must be re-pointed to the live id post-seed. Used for both
+ *  the admin (`demo`) and pracownica.demo — any tenant-DB User row created by
+ *  seed-demo-m2-modules.sql rather than the generic expectSub reconciliation in
+ *  seed-keycloak-demo.mjs (that reconciliation runs before this SQL seed, so it can't see rows
+ *  that don't exist yet). */
+async function resolveSub(username, password) {
   try {
     const res = await fetch(`${KC}/realms/hrobot-staging/protocol/openid-connect/token`, {
       method: 'POST',
@@ -66,8 +71,8 @@ async function resolveAdminSub() {
       body: new URLSearchParams({
         grant_type: 'password',
         client_id: 'hrobot-web',
-        username: 'demo',
-        password: 'demo-staging-2026',
+        username,
+        password,
       }),
     })
     if (!res.ok) return null
@@ -127,20 +132,31 @@ async function main() {
   psql(readFileSync(join(root, 'scripts', 'seed-demo-m2-modules.sql'), 'utf8'))
   // 4) the seed adds a User row for `demo` (so it can be a leave decider / grant issuer); re-point
   //    its keycloak_sub to the realm's live admin id (same sync class as the users above)
-  const adminSub = await resolveAdminSub()
+  const adminSub = await resolveSub('demo', 'demo-staging-2026')
   if (adminSub) {
     psql(`UPDATE users SET keycloak_sub='${adminSub}' WHERE email='admin@staging.hrobot.local';`)
   } else {
     console.log('  ⚠ could not resolve admin keycloak_sub (Keycloak down?); admin may not act as a decider')
+  }
+  // 5) same for pracownica.demo (Katarzyna Zając, cross-unit travel demo candidate, 2026-07-14
+  //    spec §7/§12): her User row is also created by the SQL seed above with a placeholder
+  //    keycloak_sub, so re-point it to the live Keycloak id or her AUTO_ASK_CONSENT login/consent
+  //    step won't resolve `Employee.user.keycloakSub === jwt.sub`.
+  const pracownicaSub = await resolveSub('pracownica.demo', 'Pracownica!2026')
+  if (pracownicaSub) {
+    psql(`UPDATE users SET keycloak_sub='${pracownicaSub}' WHERE email='pracownica.demo@demo.hrobot.local';`)
+  } else {
+    console.log('  ⚠ could not resolve pracownica.demo keycloak_sub (Keycloak down?); she may not be able to log in / consent')
   }
 
   console.log(`
 ✅ Demo backend ready (Grafik + AI + M2 modules).
 
    Logins (${'http://localhost:5601'} → /login):
-     demo           / demo-staging-2026   ADMIN      full grafik + swap approval + all M2 modules
-     manager.demo   / Manager!2026        MANAGER    unit-scoped grafik/swaps + wnioski/dostępy (own units)
-     pracownik.demo / Pracownik!2026      PRACOWNIK  read-only "my schedule" + own wnioski (Anna Kowalska)
+     demo            / demo-staging-2026   ADMIN      full grafik + swap approval + all M2 modules
+     manager.demo    / Manager!2026        MANAGER    unit-scoped grafik/swaps + wnioski/dostępy (own units)
+     pracownik.demo  / Pracownik!2026      PRACOWNIK  read-only "my schedule" + own wnioski (Anna Kowalska)
+     pracownica.demo / Pracownica!2026     PRACOWNIK  cross-unit travel demo candidate (Katarzyna Zając, Region Północ)
 
    M2 modules now populated: Wnioski (6 pending / 26 approved / 1 rejected), Dostępy (15 grants),
    Ustawienia (4Mobility), Użytkownicy (3 kont), Koszty (10 stawek → pełne pokrycie).
