@@ -1,5 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { mondayOf, addDaysIso, decisionTotal, sortDecisions, type DecisionItem } from './manager-dashboard'
+import {
+  mondayOf,
+  addDaysIso,
+  decisionTotal,
+  sortDecisions,
+  topVacated,
+  vacatedWho,
+  type DecisionItem,
+  type VacatedShiftView,
+} from './manager-dashboard'
+
+const vac = (id: string, date: string, start: string): VacatedShiftView => ({
+  id,
+  date,
+  start,
+  end: '16:00',
+  role: 'SERWISANT',
+  lokalizacjaId: 'lok-1',
+  employee: { firstName: 'Marek', lastName: 'Piotrowski' },
+})
 
 // vitest.config.ts runs lib/**/*.test.ts under environment: 'node' — these cover only the pure
 // helpers the MANAGER dashboard board relies on (no network, no PII, no DOM).
@@ -80,5 +99,35 @@ describe('sortDecisions', () => {
     const copy = [...items]
     sortDecisions(items)
     expect(items).toEqual(copy)
+  })
+})
+
+describe('topVacated', () => {
+  it('sorts by date then start time and limits, reporting the overflow', () => {
+    const shifts = [
+      vac('c', '2026-07-16', '06:00'),
+      vac('a', '2026-07-15', '08:00'),
+      vac('b', '2026-07-15', '06:00'),
+      vac('d', '2026-07-17', '14:00'),
+      vac('e', '2026-07-18', '06:00'),
+    ]
+    const { shown, more } = topVacated(shifts, 4)
+    expect(shown.map((s) => s.id)).toEqual(['b', 'a', 'c', 'd'])
+    expect(more).toBe(1)
+  })
+
+  it('reports 0 overflow when under the limit and does not mutate input', () => {
+    const shifts = [vac('a', '2026-07-15', '08:00')]
+    const copy = [...shifts]
+    const { shown, more } = topVacated(shifts, 4)
+    expect(shown).toHaveLength(1)
+    expect(more).toBe(0)
+    expect(shifts).toEqual(copy)
+  })
+})
+
+describe('vacatedWho', () => {
+  it('joins first and last name', () => {
+    expect(vacatedWho(vac('a', '2026-07-15', '08:00'))).toBe('Marek Piotrowski')
   })
 })

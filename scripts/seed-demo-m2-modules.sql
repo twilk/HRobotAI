@@ -108,4 +108,24 @@ ON CONFLICT (id) DO NOTHING;
 UPDATE leave_requests SET decided_by_user_id = (SELECT id FROM users WHERE email = 'manager.demo@demo.hrobot.local')
 WHERE id = 'lr-demo-r1';
 
+-- 5c) Demo DROP-OUT: an APPROVED leave landing on an assigned shift for a Region Centrum employee, so
+--     the MANAGER dashboard "Wyjątki obsady" panel shows a real staffing threat (the AI-Grafik tie-in:
+--     APPROVED leave overlapping an assigned shift → vacated shift surfaced by /replacements/scan).
+--     Picks a Centrum employee who has a shift in the demo fortnight and covers those two dates.
+INSERT INTO leave_requests
+  (id, employee_id, start_date, end_date, status, type, created_at, updated_at, decided_at, decided_by_user_id, reason)
+SELECT 'lr-demo-dropout-1', pick.emp, pick.d0, pick.d0 + 1, 'APPROVED', 'URLOP_NA_ZADANIE', now(), now(),
+       TIMESTAMP '2026-07-13 09:00', (SELECT id FROM users WHERE email = 'manager.demo@demo.hrobot.local'),
+       'Pilny urlop na żądanie'
+FROM (
+  SELECT s.employee_id AS emp, MIN(s.date::date) AS d0
+  FROM shifts s JOIN employees e ON e.id = s.employee_id
+  WHERE e.unit_id = (SELECT id FROM organizational_units WHERE name = 'Region Centrum')
+    AND s.date::date BETWEEN DATE '2026-07-15' AND DATE '2026-07-26'
+  GROUP BY s.employee_id
+  ORDER BY s.employee_id
+  LIMIT 1
+) pick
+ON CONFLICT (id) DO NOTHING;
+
 COMMIT;

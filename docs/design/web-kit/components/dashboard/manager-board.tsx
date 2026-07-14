@@ -3,52 +3,45 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Card } from '@/components/ui/card'
-import { IconRequests, IconCalendar, IconArrowRight, IconKey } from '@/components/icons'
+import { IconRequests, IconCalendar, IconArrowRight, IconKey, IconShield } from '@/components/icons'
 import { formatMoney } from '@/lib/koszty'
+import { fmtShiftDay } from '@/lib/pracownik-dashboard'
 import {
   mondayOf,
   addDaysIso,
   decisionTotal,
   sortDecisions,
+  topVacated,
+  vacatedWho,
   type DecisionItem,
+  type VacatedShiftView,
 } from '@/lib/manager-dashboard'
 
 /**
  * MANAGER "operational, scoped" dashboard board — the role-adaptive `/dashboard`'s body for a
- * MANAGER who isn't also HR/ADMIN_KLIENTA (see app/(tenant)/dashboard/page.tsx). Three sections, in
- * this order (per docs/superpowers/specs/2026-07-14-role-dashboards-component-audit.md §E point 6,
- * OBOWIĄZUJĄCA: "Wyjątki dziś/7 dni jako pierwszy panel" — staffing exceptions are the manager's
- * primary job, so they lead, ahead of the decisions inbox):
+ * MANAGER who isn't also HR/ADMIN_KLIENTA (see app/(tenant)/dashboard/page.tsx). Sections, in this
+ * order (audit §E-6, OBOWIĄZUJĄCA: exceptions are the manager's primary job, so they lead):
  *
- *  a. "Wyjątki obsady" — vacated shifts (approved leave over an assigned shift) in the next 7 days,
- *     via the same `/ai-grafik/replacements/scan` the manager's AI Grafik screen uses (read-only scan,
- *     no mutation from this board).
- *  b. "Skrzynka decyzji" — a single glanceable queue combining pending wnioski, shift-swaps and AI
- *     proposals, each linking to its own screen for the real action.
- *  c. "Koszt jednostki" — this week's cost + budget status for the manager's first unit, reusing
- *     lib/koszty.ts's `formatMoney`/`kosztyApi.getWeek` (Codex P1-3: a MANAGER call MUST pass unitId).
+ *  a. "Wyjątki obsady (14 dni)" — the actual vacated shifts (approved leave over an assigned shift),
+ *     LISTED with who/when/where (not just a count), via the same `/ai-grafik/replacements/scan` the
+ *     AI Grafik screen uses (read-only). Empty → a positive "obsada zabezpieczona" health state.
+ *  b. "Skrzynka decyzji" — a glanceable queue of pending wnioski/swaps/AI-proposals, count>0 first.
+ *  c. "Koszt jednostki" — this week's cost + budget status for the manager's first unit.
  *
- * Mirrors components/dashboard/pracownik-board.tsx's fetch/cancelledRef/loading/error/Card shape. Each
- * tile degrades independently — a failed/403 endpoint just hides its section rather than erroring the
- * whole board, since a MANAGER's unit/role scoping can legitimately make some of these empty. A manager
- * with zero units similarly omits the cost tile entirely rather than spinning forever.
+ * Mirrors pracownik-board.tsx's fetch/cancelledRef/error/Card shape. Each tile degrades independently —
+ * a failed/403 endpoint hides its section rather than erroring the whole board.
  */
 
 interface WniosekRow {
   status: string
 }
-interface SwapRow {
-  id: string
-}
-interface ProposalRow {
-  id: string
-}
 interface UnitRow {
   id: string
   name: string
 }
-interface VacatedShiftRow {
+interface LokRow {
   id: string
+  name: string
 }
 interface WeekCostRow {
   cost: string | number | null
@@ -72,23 +65,24 @@ interface DecisionData {
   items: DecisionItem[]
   total: number
 }
-
 interface CostData {
   unitName: string
   week: WeekCostRow
+}
+interface ExceptionsData {
+  shifts: VacatedShiftView[]
+  lokName: Map<string, string>
 }
 
 export function ManagerBoard() {
   const [decisions, setDecisions] = useState<DecisionData | null>(null)
   const [decisionsError, setDecisionsError] = useState(false)
 
-  const [exceptionsCount, setExceptionsCount] = useState<number | null>(null)
+  const [exceptions, setExceptions] = useState<ExceptionsData | null>(null)
   const [exceptionsError, setExceptionsError] = useState(false)
 
   const [cost, setCost] = useState<CostData | null>(null)
   const [costUnavailable, setCostUnavailable] = useState(false)
-
-  const [loading, setLoading] = useState(true)
 
   const cancelledRef = useRef(false)
   useEffect(() => {
@@ -105,8 +99,8 @@ export function ManagerBoard() {
       try {
         const [wnioski, swaps, proposals] = await Promise.all([
           fetchJson<WniosekRow[]>('/api/wnioski'),
-          fetchJson<SwapRow[]>('/api/shift-swap?state=PENDING_MANAGER'),
-          fetchJson<ProposalRow[]>('/api/ai-grafik/proposals?state=PENDING_MANAGER'),
+          fetchJson<{ id: string }[]>('/api/shift-swap?state=PENDING_MANAGER'),
+          fetchJson<{ id: string }[]>('/api/ai-grafik/proposals?state=PENDING_MANAGER'),
         ])
         if (cancelledRef.current) return
         const counts = {
@@ -114,12 +108,14 @@ export function ManagerBoard() {
           swaps: swaps.length,
           proposals: proposals.length,
         }
-        const items = sortDecisions([
-          { key: 'wnioski', label: 'Wnioski', count: counts.wnioski, href: '/wnioski' },
-          { key: 'swaps', label: 'Zamiany', count: counts.swaps, href: '/zamiany' },
-          { key: 'proposals', label: 'Propozycje AI', count: counts.proposals, href: '/ai-grafik-manager' },
-        ])
-        setDecisions({ items, total: decisionTotal(counts) })
+        setDecisions({
+          items: sortDecisions([
+            { key: 'wnioski', label: 'Wnioski do akceptacji', count: counts.wnioski, href: '/wnioski' },
+            { key: 'swaps', label: 'Zamiany do zatwierdzenia', count: counts.swaps, href: '/zamiany' },
+            { key: 'proposals', label: 'Propozycje AI zastępstw', count: counts.proposals, href: '/ai-grafik-manager' },
+          ]),
+          total: decisionTotal(counts),
+        })
       } catch {
         if (!cancelledRef.current) setDecisionsError(true)
       }
@@ -127,13 +123,16 @@ export function ManagerBoard() {
 
     void (async () => {
       try {
-        const vacated = await fetchJson<VacatedShiftRow[]>('/api/ai-grafik/replacements/scan', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ from: today, to: addDaysIso(today, 7) }),
-        })
+        const [shifts, loks] = await Promise.all([
+          fetchJson<VacatedShiftView[]>('/api/ai-grafik/replacements/scan', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ from: today, to: addDaysIso(today, 14) }),
+          }),
+          fetchJson<LokRow[]>('/api/grafik/lokalizacje').catch(() => [] as LokRow[]),
+        ])
         if (cancelledRef.current) return
-        setExceptionsCount(vacated.length)
+        setExceptions({ shifts, lokName: new Map(loks.map((l) => [l.id, l.name])) })
       } catch {
         if (!cancelledRef.current) setExceptionsError(true)
       }
@@ -156,42 +155,67 @@ export function ManagerBoard() {
         if (!cancelledRef.current) setCostUnavailable(true)
       }
     })()
-
-    setLoading(false)
   }, [])
 
-  if (loading) return <div className="grid place-items-center py-24 text-muted text-sm">Ładowanie…</div>
+  const exc = exceptions ? topVacated(exceptions.shifts) : null
 
   return (
     <div className="grid md:grid-cols-2 gap-4">
+      {/* a. Wyjątki obsady — the hero panel */}
       <Card className="p-5 md:col-span-2">
         <h2 className="flex items-center gap-2.5 text-base font-semibold tracking-tightish mb-3">
           <IconCalendar className="w-[17px] h-[17px] text-accent-ink" strokeWidth={1.7} />
-          Wyjątki obsady (najbliższe 7 dni)
+          Wyjątki obsady — najbliższe 14 dni
+          {exc && exc.shown.length > 0 && (
+            <span className="ml-1 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-warn text-white text-[11px] font-semibold tabular-nums">
+              {exceptions!.shifts.length}
+            </span>
+          )}
         </h2>
         {exceptionsError ? (
           <p className="text-sm text-muted">Brak połączenia z serwerem. Spróbuj ponownie.</p>
-        ) : exceptionsCount === null ? (
+        ) : !exc ? (
           <p className="text-sm text-muted">Ładowanie…</p>
-        ) : exceptionsCount === 0 ? (
-          <p className="text-sm text-muted">Brak zagrożeń obsady.</p>
+        ) : exc.shown.length === 0 ? (
+          <p className="flex items-center gap-2 text-sm text-verified">
+            <IconShield className="w-[16px] h-[16px]" strokeWidth={1.8} />
+            Obsada zabezpieczona — brak zagrożeń w najbliższych 14 dniach.
+          </p>
         ) : (
           <>
-            <p className="text-sm">
-              Zagrożona obsada: <span className="font-semibold tabular-nums">{exceptionsCount}</span>{' '}
-              {exceptionsCount === 1 ? 'zmiana' : 'zmiany'} (urlop pracownika)
+            <p className="text-[13px] text-muted mb-2">
+              Zmiany zagrożone urlopem przypisanego pracownika — wymagają zastępstwa:
             </p>
+            <ul className="divide-y divide-line">
+              {exc.shown.map((s) => (
+                <li key={s.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-2">
+                  <span className="text-[13.5px] font-semibold">{vacatedWho(s)}</span>
+                  <span className="font-mono text-[12px] text-muted-2">{fmtShiftDay(s.date)}</span>
+                  <span className="font-mono text-[12px] text-navy tabular-nums">
+                    {s.start}–{s.end}
+                  </span>
+                  <span className="text-[12px] text-muted-2">{s.role}</span>
+                  <span className="text-[12px] text-muted-2">
+                    · {exceptions!.lokName.get(s.lokalizacjaId) ?? '—'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {exc.more > 0 && (
+              <p className="mt-1.5 text-[12px] text-muted-2">+{exc.more} więcej</p>
+            )}
             <Link
               href="/ai-grafik-manager"
               className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent-ink"
             >
-              Przejdź do AI Grafik Manager
+              Znajdź zastępstwa (AI Grafik Manager)
               <IconArrowRight className="w-[15px] h-[15px]" strokeWidth={2} />
             </Link>
           </>
         )}
       </Card>
 
+      {/* b. Skrzynka decyzji */}
       <Card className="p-5">
         <h2 className="flex items-center gap-2.5 text-base font-semibold tracking-tightish mb-3">
           <IconRequests className="w-[17px] h-[17px] text-accent-ink" strokeWidth={1.7} />
@@ -213,7 +237,11 @@ export function ManagerBoard() {
             {decisions.items.map((item) => (
               <li key={item.key} className="flex items-center gap-3 py-2.5">
                 <span className="text-[13.5px] font-medium">{item.label}</span>
-                <span className="font-mono text-[12px] text-muted-2 tabular-nums">{item.count}</span>
+                {item.count > 0 && (
+                  <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-card-2 border border-line font-mono text-[11px] text-navy tabular-nums">
+                    {item.count}
+                  </span>
+                )}
                 <Link
                   href={item.href}
                   className="ml-auto inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent-ink"
@@ -227,11 +255,12 @@ export function ManagerBoard() {
         )}
       </Card>
 
+      {/* c. Koszt jednostki */}
       {!costUnavailable && (
         <Card className="p-5">
           <h2 className="flex items-center gap-2.5 text-base font-semibold tracking-tightish mb-3">
             <IconKey className="w-[17px] h-[17px] text-accent-ink" strokeWidth={1.7} />
-            Koszt jednostki (ten tydzień)
+            Koszt jednostki — ten tydzień
           </h2>
           {!cost ? (
             <p className="text-sm text-muted">Ładowanie…</p>
@@ -255,7 +284,7 @@ export function ManagerBoard() {
                   ? 'PRZEKROCZONY'
                   : cost.week.overBudget === false
                     ? 'W BUDŻECIE'
-                    : 'brak limitu'}
+                    : 'brak limitu budżetu'}
               </span>
             </>
           )}

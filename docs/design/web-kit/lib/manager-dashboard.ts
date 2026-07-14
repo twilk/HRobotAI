@@ -73,3 +73,34 @@ export function sortDecisions(items: DecisionItem[]): DecisionItem[] {
     })
     .map(({ item }) => item)
 }
+
+/** A vacated shift the manager must cover — an approved leave landing on an assigned shift, from
+ *  `POST /ai-grafik/replacements/scan`. The board lists these (not just a count) as its hero panel. */
+export interface VacatedShiftView {
+  id: string
+  date: string
+  start: string
+  end: string
+  role: string
+  lokalizacjaId: string
+  employee: { firstName: string; lastName: string }
+}
+
+/**
+ * The soonest `limit` vacated shifts (by date, then start time) plus how many more are hidden.
+ * Pure so the "which staffing gaps to surface first" ordering is unit-testable independent of the scan.
+ */
+export function topVacated(
+  shifts: VacatedShiftView[],
+  limit = 4,
+): { shown: VacatedShiftView[]; more: number } {
+  const sorted = [...shifts].sort((a, b) =>
+    a.date === b.date ? a.start.localeCompare(b.start) : a.date.localeCompare(b.date),
+  )
+  return { shown: sorted.slice(0, limit), more: Math.max(0, sorted.length - limit) }
+}
+
+/** "Marek Piotrowski" from a vacated shift's employee (trimmed). */
+export function vacatedWho(s: VacatedShiftView): string {
+  return `${s.employee.firstName} ${s.employee.lastName}`.trim()
+}

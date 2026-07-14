@@ -37,3 +37,25 @@ export interface UserRolesCheck {
 export function countUsersWithoutRoles(users: UserRolesCheck[]): number {
   return users.filter((u) => u.roles.length === 0).length
 }
+
+/** The subset of `TenantUser` needed to flag deactivated accounts. */
+export interface UserActiveCheck {
+  active?: boolean
+}
+
+/** Count of deactivated accounts (`active === false`) — a disabled login still on the books. */
+export function countInactiveUsers(users: UserActiveCheck[]): number {
+  return users.filter((u) => u.active === false).length
+}
+
+/** The three governance signals feeding the "Zdrowie organizacji" card. */
+export interface GovernanceSignals {
+  unitsWithoutManager: number
+  usersWithoutRoles: number
+  inactiveUsers: number
+}
+
+/** How many governance signals are non-zero — drives the card's "wymaga uwagi: N" / "wszystko OK" verdict. */
+export function needsAttentionCount(s: GovernanceSignals): number {
+  return [s.unitsWithoutManager, s.usersWithoutRoles, s.inactiveUsers].filter((n) => n > 0).length
+}
