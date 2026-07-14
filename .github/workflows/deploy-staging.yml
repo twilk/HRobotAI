@@ -54,11 +54,15 @@ jobs:
 
     steps:
       # 1. Checkout the exact green `main` that CI validated.
+      #    clean: false — the default `git clean -ffdx` would wipe the runner-side, git-ignored
+      #    operator files this deploy depends on (.env consumed by compose `env_file`,
+      #    docker-compose.override.yml with the box's port layout). See docs/infra/staging-runner.md §2.
       - name: Checkout main
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 1
+          clean: false
 
       # 2. Build + (re)start the full stack: control-plane, tenant-runtime, optimizer + postgres,
       #    redis, rabbitmq, keycloak. Idempotent; --build picks up the new revision.
@@ -75,8 +79,9 @@ jobs:
             sleep 3
           done
           echo "Waiting for control-plane to answer /api/health/live..."
+          # CP_URL comes from the runner-level .env when the box remaps ports (see staging-runner.md).
           for i in $(seq 1 60); do
-            if curl -fsS http://localhost:3000/api/health/live >/dev/null 2>&1; then echo "control-plane live"; break; fi
+            if curl -fsS "${CP_URL:-http://localhost:3000}/api/health/live" >/dev/null 2>&1; then echo "control-plane live"; break; fi
             sleep 3
           done
 

@@ -38,7 +38,8 @@ const CATALOG_WRITE_ROLES = [Role.HR, Role.ADMIN_KLIENTA] as const
  * and HTTP-audited. `@Roles(...)` per method sets the coarse role gate; row-level unit scoping for
  * shifts is enforced in GrafikService.
  *
- * NO `POST /grafik/solve` here — the optimizer packing endpoint is M2-A4.
+ * `POST /grafik/solve` (M2-A4) packs the week × scope, calls the optimizer and persists
+ * `Shift(source=AUTO)` — see the Solve section below.
  */
 @Controller('grafik')
 @TenantRoute()

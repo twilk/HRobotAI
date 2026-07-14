@@ -74,12 +74,70 @@ jobs:
       - name: Unit tests
         run: pnpm turbo run test --cache-dir=.turbo/cache
 
+  # CI-6 — python test lanes for the two AI services. Separate jobs: distinct dep stacks
+  # (lean CP-SAT image vs SB3/torch), parallel wall-clock, clean failure attribution.
+  py-optimizer:
+    name: py-optimizer
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: grafik-optimizer
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: grafik-optimizer/requirements.txt
+
+      # pytest + httpx are TEST-ONLY deps (TestClient) — kept out of the lean runtime image
+      # on purpose, so they are installed here, pinned to agent-service's versions.
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest==8.3.4 httpx==0.27.2
+
+      # G1–G4 acceptance tests: independent H1–H4 checker, metrics, determinism, INFEASIBLE→unmet.
+      - name: pytest
+        run: python -m pytest -q
+
+  py-agent:
+    name: py-agent
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: agent-service
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: agent-service/requirements.txt
+
+      # torch from the CPU wheel index FIRST (mirrors the Dockerfile) — avoids the multi-GB CUDA
+      # build; the requirements pass then sees torch==2.3.1 already satisfied.
+      - name: Install dependencies
+        run: |
+          pip install torch==2.3.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+
+      # AG1–AG6 lanes. The live-optimizer integration guards self-skip here (no optimizer service);
+      # the full 51/51 bieg runs in-container — see data/m2-evidence/test-logs/.
+      - name: pytest
+        run: python -m pytest -q
+
   # --- Re-add WITH real coverage (do not un-comment empty lanes — they only burn minutes) ---
   # CI-4: integration job with Postgres+Redis service containers + the app env block
   #        (CONTROL_PLANE_DATABASE_URL, REDIS_URL, TENANT_DB_ENCRYPTION_KEY, KEYCLOAK_*, …)
   #        once *.integration.spec.ts (tenant-isolation) exist.
   # CI-5: Playwright smoke job (login → /grafik, 0 console errors) once the web e2e package lands.
-  # CI-6: python job (setup-python + ruff + pytest) for agent-service / grafik-optimizer.
   # spec §8: fan-out tenant migrations (needs control-plane migrate + a provisioned tenant, M2-B2).
 
   # NOTE (branch protection): with paths-ignore, a docs-only PR does not trigger this workflow,
