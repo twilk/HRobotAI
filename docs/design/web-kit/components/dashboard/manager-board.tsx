@@ -13,6 +13,7 @@ import {
   sortDecisions,
   topVacated,
   vacatedWho,
+  pickPrimaryCostUnit,
   type DecisionItem,
   type VacatedShiftView,
 } from '@/lib/manager-dashboard'
@@ -145,12 +146,23 @@ export function ManagerBoard() {
           if (!cancelledRef.current) setCostUnavailable(true)
           return
         }
-        const unit = units[0]
-        const week = await fetchJson<WeekCostRow>(
-          `/api/koszty/week?unitId=${unit.id}&weekStart=${mondayOf(today)}`,
+        // /api/grafik/units is not manager-scoped (whole org, 0-cost root first) — cost each unit and
+        // show the manager's operational one (highest real cost), not units[0].
+        const weekStart = mondayOf(today)
+        const entries = await Promise.all(
+          units.map((unit) =>
+            fetchJson<WeekCostRow>(`/api/koszty/week?unitId=${unit.id}&weekStart=${weekStart}`)
+              .then((week) => ({ unit, week }))
+              .catch(() => null),
+          ),
         )
+        const primary = pickPrimaryCostUnit(entries.filter((e): e is { unit: UnitRow; week: WeekCostRow } => e !== null))
         if (cancelledRef.current) return
-        setCost({ unitName: unit.name, week })
+        if (!primary) {
+          setCostUnavailable(true)
+          return
+        }
+        setCost({ unitName: primary.unit.name, week: primary.week })
       } catch {
         if (!cancelledRef.current) setCostUnavailable(true)
       }

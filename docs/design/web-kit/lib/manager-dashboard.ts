@@ -104,3 +104,17 @@ export function topVacated(
 export function vacatedWho(s: VacatedShiftView): string {
   return `${s.employee.firstName} ${s.employee.lastName}`.trim()
 }
+
+/**
+ * The manager's OPERATIONAL unit for the cost tile: `/api/grafik/units` is not manager-scoped (it
+ * returns the whole org, with the 0-employee root often first), so picking `units[0]` shows 0 zł.
+ * Instead, keep only entries with a real (non-null) cost and pick the highest — the unit the manager
+ * actually staffs. Pure so the selection is unit-testable. Returns null when no unit has a cost.
+ */
+export function pickPrimaryCostUnit<U, W extends { cost: string | number | null }>(
+  entries: { unit: U; week: W }[],
+): { unit: U; week: W } | null {
+  const valid = entries.filter((e) => e.week.cost != null)
+  if (valid.length === 0) return null
+  return valid.reduce((a, b) => (Number(b.week.cost) > Number(a.week.cost) ? b : a))
+}

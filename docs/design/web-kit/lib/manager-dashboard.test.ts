@@ -6,6 +6,7 @@ import {
   sortDecisions,
   topVacated,
   vacatedWho,
+  pickPrimaryCostUnit,
   type DecisionItem,
   type VacatedShiftView,
 } from './manager-dashboard'
@@ -129,5 +130,23 @@ describe('topVacated', () => {
 describe('vacatedWho', () => {
   it('joins first and last name', () => {
     expect(vacatedWho(vac('a', '2026-07-15', '08:00'))).toBe('Marek Piotrowski')
+  })
+})
+
+describe('pickPrimaryCostUnit', () => {
+  const e = (name: string, cost: string | number | null) => ({ unit: { id: name, name }, week: { cost } })
+
+  it('picks the highest real cost, skipping the 0-cost root and null (out-of-scope) units', () => {
+    const picked = pickPrimaryCostUnit([
+      e('4Mobility — Operacje', '0.00'),
+      e('Region Centrum', '7760.00'),
+      e('Region Południe', null),
+    ])
+    expect(picked?.unit.name).toBe('Region Centrum')
+    expect(picked?.week.cost).toBe('7760.00')
+  })
+
+  it('returns null when no unit has a cost', () => {
+    expect(pickPrimaryCostUnit([e('a', null), e('b', null)])).toBeNull()
   })
 })
