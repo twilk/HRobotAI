@@ -1,28 +1,58 @@
 import type { TenantClient } from '@hrobot/db'
+import { TenantPrisma } from '@hrobot/db'
 import { Role } from '@hrobot/shared'
 import { ReplacementService, type RankableShift, type VacatedShift } from './replacement.service.js'
 import type { SwapFeasibilityValidator } from '../shift-swap/swap-feasibility-validator.js'
 import type { AiConfigActor } from './ai-config.service.js'
+import type { CostService } from '../cost/cost.service.js'
+
+const { Decimal } = TenantPrisma
 
 const UNIT = 'unit-1'
 const VACATED_EMP = 'emp-vacated'
 const SHIFT_ID = 'shift-1'
+const LOK_ID = 'lok-1'
 
-type PoolRow = { id: string; preferredShiftStart: string[] }
+type PoolRow = {
+  id: string
+  preferredShiftStart: string[]
+  unitId?: string
+  homeLat?: number | null
+  homeLng?: number | null
+  userId?: string | null
+}
 type WeekShiftRow = { employeeId: string; start: string; end: string }
+type LokalizacjaRow = { lat: number | null; lng: number | null } | null
+type CostEmployeeRow = { id: string; position: string; employmentType: string }
 
 type MockClient = {
   employee: { findMany: jest.Mock; findUniqueOrThrow: jest.Mock }
   shift: { findMany: jest.Mock }
+  lokalizacja: { findUnique: jest.Mock }
 }
 
-function makeClient(pool: PoolRow[], weekShifts: WeekShiftRow[] = []): MockClient {
+/**
+ * `localPool` answers a same-unit query (`where.unitId` a plain string); `crossPool` a cross-unit
+ * query (`where.unitId` an object, i.e. `{ not: ... }`); `costEmployees` answers
+ * `computeWorkCostDeltas`'s id-only lookup (`where.unitId` absent entirely). Pre-travel tests only
+ * ever exercise the local branch and never set `crossPool`/`costEmployees`/`lokalizacja`.
+ */
+function makeClient(
+  localPool: PoolRow[],
+  weekShifts: WeekShiftRow[] = [],
+  opts: { crossPool?: PoolRow[]; costEmployees?: CostEmployeeRow[]; lokalizacja?: LokalizacjaRow } = {},
+): MockClient {
   return {
     employee: {
-      findMany: jest.fn().mockResolvedValue(pool),
+      findMany: jest.fn().mockImplementation((args: { where?: { unitId?: unknown } }) => {
+        const unitId = args?.where?.unitId
+        if (unitId === undefined) return Promise.resolve(opts.costEmployees ?? [])
+        return Promise.resolve(typeof unitId === 'object' && unitId !== null ? (opts.crossPool ?? []) : localPool)
+      }),
       findUniqueOrThrow: jest.fn().mockResolvedValue({ unitId: UNIT }),
     },
     shift: { findMany: jest.fn().mockResolvedValue(weekShifts) },
+    lokalizacja: { findUnique: jest.fn().mockResolvedValue(opts.lokalizacja ?? null) },
   }
 }
 
@@ -35,7 +65,9 @@ function makeShift(overrides: Partial<RankableShift> = {}): RankableShift {
     employeeId: VACATED_EMP,
     role: 'KASJER',
     start: '08:00',
+    end: '16:00',
     date: new Date('2026-07-15T00:00:00.000Z'),
+    lokalizacjaId: LOK_ID,
     employee: { unitId: UNIT },
     ...overrides,
   }
@@ -44,11 +76,19 @@ function makeShift(overrides: Partial<RankableShift> = {}): RankableShift {
 /** Validator that feasibility-passes everyone (default happy path). */
 const allowAll: SwapFeasibilityValidator = { validate: async () => ({ feasible: true }) }
 
+/** CostService stub with no rates configured — every `workCostDelta` resolves to `null`, so ranking
+ *  is driven purely by the pre-existing tie-breaks / travel cost. Matches the real `CostService`'s
+ *  "never a phantom 0" contract. */
+const noCost: CostService = {
+  findRatesForPairs: jest.fn().mockResolvedValue([]),
+  shiftCost: jest.fn(),
+} as unknown as CostService
+
 describe('ReplacementService.rankCandidatesForShift', () => {
   describe('pool construction + vetting', () => {
     it('queries same-unit, role-qualified employees excluding the vacated one', async () => {
       const client = makeClient([{ id: 'a', preferredShiftStart: [] }])
-      const service = new ReplacementService(allowAll)
+      const service = new ReplacementService(allowAll, noCost)
 
       await service.rankCandidatesForShift(as(client), makeShift())
 
@@ -58,7 +98,7 @@ describe('ReplacementService.rankCandidatesForShift', () => {
           qualifications: { has: 'KASJER' },
           id: { not: VACATED_EMP },
         },
-        select: { id: true, preferredShiftStart: true },
+        select: { id: true, preferredShiftStart: true, unitId: true, homeLat: true, homeLng: true, userId: true },
       })
     })
 
@@ -68,7 +108,7 @@ describe('ReplacementService.rankCandidatesForShift', () => {
         { id: 'a', preferredShiftStart: [] },
         { id: 'b', preferredShiftStart: [] },
       ])
-      const service = new ReplacementService({ validate })
+      const service = new ReplacementService({ validate }, noCost)
 
       await service.rankCandidatesForShift(as(client), makeShift())
 
@@ -91,7 +131,7 @@ describe('ReplacementService.rankCandidatesForShift', () => {
 
     it('resolves the unit via a lookup when the shift has no pre-loaded employee', async () => {
       const client = makeClient([{ id: 'a', preferredShiftStart: [] }])
-      const service = new ReplacementService(allowAll)
+      const service = new ReplacementService(allowAll, noCost)
 
       await service.rankCandidatesForShift(as(client), makeShift({ employee: undefined }))
 
@@ -120,7 +160,7 @@ describe('ReplacementService.rankCandidatesForShift', () => {
           { employeeId: 'mid', start: '08:00', end: '16:00' },
         ],
       )
-      const service = new ReplacementService(allowAll)
+      const service = new ReplacementService(allowAll, noCost)
 
       const result = await service.rankCandidatesForShift(as(client), makeShift())
 
@@ -131,14 +171,15 @@ describe('ReplacementService.rankCandidatesForShift', () => {
     })
 
     it('breaks an hours-tie by preferred-start match, then by employeeId', async () => {
-      // All three have 0 week-hours. "zeta" matches the shift start (08:00) so it leads despite the
-      // later id; "alpha" and "gamma" both miss the preferred start and fall back to id order.
+      // All three have 0 week-hours and 0 total cost (no rates, no travel). "zeta" matches the shift
+      // start (08:00) so it leads despite the later id; "alpha" and "gamma" both miss the preferred
+      // start and fall back to id order.
       const client = makeClient([
         { id: 'gamma', preferredShiftStart: ['12:00'] },
         { id: 'alpha', preferredShiftStart: [] },
         { id: 'zeta', preferredShiftStart: ['08:00'] },
       ])
-      const service = new ReplacementService(allowAll)
+      const service = new ReplacementService(allowAll, noCost)
 
       const result = await service.rankCandidatesForShift(as(client), makeShift())
 
@@ -158,13 +199,13 @@ describe('ReplacementService.rankCandidatesForShift', () => {
         { id: 'blocked', preferredShiftStart: [] },
         { id: 'ok', preferredShiftStart: [] },
       ])
-      const service = new ReplacementService({ validate })
+      const service = new ReplacementService({ validate }, noCost)
 
       const result = await service.rankCandidatesForShift(as(client), makeShift())
 
       expect(result).toEqual([
-        { employeeId: 'ok', feasible: true, rank: 1, score: 0 },
-        { employeeId: 'blocked', feasible: false, reason: 'H4 rest window violated', rank: 0 },
+        expect.objectContaining({ employeeId: 'ok', feasible: true, rank: 1, score: 0 }),
+        expect.objectContaining({ employeeId: 'blocked', feasible: false, reason: 'H4 rest window violated', rank: 0 }),
       ])
     })
 
@@ -174,7 +215,7 @@ describe('ReplacementService.rankCandidatesForShift', () => {
         { id: 'a', preferredShiftStart: [] },
         { id: 'b', preferredShiftStart: [] },
       ])
-      const service = new ReplacementService({ validate })
+      const service = new ReplacementService({ validate }, noCost)
 
       const result = await service.rankCandidatesForShift(as(client), makeShift())
 
@@ -184,16 +225,149 @@ describe('ReplacementService.rankCandidatesForShift', () => {
   })
 
   describe('empty pool', () => {
-    it('returns [] and never calls the validator when no candidate qualifies', async () => {
+    it('returns [] and never calls the validator when no candidate qualifies (local AND cross-unit both empty)', async () => {
       const validate = jest.fn()
       const client = makeClient([])
-      const service = new ReplacementService({ validate })
+      const service = new ReplacementService({ validate }, noCost)
 
       const result = await service.rankCandidatesForShift(as(client), makeShift())
 
       expect(result).toEqual([])
       expect(validate).not.toHaveBeenCalled()
       expect(client.shift.findMany).not.toHaveBeenCalled()
+    })
+  })
+
+  // ----------------------------------------------------------------------------------------------
+  // Cross-unit travel (2026-07-14 spec, §12 Etap 1). Coordinates are chosen on the equator so
+  // haversine reduces to ~111.32km per degree of longitude/latitude difference — easy to reason
+  // about without needing exact great-circle arithmetic.
+  // ----------------------------------------------------------------------------------------------
+  describe('tiered pool (local -> cross-unit) + H-TRAVEL', () => {
+    const LOKALIZACJA = { lat: 0, lng: 0 }
+
+    it('local wins: a feasible local candidate short-circuits cross-unit entirely (0 travel)', async () => {
+      const client = makeClient(
+        [{ id: 'local-a', preferredShiftStart: [] }],
+        [],
+        {
+          crossPool: [{ id: 'cross-a', preferredShiftStart: [], homeLat: 0, homeLng: 0.01, userId: 'u1' }],
+          lokalizacja: LOKALIZACJA,
+        },
+      )
+      const service = new ReplacementService(allowAll, noCost)
+
+      const result = await service.rankCandidatesForShift(as(client), makeShift())
+
+      expect(result).toHaveLength(1)
+      expect(result[0]).toEqual(expect.objectContaining({ employeeId: 'local-a', feasible: true, rank: 1, travelKm: 0, travelMinutes: 0, travelCost: 0 }))
+      // Cross-unit was never even queried — the tiering short-circuit, not just a losing candidate.
+      expect(client.lokalizacja.findUnique).not.toHaveBeenCalled()
+    })
+
+    it('no local -> cheapest cross-unit wins (closer home = lower travel cost)', async () => {
+      const client = makeClient([], [], {
+        crossPool: [
+          { id: 'far', preferredShiftStart: [], homeLat: 0.9, homeLng: 0, userId: 'u-far' }, // ~100km
+          { id: 'near', preferredShiftStart: [], homeLat: 0.05, homeLng: 0, userId: 'u-near' }, // ~5.5km
+        ],
+        lokalizacja: LOKALIZACJA,
+      })
+      const service = new ReplacementService(allowAll, noCost)
+
+      const result = await service.rankCandidatesForShift(as(client), makeShift())
+
+      const feasible = result.filter((r) => r.feasible)
+      expect(feasible.map((r) => r.employeeId)).toEqual(['near', 'far'])
+      expect(feasible[0]?.rank).toBe(1)
+      expect(feasible[0]?.travelKm).toBeLessThan(feasible[1]?.travelKm ?? Infinity)
+      expect(feasible[0]?.travelCost).toBeLessThan(feasible[1]?.travelCost ?? Infinity)
+    })
+
+    it('over maxTravelMinutes -> infeasible (H-TRAVEL gate), reported with a travel reason', async () => {
+      const client = makeClient([], [], {
+        crossPool: [{ id: 'toofar', preferredShiftStart: [], homeLat: 3, homeLng: 0, userId: 'u1' }], // ~333km
+        lokalizacja: LOKALIZACJA,
+      })
+      const service = new ReplacementService(allowAll, noCost)
+
+      // Default policy: maxTravelMinutes 120 — ~333km at 60km/h (~333min) is well over the ceiling.
+      const result = await service.rankCandidatesForShift(as(client), makeShift())
+
+      expect(result).toHaveLength(1)
+      expect(result[0]?.feasible).toBe(false)
+      expect(result[0]?.rank).toBe(0)
+      expect(result[0]?.reason).toMatch(/H-TRAVEL/)
+    })
+
+    it('none -> escalate: no local and no cross-unit candidate at all yields []', async () => {
+      const client = makeClient([], [], { lokalizacja: LOKALIZACJA })
+      const service = new ReplacementService(allowAll, noCost)
+
+      const result = await service.rankCandidatesForShift(as(client), makeShift())
+
+      expect(result).toEqual([])
+    })
+
+    it('an H1-H4-infeasible cross-unit candidate is reported with the VALIDATOR reason, not a travel reason', async () => {
+      const validate = jest.fn().mockResolvedValue({ feasible: false, reason: 'H2 rest window violated' })
+      const client = makeClient([], [], {
+        crossPool: [{ id: 'cross-a', preferredShiftStart: [], homeLat: 0.01, homeLng: 0, userId: 'u1' }],
+        lokalizacja: LOKALIZACJA,
+      })
+      const service = new ReplacementService({ validate }, noCost)
+
+      const result = await service.rankCandidatesForShift(as(client), makeShift())
+
+      expect(result).toEqual([
+        expect.objectContaining({ employeeId: 'cross-a', feasible: false, reason: 'H2 rest window violated', travelKm: 0 }),
+      ])
+    })
+
+    it('a cross-unit candidate with no home coordinates is infeasible (travel cannot be computed)', async () => {
+      const client = makeClient([], [], {
+        crossPool: [{ id: 'no-home', preferredShiftStart: [], homeLat: null, homeLng: null, userId: 'u1' }],
+        lokalizacja: LOKALIZACJA,
+      })
+      const service = new ReplacementService(allowAll, noCost)
+
+      const result = await service.rankCandidatesForShift(as(client), makeShift())
+
+      expect(result[0]?.feasible).toBe(false)
+      expect(result[0]?.reason).toMatch(/H-TRAVEL/)
+    })
+
+    it('ranks by TOTAL cost (labour Δ + travel), not travel distance alone', async () => {
+      // "costly-labour-near" is much closer (cheap travel) but a far more expensive position; the
+      // labour Δcost dwarfs the travel saving, so the FARTHER "cheap-labour-far" (same rate as the
+      // vacated employee, Δ=0) wins on total cost despite a higher travel cost.
+      const cost: CostService = {
+        findRatesForPairs: jest.fn().mockResolvedValue([
+          { position: 'BASE', employmentType: 'UOP', hourlyRate: new Decimal(10), currency: 'PLN' },
+          { position: 'EXPENSIVE', employmentType: 'UOP', hourlyRate: new Decimal(1000), currency: 'PLN' },
+        ]),
+        shiftCost: jest.fn((rate: { hourlyRate: number | string }) => new Decimal(rate.hourlyRate)),
+      } as unknown as CostService
+      const client = makeClient([], [], {
+        crossPool: [
+          { id: 'cheap-labour-far', preferredShiftStart: [], homeLat: 0.5, homeLng: 0, userId: 'u1' }, // ~55.7km
+          { id: 'costly-labour-near', preferredShiftStart: [], homeLat: 0.05, homeLng: 0, userId: 'u2' }, // ~5.6km
+        ],
+        lokalizacja: LOKALIZACJA,
+        costEmployees: [
+          { id: VACATED_EMP, position: 'BASE', employmentType: 'UOP' },
+          { id: 'cheap-labour-far', position: 'BASE', employmentType: 'UOP' },
+          { id: 'costly-labour-near', position: 'EXPENSIVE', employmentType: 'UOP' },
+        ],
+      })
+      const service = new ReplacementService(allowAll, cost)
+
+      const result = await service.rankCandidatesForShift(as(client), makeShift())
+
+      const feasible = result.filter((r) => r.feasible)
+      expect(feasible.map((r) => r.employeeId)).toEqual(['cheap-labour-far', 'costly-labour-near'])
+      expect(feasible[0]?.workCostDelta).toBe(0)
+      expect(feasible[1]?.workCostDelta).toBe(990)
     })
   })
 })
@@ -242,7 +416,7 @@ function makeScanClient(shifts: VacatedShift[], managedUnits: string[] = []): Sc
 }
 
 describe('ReplacementService.findVacatedShifts', () => {
-  const service = new ReplacementService(allowAll)
+  const service = new ReplacementService(allowAll, noCost)
 
   it('returns a shift whose employee has an APPROVED leave covering the shift date', async () => {
     // Shift on 2026-07-15; leave 07-14..07-16 covers it (closed interval).

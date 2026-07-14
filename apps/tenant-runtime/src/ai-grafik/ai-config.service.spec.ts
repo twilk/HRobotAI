@@ -52,7 +52,16 @@ describe('AiConfigService', () => {
       const result = await service.getConfig(asClient(client), HR)
 
       expect(client.aiSchedulingConfig.findFirst).toHaveBeenCalledWith({ where: { unitId: null } })
-      expect(result).toEqual({ autonomyLevel: AutonomyLevel.SUGGEST_ONLY, consentTtlHours: 24, unitId: null, budgetWeeklyCap: null })
+      expect(result).toEqual({
+        autonomyLevel: AutonomyLevel.SUGGEST_ONLY,
+        consentTtlHours: 24,
+        unitId: null,
+        budgetWeeklyCap: null,
+        avgSpeedKmh: 60,
+        perKmRatePln: 1.15,
+        maxTravelMinutes: 120,
+        roundTrip: true,
+      })
     })
 
     it('throws ForbiddenException for a MANAGER reading a unit outside their managed set', async () => {
@@ -68,7 +77,16 @@ describe('AiConfigService', () => {
 
       const result = await service.getConfig(asClient(client), MANAGER, 'unit-A')
 
-      expect(result).toEqual({ autonomyLevel: AutonomyLevel.SUGGEST_ONLY, consentTtlHours: 24, unitId: 'unit-A', budgetWeeklyCap: null })
+      expect(result).toEqual({
+        autonomyLevel: AutonomyLevel.SUGGEST_ONLY,
+        consentTtlHours: 24,
+        unitId: 'unit-A',
+        budgetWeeklyCap: null,
+        avgSpeedKmh: 60,
+        perKmRatePln: 1.15,
+        maxTravelMinutes: 120,
+        roundTrip: true,
+      })
     })
   })
 

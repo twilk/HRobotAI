@@ -19,6 +19,12 @@ export interface DefaultAiConfig {
   unitId: string | null
   /** (Codex P1-2) No row yet ⇒ no cap has ever been set for this unit. */
   budgetWeeklyCap: null
+  /** Cross-unit replacement travel policy (2026-07-14 spec) — mirrors the schema column defaults so
+   *  the engine always has a policy to read, even before any config row has ever been written. */
+  avgSpeedKmh: number
+  perKmRatePln: number
+  maxTravelMinutes: number
+  roundTrip: boolean
 }
 
 /** Which config row (if any) an effective budget cap was resolved from. */
@@ -48,7 +54,16 @@ export class AiConfigService {
 
   /** The synthetic default a caller sees before any config row has been persisted for `unitId`. */
   private defaultConfig(unitId: string | null): DefaultAiConfig {
-    return { autonomyLevel: AutonomyLevel.SUGGEST_ONLY, consentTtlHours: 24, unitId, budgetWeeklyCap: null }
+    return {
+      autonomyLevel: AutonomyLevel.SUGGEST_ONLY,
+      consentTtlHours: 24,
+      unitId,
+      budgetWeeklyCap: null,
+      avgSpeedKmh: 60,
+      perKmRatePln: 1.15,
+      maxTravelMinutes: 120,
+      roundTrip: true,
+    }
   }
 
   /**

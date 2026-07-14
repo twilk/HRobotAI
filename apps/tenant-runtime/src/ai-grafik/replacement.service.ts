@@ -1,10 +1,13 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common'
 import type { TenantClient, TenantPrisma } from '@hrobot/db'
+import type { EmploymentType } from '@hrobot/shared'
 import {
   SWAP_FEASIBILITY_VALIDATOR,
   type SwapFeasibilityValidator,
 } from '../shift-swap/swap-feasibility-validator.js'
 import { isGlobal, managedUnitIds } from '../tenant-runtime/rbac/unit-scope.js'
+import { CostService } from '../cost/cost.service.js'
+import { haversineKm, roundCost, roundKm, roundMinutes, travelCost, travelMinutes } from '../cost/travel.util.js'
 import type { AiConfigActor } from './ai-config.service.js'
 import { isoWeekRange, windowMinutes } from './week-range.util.js'
 
@@ -57,7 +60,15 @@ export interface ScanRange {
 /**
  * One evaluated replacement candidate for a vacated shift. STABLE inter-task contract (later AI
  * phases consume this exact shape): `rank` is 1..n for feasible candidates (best-first), 0 for
- * infeasible ones; `score` is the primary heuristic key (scheduled hours in the shift's ISO week).
+ * infeasible ones; `score` is the scheduled-hours tie-break key (see the class doc for the full
+ * ranking order).
+ *
+ * (2026-07-14 spec, cross-unit travel) The travel/home/reachability fields are OPTIONAL so a caller
+ * constructing a `RankedCandidate` directly (tests, or a future non-engine source) is never forced to
+ * populate them; {@link ReplacementService.rankCandidatesForShift} always sets them. RODO: `homeLat`/
+ * `homeLng` are carried here ONLY as an internal engine value (never persisted — `AiProposalCandidate`
+ * stores just the rounded `travelKm`/`travelMinutes`/`travelCost` derivatives) and must never be
+ * serialized to an API response or audit payload.
  */
 export type RankedCandidate = {
   employeeId: string
@@ -65,12 +76,61 @@ export type RankedCandidate = {
   reason?: string
   rank: number
   score?: number
+  /** The candidate's own unit — equals the shift's unit for a local candidate, a different unit for
+   *  a cross-unit one. */
+  unitId?: string
+  /** RODO PII (server-side only) — see the type doc. */
+  homeLat?: number | null
+  /** RODO PII (server-side only) — see the type doc. */
+  homeLng?: number | null
+  /** `true` iff the candidate has an `Employee.userId` (a login) — AUTO_ASK_CONSENT can only address
+   *  a reachable candidate (Codex P1-3). */
+  reachable?: boolean
+  /** Rounded km from the candidate's home to the shift's lokalizacja; 0 for a local candidate. */
+  travelKm?: number | null
+  /** Rounded estimated travel minutes ("szacunkowy dojazd (demo)"); 0 for a local candidate. */
+  travelMinutes?: number | null
+  /** Rounded estimated travel cost ("kilometrówka"), 2dp; 0 for a local candidate. */
+  travelCost?: number | null
+  /** Labour Δcost (candidate − vacated) for the shift's hours, when a rate exists for both sides;
+   *  `null` when a rate is missing or currencies mismatch. Kept SEPARATE from `travelCost` (Codex
+   *  P2-6) — the two are summed only for the ranking sort key, never persisted as one number. */
+  workCostDelta?: number | null
+}
+
+/**
+ * Cross-unit replacement travel policy (2026-07-14 spec) — mirrors `AiSchedulingConfig`'s travel
+ * columns. {@link ReplacementService.rankCandidatesForShift} accepts this as an explicit parameter
+ * (defaulting to {@link DEFAULT_TRAVEL_POLICY}) rather than reading `AiSchedulingConfig` itself, so
+ * the engine stays a pure/testable seam — the caller (`AiProposalService`) is responsible for
+ * resolving the unit's actual configured policy and passing it in.
+ */
+export interface TravelPolicy {
+  /** Assumed average driving speed (km/h), used to derive minutes from {@link haversineKm}. */
+  avgSpeedKmh: number
+  /** Per-km travel reimbursement rate ("kilometrówka"), PLN. */
+  perKmRatePln: number
+  /** H-TRAVEL hard feasibility ceiling, in minutes. */
+  maxTravelMinutes: number
+  /** Whether travel cost prices a there-and-back trip (×2) or the one-way leg only. */
+  roundTrip: boolean
+}
+
+/** Mirrors the `AiSchedulingConfig` schema column defaults (see `ai-config.service.ts`). */
+export const DEFAULT_TRAVEL_POLICY: TravelPolicy = {
+  avgSpeedKmh: 60,
+  perKmRatePln: 1.15,
+  maxTravelMinutes: 120,
+  roundTrip: true,
 }
 
 /**
  * The minimal Shift view {@link ReplacementService.rankCandidatesForShift} needs. `employee.unitId`
  * may be pre-loaded by the caller (via a Prisma `include`); when it is absent the service resolves
- * the unit from `employeeId` itself, so a bare Shift row works too.
+ * the unit from `employeeId` itself, so a bare Shift row works too. Same optional-preload convention
+ * for `lokalizacja` (the shift's site lat/lng, needed for cross-unit travel) — absent triggers a
+ * lazy lookup, and ONLY when a cross-unit candidate is actually being evaluated (a local-only
+ * resolution never touches `lokalizacja` at all).
  */
 export interface RankableShift {
   id: string
@@ -78,48 +138,117 @@ export interface RankableShift {
   role: string
   /** Shift start as "HH:mm" — matched against each candidate's `preferredShiftStart`. */
   start: string
+  /** Shift end as "HH:mm" — needed (with `start`) for the labour Δcost hours calc. */
+  end: string
   /** `@db.Date` (UTC midnight) — anchors the ISO week whose hours drive the heuristic. */
   date: Date
+  /** The shift's site — travel is computed to THIS lokalizacja's lat/lng, not the candidate's unit. */
+  lokalizacjaId: string
   employee?: { unitId: string } | null
+  lokalizacja?: { lat: number | null; lng: number | null } | null
+}
+
+/** A pooled candidate row before feasibility vetting — the fields {@link ReplacementService} needs
+ *  from either the local or the cross-unit query (same shape for both). */
+interface PoolRow {
+  id: string
+  preferredShiftStart: string[]
+  unitId: string
+  homeLat: number | null
+  homeLng: number | null
+  userId: string | null
+}
+
+/** One vetted candidate — H1-H4 (+ H-TRAVEL for cross-unit) decision, travel breakdown, tie-break
+ *  inputs — before the final cost-based sort/rank pass. */
+interface EvaluatedCandidate {
+  id: string
+  feasible: boolean
+  reason?: string
+  unitId: string
+  homeLat: number | null
+  homeLng: number | null
+  reachable: boolean
+  travelKm: number
+  travelMinutes: number
+  travelCost: number
+  prefMatch: number
 }
 
 /**
- * Ranks replacement candidates for a vacated shift (Task 1.1). Builds the eligible pool (same unit,
- * qualified for `shift.role`, excluding the vacated employee), vets each one through the REUSED
- * {@link SwapFeasibilityValidator} seam with a "give away" shape (H1–H4 vetting of the incoming
- * candidate against the vacated shift), and ranks the feasible ones by a deterministic heuristic:
- * fewer already-scheduled hours in the shift's ISO week first, then a preferred-start match, then
- * `employeeId` for a stable tie-break. Infeasible candidates are returned last, flagged with the
- * validator's reason and `rank: 0`. NO mutation, NO proposal is created here.
+ * Ranks replacement candidates for a vacated shift (Task 1.1; cross-unit travel: 2026-07-14 spec).
+ * Builds a TIERED eligible pool:
+ *
+ *   1. **Local** — same unit as the shift, qualified for `shift.role`, excluding the vacated
+ *      employee. `travelKm/Minutes/Cost` are always 0.
+ *   2. **Cross-unit** — ONLY queried when tier 1 has zero FEASIBLE candidates (Codex recommendation:
+ *      cheaper computationally, clearer narrative than always pooling both). Qualified employees from
+ *      every OTHER unit. Vetted through the same H1–H4 {@link SwapFeasibilityValidator} seam as tier
+ *      1, PLUS an additive engine-side **H-TRAVEL** gate: infeasible when the candidate's home or the
+ *      shift's lokalizacja has no coordinates (travel cannot be computed), or when the estimated
+ *      travel time exceeds `travelPolicy.maxTravelMinutes`.
+ *
+ * Both tiers reuse the SAME {@link SwapFeasibilityValidator} "give away" shape (H1–H4 vetting of the
+ * incoming candidate against the vacated shift) — untouched by this change. Feasible candidates
+ * (across whichever tier(s) were evaluated) are ranked ascending by TOTAL cost — labour Δcost
+ * (candidate − vacated, when a rate exists for both) PLUS travel cost — then the pre-existing
+ * tie-breaks: fewer already-scheduled hours in the shift's ISO week, then a preferred-start match,
+ * then `employeeId` for a stable order. A local candidate's total cost is 0 (or the labour Δ alone)
+ * whenever cost rates are unset, so this degrades EXACTLY to the original hours/pref/id ordering in
+ * that case. Infeasible candidates are returned last (rank 0), flagged with the vetting reason.
+ * NO mutation, NO proposal is created here.
  */
 @Injectable()
 export class ReplacementService {
   constructor(
     @Inject(SWAP_FEASIBILITY_VALIDATOR)
     private readonly feasibility: SwapFeasibilityValidator,
+    private readonly costService: CostService,
   ) {}
 
-  async rankCandidatesForShift(client: TenantClient, shift: RankableShift): Promise<RankedCandidate[]> {
+  async rankCandidatesForShift(
+    client: TenantClient,
+    shift: RankableShift,
+    travelPolicy: TravelPolicy = DEFAULT_TRAVEL_POLICY,
+  ): Promise<RankedCandidate[]> {
     // The shift's unit = its employee's unit. Prefer a pre-loaded relation; fall back to a lookup.
     const unitId =
       shift.employee?.unitId ??
       (await client.employee.findUniqueOrThrow({ where: { id: shift.employeeId }, select: { unitId: true } }))
         .unitId
 
-    // Pool: same-unit employees qualified for the vacated role, excluding the vacated employee.
-    const pool = await client.employee.findMany({
-      where: {
-        unitId,
-        qualifications: { has: shift.role },
-        id: { not: shift.employeeId },
-      },
-      select: { id: true, preferredShiftStart: true },
-    })
-    if (pool.length === 0) return []
+    // --- Tier 1: local pool (same unit, qualified, ≠ vacated). Always evaluated. ---------------------
+    const localPool = await this.loadPool(client, { unitId, role: shift.role, excludeId: shift.employeeId, crossUnit: false })
+    let localEvaluated: EvaluatedCandidate[] = []
+    if (localPool.length > 0) {
+      localEvaluated = await Promise.all(
+        localPool.map((c) => this.vetCandidate(client, shift, c, true, null, travelPolicy)),
+      )
+    }
+    const localFeasible = localEvaluated.filter((c) => c.feasible)
+
+    // --- Tier 2: cross-unit — ONLY when tier 1 has no feasible candidate. lokalizacja is resolved
+    // lazily HERE (never for a local-only resolution) since it's only needed for the H-TRAVEL gate. --
+    let crossEvaluated: EvaluatedCandidate[] = []
+    if (localFeasible.length === 0) {
+      const crossPool = await this.loadPool(client, { unitId, role: shift.role, excludeId: shift.employeeId, crossUnit: true })
+      if (crossPool.length > 0) {
+        const lokalizacja =
+          shift.lokalizacja !== undefined
+            ? shift.lokalizacja
+            : await client.lokalizacja.findUnique({ where: { id: shift.lokalizacjaId }, select: { lat: true, lng: true } })
+        crossEvaluated = await Promise.all(
+          crossPool.map((c) => this.vetCandidate(client, shift, c, false, lokalizacja, travelPolicy)),
+        )
+      }
+    }
+
+    const evaluated = [...localEvaluated, ...crossEvaluated]
+    if (evaluated.length === 0) return []
 
     // Already-scheduled hours per candidate within the shift's ISO week (one query, no N+1).
     const { weekStart, weekEndExcl } = isoWeekRange(shift.date)
-    const candidateIds = pool.map((c) => c.id)
+    const candidateIds = evaluated.map((c) => c.id)
     const weekShifts = await client.shift.findMany({
       where: { employeeId: { in: candidateIds }, date: { gte: weekStart, lt: weekEndExcl } },
       select: { employeeId: true, start: true, end: true },
@@ -129,32 +258,26 @@ export class ReplacementService {
       hoursByEmployee.set(s.employeeId, (hoursByEmployee.get(s.employeeId) ?? 0) + windowMinutes(s.start, s.end) / 60)
     }
 
-    // Vet each candidate through the reused feasibility seam with the give-away shape: the candidate
-    // is the INCOMING holder of the vacated shift; there is no counterparty shift.
-    const feasible: Array<{ id: string; hours: number; prefMatch: number }> = []
-    const infeasible: Array<{ id: string; reason?: string }> = []
-    for (const candidate of pool) {
-      const decision = await this.feasibility.validate({
-        client,
-        requesterShift: { id: shift.id, employeeId: shift.employeeId },
-        targetShift: null,
-        incomingRequesterShiftEmployeeId: candidate.id,
-        incomingTargetShiftEmployeeId: null,
-      })
-      if (decision.feasible) {
-        feasible.push({
-          id: candidate.id,
-          hours: hoursByEmployee.get(candidate.id) ?? 0,
-          prefMatch: candidate.preferredShiftStart.includes(shift.start) ? 0 : 1,
-        })
-      } else {
-        infeasible.push({ id: candidate.id, reason: decision.reason })
-      }
-    }
+    // Labour Δcost (candidate − vacated) for every FEASIBLE candidate, one batched rates query
+    // (Codex P2-6: kept SEPARATE from travelCost — summed only for the sort key below).
+    const feasibleEvaluated = evaluated.filter((c) => c.feasible)
+    const workCostByEmployee = await this.computeWorkCostDeltas(client, shift, feasibleEvaluated.map((c) => c.id))
 
-    // Feasible: ascending week-hours, then preferred-start match, then employeeId (stable tie-break).
+    const feasible = feasibleEvaluated.map((c) => {
+      const hours = hoursByEmployee.get(c.id) ?? 0
+      const workCostDelta = workCostByEmployee.get(c.id) ?? null
+      const totalCost = (workCostDelta ?? 0) + c.travelCost
+      return { ...c, hours, workCostDelta, totalCost }
+    })
+    const infeasible = evaluated.filter((c) => !c.feasible)
+
+    // Feasible: ascending total cost, then week-hours, then preferred-start match, then employeeId.
     feasible.sort(
-      (a, b) => a.hours - b.hours || a.prefMatch - b.prefMatch || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+      (a, b) =>
+        a.totalCost - b.totalCost ||
+        a.hours - b.hours ||
+        a.prefMatch - b.prefMatch ||
+        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
     )
     infeasible.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 
@@ -163,14 +286,172 @@ export class ReplacementService {
       feasible: true,
       rank: i + 1,
       score: f.hours,
+      unitId: f.unitId,
+      homeLat: f.homeLat,
+      homeLng: f.homeLng,
+      reachable: f.reachable,
+      travelKm: f.travelKm,
+      travelMinutes: f.travelMinutes,
+      travelCost: f.travelCost,
+      workCostDelta: f.workCostDelta,
     }))
     const rejected: RankedCandidate[] = infeasible.map((f) => ({
       employeeId: f.id,
       feasible: false,
       ...(f.reason != null ? { reason: f.reason } : {}),
       rank: 0,
+      unitId: f.unitId,
+      homeLat: f.homeLat,
+      homeLng: f.homeLng,
+      reachable: f.reachable,
+      travelKm: f.travelKm,
+      travelMinutes: f.travelMinutes,
+      travelCost: f.travelCost,
     }))
     return [...ranked, ...rejected]
+  }
+
+  /** Same-unit (`crossUnit: false`) or every-other-unit (`crossUnit: true`) qualified pool, with the
+   *  fields both tiers' vetting needs (home coords + login for travel/reachability). */
+  private async loadPool(
+    client: TenantClient,
+    opts: { unitId: string; role: string; excludeId: string; crossUnit: boolean },
+  ): Promise<PoolRow[]> {
+    return client.employee.findMany({
+      where: {
+        unitId: opts.crossUnit ? { not: opts.unitId } : opts.unitId,
+        qualifications: { has: opts.role },
+        id: { not: opts.excludeId },
+      },
+      select: { id: true, preferredShiftStart: true, unitId: true, homeLat: true, homeLng: true, userId: true },
+    })
+  }
+
+  /**
+   * Vets one candidate through the reused H1–H4 {@link SwapFeasibilityValidator} seam (give-away
+   * shape — the candidate is the INCOMING holder of the vacated shift, no counterparty shift), then
+   * for a CROSS-UNIT candidate applies the additive H-TRAVEL gate: infeasible when either the
+   * candidate's home or the shift's lokalizacja has no coordinates (travel cannot be honestly
+   * computed), or when the estimated travel time exceeds `travelPolicy.maxTravelMinutes`. A LOCAL
+   * candidate's travel is always 0 and is never travel-gated.
+   */
+  private async vetCandidate(
+    client: TenantClient,
+    shift: RankableShift,
+    candidate: PoolRow,
+    isLocal: boolean,
+    lokalizacja: { lat: number | null; lng: number | null } | null,
+    travelPolicy: TravelPolicy,
+  ): Promise<EvaluatedCandidate> {
+    const decision = await this.feasibility.validate({
+      client,
+      requesterShift: { id: shift.id, employeeId: shift.employeeId },
+      targetShift: null,
+      incomingRequesterShiftEmployeeId: candidate.id,
+      incomingTargetShiftEmployeeId: null,
+    })
+    const reachable = candidate.userId != null
+    const prefMatch = candidate.preferredShiftStart.includes(shift.start) ? 0 : 1
+    const base = {
+      id: candidate.id,
+      unitId: candidate.unitId,
+      homeLat: candidate.homeLat,
+      homeLng: candidate.homeLng,
+      reachable,
+      prefMatch,
+    }
+
+    if (isLocal || !decision.feasible) {
+      return {
+        ...base,
+        feasible: decision.feasible,
+        ...(decision.reason != null ? { reason: decision.reason } : {}),
+        travelKm: 0,
+        travelMinutes: 0,
+        travelCost: 0,
+      }
+    }
+
+    // Cross-unit + H1-H4 feasible: apply the additive H-TRAVEL gate.
+    if (candidate.homeLat == null || candidate.homeLng == null || lokalizacja?.lat == null || lokalizacja?.lng == null) {
+      return {
+        ...base,
+        feasible: false,
+        reason: 'H-TRAVEL: brak współrzędnych do wyliczenia dojazdu',
+        travelKm: 0,
+        travelMinutes: 0,
+        travelCost: 0,
+      }
+    }
+
+    const rawKm = haversineKm(candidate.homeLat, candidate.homeLng, lokalizacja.lat, lokalizacja.lng)
+    const rawMinutes = travelMinutes(rawKm, travelPolicy.avgSpeedKmh)
+    if (rawMinutes > travelPolicy.maxTravelMinutes) {
+      return {
+        ...base,
+        feasible: false,
+        reason: `H-TRAVEL: szacunkowy dojazd ~${roundMinutes(rawMinutes)} min przekracza limit ${travelPolicy.maxTravelMinutes} min`,
+        travelKm: roundKm(rawKm),
+        travelMinutes: roundMinutes(rawMinutes),
+        travelCost: 0,
+      }
+    }
+
+    const costDecimal = travelCost(rawKm, travelPolicy.perKmRatePln, travelPolicy.roundTrip)
+    return {
+      ...base,
+      feasible: true,
+      travelKm: roundKm(rawKm),
+      travelMinutes: roundMinutes(rawMinutes),
+      travelCost: roundCost(costDecimal).toNumber(),
+    }
+  }
+
+  /**
+   * Labour Δcost (candidate − vacated) for every id in `candidateIds`, batched into ONE
+   * position/employmentType lookup plus ONE rates query (mirrors `AiProposalService`'s
+   * `computeEstimatedCost`, generalized to N candidates instead of just the top one). A candidate is
+   * OMITTED from the returned map (⇒ `null` at the call site) whenever the vacated employee's rate or
+   * that candidate's own rate is missing, or the two rates' currencies mismatch — never a phantom 0.
+   */
+  private async computeWorkCostDeltas(
+    client: TenantClient,
+    shift: { employeeId: string; start: string; end: string },
+    candidateIds: string[],
+  ): Promise<Map<string, number>> {
+    const result = new Map<string, number>()
+    if (candidateIds.length === 0) return result
+
+    const employees = await client.employee.findMany({
+      where: { id: { in: [...candidateIds, shift.employeeId] } },
+      select: { id: true, position: true, employmentType: true },
+    })
+    const byId = new Map(employees.map((e) => [e.id, e]))
+    const vacatedEmp = byId.get(shift.employeeId)
+    if (!vacatedEmp) return result
+
+    const pairKey = (position: string, employmentType: EmploymentType) => `${position} ${employmentType}`
+    const pairs = candidateIds
+      .map((id) => byId.get(id))
+      .filter((e): e is NonNullable<typeof e> => e != null)
+      .map((e) => ({ position: e.position, employmentType: e.employmentType as EmploymentType }))
+    pairs.push({ position: vacatedEmp.position, employmentType: vacatedEmp.employmentType as EmploymentType })
+
+    const rates = await this.costService.findRatesForPairs(client, pairs)
+    const rateByKey = new Map(rates.map((r) => [pairKey(r.position, r.employmentType as EmploymentType), r]))
+    const vacatedRate = rateByKey.get(pairKey(vacatedEmp.position, vacatedEmp.employmentType as EmploymentType))
+    if (!vacatedRate) return result
+    const vacatedCost = this.costService.shiftCost(vacatedRate, shift)
+
+    for (const id of candidateIds) {
+      const emp = byId.get(id)
+      if (!emp) continue
+      const rate = rateByKey.get(pairKey(emp.position, emp.employmentType as EmploymentType))
+      if (!rate || rate.currency !== vacatedRate.currency) continue
+      const candidateCost = this.costService.shiftCost(rate, shift)
+      result.set(id, candidateCost.sub(vacatedCost).toNumber())
+    }
+    return result
   }
 
   /**

@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsNumber, IsOptional, IsUUID, Matches, Max, Min } from 'class-validator'
+import { IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsUUID, Matches, Max, Min } from 'class-validator'
 import { AutonomyLevel } from '@hrobot/shared'
 
 /**
@@ -31,4 +31,20 @@ export class UpdateAiConfigDto {
    * mirrors the `etat` convention (employee.dto.ts).
    */
   @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) budgetWeeklyCap?: number
+
+  /**
+   * Cross-unit replacement travel policy (2026-07-14 spec) — "szacunkowy dojazd (demo)". Every field
+   * optional (partial upsert), same convention as the rest of this DTO.
+   */
+  /** Assumed average driving speed (km/h) used to derive travel minutes from haversine km. */
+  @IsOptional() @IsInt() @Min(1) @Max(200) avgSpeedKmh?: number
+
+  /** Per-km travel reimbursement rate ("kilometrówka"), PLN. */
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) perKmRatePln?: number
+
+  /** H-TRAVEL hard feasibility ceiling, in minutes — a cross-unit candidate over this is infeasible. */
+  @IsOptional() @IsInt() @Min(0) @Max(1440) maxTravelMinutes?: number
+
+  /** Whether travel cost prices a there-and-back trip (×2) or the one-way leg only. */
+  @IsOptional() @IsBoolean() roundTrip?: boolean
 }

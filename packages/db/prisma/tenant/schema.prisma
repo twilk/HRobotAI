@@ -378,6 +378,16 @@ model AiSchedulingConfig {
   quietHoursEnd   String?            @map("quiet_hours_end")
   consentTtlHours Int                @default(24) @map("consent_ttl_hours")
   budgetWeeklyCap Decimal?           @map("budget_weekly_cap")
+  /// Cross-unit replacement travel policy (2026-07-14 spec) — "szacunkowy dojazd (demo)": assumed
+  /// average driving speed used to derive travelMinutes from haversineKm.
+  avgSpeedKmh      Int               @default(60) @map("avg_speed_kmh")
+  /// Per-km travel reimbursement rate ("kilometrówka"), PLN.
+  perKmRatePln     Decimal           @default(1.15) @map("per_km_rate_pln")
+  /// Hard feasibility ceiling (H-TRAVEL, engine-side): a cross-unit candidate whose estimated travel
+  /// time exceeds this is infeasible, regardless of rank/cost.
+  maxTravelMinutes Int               @default(120) @map("max_travel_minutes")
+  /// Whether travelCost prices a there-and-back trip (×2) or the one-way leg only.
+  roundTrip        Boolean           @default(true) @map("round_trip")
   createdAt       DateTime           @default(now()) @map("created_at")
   updatedAt       DateTime           @updatedAt @map("updated_at")
 
@@ -397,6 +407,12 @@ model AiProposal {
   vacatedEmployeeId   String                 @map("vacated_employee_id")
   vacatedEmployee     Employee               @relation("AiProposalVacated", fields: [vacatedEmployeeId], references: [id])
   activeCandidateId   String?                @map("active_candidate_id")
+  /// (2026-07-14 spec, Codex P1-2) The vacated shift's ORIGINAL unit, frozen at proposal creation —
+  /// authorize list/approve/consent + audit by THIS unit, never by a candidate's (possibly
+  /// cross-unit) `unitId`, so a committed cross-unit replacement never silently "moves" the
+  /// proposal's ownership to the candidate's unit. Plain string, no FK (mirrors
+  /// `decidedByManagerId`) — set once at creation and never reassigned.
+  owningUnitId        String?                @map("owning_unit_id")
   reason              String?
   estimatedCost       Decimal?               @map("estimated_cost")
   decidedByManagerId  String?                @map("decided_by_manager_id")
@@ -422,6 +438,17 @@ model AiProposalCandidate {
   feasible           Boolean
   reason             String?
   score              Decimal?
+  /// Rounded km from the candidate's home to the shift's lokalizacja (0 for a same-unit/local
+  /// candidate); null when never computed (e.g. a local candidate row predating this column, or a
+  /// cross-unit candidate whose home/lokalizacja coordinates were missing). RODO-safe: rounded only,
+  /// never the raw coordinates it was derived from — "szacunkowy dojazd (demo)".
+  travelKm           Decimal?     @map("travel_km")
+  /// Rounded estimated one-way-equivalent travel minutes for `travelKm` (see travel.util.ts).
+  travelMinutes      Decimal?     @map("travel_minutes")
+  /// Rounded estimated travel cost ("kilometrówka") contributing to this candidate's total Δcost,
+  /// kept SEPARATE from the labour Δcost on `AiProposal.estimatedCost` (Codex P2-6) — never summed
+  /// into it silently.
+  travelCost         Decimal?     @map("travel_cost")
   consentState       ConsentState @default(NOT_ASKED) @map("consent_state")
   consentRequestedAt DateTime?    @map("consent_requested_at")
   consentAt          DateTime?    @map("consent_at")
