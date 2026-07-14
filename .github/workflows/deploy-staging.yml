@@ -44,6 +44,9 @@ jobs:
       # Enable the compose `full` profile for every `docker compose` call (up/exec/ps/logs) without
       # repeating the flag. Reuses the EXISTING docker-compose.yml as-is (governance: do not edit it).
       COMPOSE_PROFILES: full
+      # Git Bash (MSYS) rewrites absolute POSIX args like `--workdir /app` into Windows paths,
+      # which breaks `docker compose exec` ("Cwd must be an absolute path"). Disable the conversion.
+      MSYS_NO_PATHCONV: "1"
       # cloudflared named-tunnel token — from a GitHub Actions secret, consumed only by edge-up.sh.
       CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
 
