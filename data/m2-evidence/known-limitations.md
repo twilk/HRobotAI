@@ -1,6 +1,6 @@
 # Znane ograniczenia i etapowość (uczciwe ujęcie do protokołu)
 
-> Jawne przedstawienie 4Mobility, co jest dostarczone w M2 vs odroczone. Chroni przed zarzutem over-promisingu i jest podstawą „protokołu z uwagami / etapowości".
+> Jawne zestawienie zakresu dostarczonego w Kamieniu Milowym 2 oraz elementów realizowanych etapowo — podstawa ustaleń etapowości w protokole odbioru. Stan na 2026-07-15.
 
 ## Grafik (a)
 - **Twarde ograniczenia: H1–H4** (pokrycie, brak nakładania, dostępność/urlopy, odpoczynek dobowy 11h) — egzekwowane przez solver, zweryfikowane testami.
