@@ -197,3 +197,37 @@ export function renderNadgodzinyPdf(employee: PdfEmployeeHeader, period: Period,
 export function renderKeduPdf(model: KeduModel): Promise<Buffer> {
   return renderContentToPdfBuffer(buildKeduPdfContent(model))
 }
+
+/**
+ * Render several {@link PdfContent} sections into ONE PDF (one page per section), each carrying the
+ * mandatory diagonal watermark. Used by the service to produce a single-document PDF for a multi-
+ * employee scope (UNIT/ALL ewidencja/nadgodziny) while reusing the same pure content builders — the
+ * single-employee case is just an array of one. SPEC §4.1 / DOK-9.
+ */
+export function renderReportPdf(contents: PdfContent[]): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 40 })
+    const chunks: Buffer[] = []
+    doc.on('data', (chunk: Buffer) => chunks.push(chunk))
+    doc.on('end', () => resolve(Buffer.concat(chunks)))
+    doc.on('error', (err: Error) => reject(err))
+
+    const sections = contents.length > 0 ? contents : [{ title: 'Dokument (DEMO)', lines: [WATERMARK_TEXT], watermark: WATERMARK_TEXT }]
+    sections.forEach((content, i) => {
+      if (i > 0) doc.addPage()
+      doc.fontSize(16).text(content.title, { align: 'center' })
+      doc.moveDown()
+      doc.fontSize(9).font('Courier')
+      for (const line of content.lines) doc.text(line)
+
+      doc.save()
+      doc.rotate(-45, { origin: [doc.page.width / 2, doc.page.height / 2] })
+      doc.fontSize(28).fillColor('red').opacity(0.35)
+      doc.text(content.watermark, 0, doc.page.height / 2 - 40, { align: 'center', width: doc.page.width })
+      doc.opacity(1).fillColor('black')
+      doc.restore()
+    })
+
+    doc.end()
+  })
+}

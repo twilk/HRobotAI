@@ -22,6 +22,7 @@ import { DostepyModule } from './dostepy/dostepy.module.js'
 import { UstawieniaModule } from './ustawienia/ustawienia.module.js'
 import { UsersModule } from './users/users.module.js'
 import { StrategicBrainModule } from './strategic-brain/strategic-brain.module.js'
+import { DokumentyModule } from './dokumenty/dokumenty.module.js'
 import { RedisService } from './common/redis/redis.service.js'
 
 @Module({
@@ -59,6 +60,7 @@ import { RedisService } from './common/redis/redis.service.js'
     UstawieniaModule,
     UsersModule,
     StrategicBrainModule,
+    DokumentyModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
