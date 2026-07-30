@@ -56,6 +56,29 @@ describe('DokumentyController', () => {
 
   const rolesFor = (m: keyof DokumentyController): string[] => new Reflector().get<string[]>(ROLES_KEY, DokumentyController.prototype[m] as (...a: unknown[]) => unknown) ?? []
 
+  // --- pobierz binary integrity (regression: JSON-serialized Buffer produced un-openable PDFs) ----
+  describe('GET :id/pobierz — binary integrity', () => {
+    it('sends the RAW Buffer via res.send and does NOT return it (Nest would JSON-serialize a returned Buffer to {"type":"Buffer",...}, corrupting the PDF)', async () => {
+      const pdf = Buffer.from('%PDF-1.3\n%\xE2\xE3\xCF\xD3 binary', 'binary')
+      dokumenty.pobierz.mockResolvedValue({ mime: 'application/pdf', filename: 'nadgodziny.pdf', buffer: pdf })
+      const res = { setHeader: jest.fn(), send: jest.fn() }
+      const ret = await controller.pobierz(asClient(client), user(['HR']), IP, 'tenant-1', 'doc-1', res as never)
+      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'application/pdf')
+      expect(res.setHeader).toHaveBeenCalledWith('Content-Disposition', 'attachment; filename="nadgodziny.pdf"')
+      expect(res.send).toHaveBeenCalledTimes(1)
+      const sent = (res.send as jest.Mock).mock.calls[0][0]
+      expect(Buffer.isBuffer(sent)).toBe(true)
+      expect(sent).toBe(pdf)
+      expect(ret).toBeUndefined()
+    })
+    it('sends text content (XML KEDU) as a string for a text document', async () => {
+      dokumenty.pobierz.mockResolvedValue({ mime: 'application/xml', filename: 'kedu.xml', text: '<?xml version="1.0"?><demo>true</demo>' })
+      const res = { setHeader: jest.fn(), send: jest.fn() }
+      await controller.pobierz(asClient(client), user(['HR']), IP, 'tenant-1', 'doc-2', res as never)
+      expect(res.send).toHaveBeenCalledWith('<?xml version="1.0"?><demo>true</demo>')
+    })
+  })
+
   // --- Route ordering: literal `mine` must beat the `:id` param route ---------------------------
   describe('GET route ordering', () => {
     const proto = DokumentyController.prototype

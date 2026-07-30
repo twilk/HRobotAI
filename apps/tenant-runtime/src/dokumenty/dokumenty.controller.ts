@@ -92,13 +92,16 @@ export class DokumentyController {
     @Ip() ip: string,
     @CurrentTenantId() tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Res({ passthrough: true }) res: Response,
-  ): Promise<Buffer | string> {
+    @Res() res: Response,
+  ): Promise<void> {
     const scope = await this.resolveScope(client, user)
     const out = await this.dokumenty.pobierz(client, this.actor(user, ip), id, scope, tenantId)
     res.setHeader('Content-Type', out.mime)
     res.setHeader('Content-Disposition', `attachment; filename="${out.filename}"`)
-    return out.buffer ?? out.text ?? ''
+    // NOTE: send raw bytes via Express `res.send` — do NOT `return` a Buffer with @Res({passthrough}),
+    // Nest would JSON-serialize it to `{"type":"Buffer","data":[...]}` and the downloaded file would
+    // not be a valid PDF/XML. `res.send(Buffer)` emits the raw bytes; `res.send(string)` the text.
+    res.send(out.buffer ?? out.text ?? '')
   }
 
   // Human approval gate (§5, DOK-6, art. 22). NADGODZINY/ZUS GENERATED → APPROVED. Sends NOTHING.
