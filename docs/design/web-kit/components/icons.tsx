@@ -68,6 +68,12 @@ export const IconUser = (p: IconProps) => (
     <path d="M5 20c.8-3.6 3.4-5.5 7-5.5s6.2 1.9 7 5.5" />
   </Icon>
 )
+export const IconFileText = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M6.5 3.5h7l4 4V19a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" />
+    <path d="M13.5 3.5V8h4M8.5 12h7M8.5 15.5h4.5" />
+  </Icon>
+)
 export const IconShield = (p: IconProps) => (
   <Icon {...p}>
     <path d="M12 2.5 4.5 6v6c0 4.6 3.1 7.9 7.5 9.5 4.4-1.6 7.5-4.9 7.5-9.5V6L12 2.5Z" />

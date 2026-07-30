@@ -8,6 +8,7 @@ import {
   IconSettings,
   IconUser,
   IconSparkles,
+  IconFileText,
 } from '@/components/icons'
 
 export type Role = 'PRACOWNIK' | 'MANAGER' | 'HR' | 'ADMIN_KLIENTA'
@@ -49,6 +50,11 @@ export const NAV: NavGroup[] = [
       { label: 'Zamiany', href: '/zamiany', icon: IconRequests },
       { label: 'Wnioski', href: '/wnioski', icon: IconRequests, tag: '3' },
       { label: 'Dostępy', href: '/dostepy', icon: IconKey, roles: ['MANAGER', 'HR', 'ADMIN_KLIENTA'] },
+      // Moduł Dokumenty (M3, SPEC §7). A plain PRACOWNIK still reaches /dokumenty by direct
+      // navigation (the page shows a read-only "moja ewidencja" branch via /dokumenty/mine — see
+      // app/(tenant)/dokumenty/page.tsx) — this gate only hides the SIDEBAR entry, mirroring how
+      // /dostepy is gated here.
+      { label: 'Dokumenty', href: '/dokumenty', icon: IconFileText, roles: ['MANAGER', 'HR', 'ADMIN_KLIENTA'] },
     ],
   },
   {

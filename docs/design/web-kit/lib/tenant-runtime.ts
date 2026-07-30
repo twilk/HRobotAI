@@ -134,11 +134,20 @@ export async function proxyToTenantRuntime(req: Request, backendPath: string, se
 
   // Pass the body + status through unchanged so the client sees real backend errors (400 validation,
   // 403 RBAC, 409, INFEASIBLE payloads, …) rather than a flattened generic error.
-  const text = await upstream.text()
-  return new Response(text, {
-    status: upstream.status,
-    headers: { 'content-type': upstream.headers.get('content-type') ?? 'application/json' },
-  })
+  //
+  // Read as raw bytes (`.arrayBuffer()`), NOT `.text()`: `dokumenty/:id/pobierz` (see
+  // app/api/dokumenty/[[...path]]) streams a binary PDF, and `.text()` runs the body through a
+  // TextDecoder that mangles non-UTF-8 bytes. An ArrayBuffer round-trips JSON/text bodies exactly as
+  // before, so this is a pure superset of the previous behaviour — every other proxied route (JSON)
+  // is unaffected. Also forward `content-disposition` when the upstream set one (the `pobierz` route's
+  // `attachment; filename=...`) so the browser downloads with the right filename instead of dropping it.
+  const bytes = await upstream.arrayBuffer()
+  const headers: Record<string, string> = {
+    'content-type': upstream.headers.get('content-type') ?? 'application/json',
+  }
+  const disposition = upstream.headers.get('content-disposition')
+  if (disposition) headers['content-disposition'] = disposition
+  return new Response(bytes, { status: upstream.status, headers })
 }
 
 /** Join a catch-all `path` segment array into a backend sub-path, dropping empties. */
