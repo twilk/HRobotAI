@@ -13,5 +13,8 @@ import { LeaveService } from './leave.service.js'
   imports: [AiGrafikModule],
   controllers: [LeaveController],
   providers: [LeaveService],
+  // Exported so `agent-glosowy` (Agent Głosowy) can reuse the SAME leave-request service (K1/K2)
+  // rather than reinventing the create/RBAC/PENDING/maker-checker logic.
+  exports: [LeaveService],
 })
 export class LeaveModule {}
