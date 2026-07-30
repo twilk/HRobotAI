@@ -1,0 +1,7 @@
+NotoSans-Regular.ttf — Noto Sans
+Licencja: SIL Open Font License, Version 1.1 (OFL-1.1) — wolna redystrybucja i osadzanie.
+Copyright: The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic).
+
+Osadzony w Module Dokumenty (render/pdf.renderer.ts), aby polskie znaki diakrytyczne
+(ł ą ę ś ż ó ć ń ź) renderowały się poprawnie w generowanych PDF — wbudowane fonty pdfkit
+(Helvetica/Courier) używają kodowania WinAnsi i zniekształcają glify PL.

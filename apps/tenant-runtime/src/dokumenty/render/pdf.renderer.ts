@@ -22,6 +22,8 @@
  */
 
 import PDFDocument from 'pdfkit'
+import { join } from 'node:path'
+import { existsSync } from 'node:fs'
 import type { EwidencjaRow, Period } from '../rcp.util'
 import type { OvertimeSummary } from '../overtime.util'
 import type { KeduModel } from '../kedu.util'
@@ -35,6 +37,20 @@ export const WATERMARK_TEXT = 'WERSJA DEMO — dane syntetyczne — nie do obrot
 
 /** Header line shared by every demo document (SPEC §4.1 — "nagłówek 4Mobility/HRobot"). */
 const HEADER_LINE = '4Mobility / HRobot — dokument demonstracyjny (WERSJA POGLĄDOWA)'
+
+/** Embedded Unicode font (Noto Sans, OFL-1.1) so Polish diacritics (ł/ą/ę/ś/ż/ó/ć/ń/ź) render
+ * correctly — pdfkit's built-in Helvetica/Courier are WinAnsi-only and mangle PL glyphs (F1 fix).
+ * Shipped next to this module (`fonts/`) and copied into `dist` via nest-cli `assets`; if the file
+ * is somehow absent at runtime we fall back to Helvetica (renders, but garbles diacritics). */
+const FONT_PATH = join(__dirname, 'fonts', 'NotoSans-Regular.ttf')
+const HAS_UNICODE_FONT = existsSync(FONT_PATH)
+
+/** Register the embedded Unicode font on `doc` and return the font name to use for ALL text. */
+function useUnicodeFont(doc: InstanceType<typeof PDFDocument>): string {
+  if (!HAS_UNICODE_FONT) return 'Helvetica'
+  doc.registerFont('noto', FONT_PATH)
+  return 'noto'
+}
 
 export type PdfEmployeeHeader = {
   employeeId: string
@@ -163,9 +179,10 @@ function renderContentToPdfBuffer(content: PdfContent): Promise<Buffer> {
     doc.on('end', () => resolve(Buffer.concat(chunks)))
     doc.on('error', (err: Error) => reject(err))
 
-    doc.fontSize(16).text(content.title, { align: 'center' })
+    const font = useUnicodeFont(doc)
+    doc.font(font).fontSize(16).text(content.title, { align: 'center' })
     doc.moveDown()
-    doc.fontSize(9).font('Courier')
+    doc.font(font).fontSize(9)
     for (const line of content.lines) {
       doc.text(line)
     }
@@ -174,7 +191,7 @@ function renderContentToPdfBuffer(content: PdfContent): Promise<Buffer> {
     // already appended to `content.lines` — SPEC §0 / DOK-9).
     doc.save()
     doc.rotate(-45, { origin: [doc.page.width / 2, doc.page.height / 2] })
-    doc.fontSize(28).fillColor('red').opacity(0.35)
+    doc.font(font).fontSize(28).fillColor('red').opacity(0.35)
     doc.text(content.watermark, 0, doc.page.height / 2 - 40, { align: 'center', width: doc.page.width })
     doc.opacity(1).fillColor('black')
     doc.restore()
@@ -212,17 +229,18 @@ export function renderReportPdf(contents: PdfContent[]): Promise<Buffer> {
     doc.on('end', () => resolve(Buffer.concat(chunks)))
     doc.on('error', (err: Error) => reject(err))
 
+    const font = useUnicodeFont(doc)
     const sections = contents.length > 0 ? contents : [{ title: 'Dokument (DEMO)', lines: [WATERMARK_TEXT], watermark: WATERMARK_TEXT }]
     sections.forEach((content, i) => {
       if (i > 0) doc.addPage()
-      doc.fontSize(16).text(content.title, { align: 'center' })
+      doc.font(font).fontSize(16).text(content.title, { align: 'center' })
       doc.moveDown()
-      doc.fontSize(9).font('Courier')
+      doc.font(font).fontSize(9)
       for (const line of content.lines) doc.text(line)
 
       doc.save()
       doc.rotate(-45, { origin: [doc.page.width / 2, doc.page.height / 2] })
-      doc.fontSize(28).fillColor('red').opacity(0.35)
+      doc.font(font).fontSize(28).fillColor('red').opacity(0.35)
       doc.text(content.watermark, 0, doc.page.height / 2 - 40, { align: 'center', width: doc.page.width })
       doc.opacity(1).fillColor('black')
       doc.restore()
