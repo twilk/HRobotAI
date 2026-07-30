@@ -1,0 +1,47 @@
+<style>
+  :root{ --navy:#0B1F3B; --teal:#0C8FA3; --light:#EAF2F6; --line:#C9D4DC; --grey:#666; --red:#B00020; --green:#2E7D32; }
+  @page{ size:A4; margin:26mm 16mm 16mm 16mm; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{ font-family:Arial,"Segoe UI",sans-serif; font-size:10.5pt; line-height:1.5; color:#1a1a1a; }
+
+  h1{ color:var(--navy); font-size:15pt; margin:18px 0 10px; padding-bottom:4px;
+      border-bottom:2px solid var(--teal); page-break-after:avoid; }
+  h2{ color:var(--navy); font-size:12.5pt; margin:16px 0 8px; page-break-after:avoid; }
+  p{ margin:0 0 8px; text-align:justify; orphans:3; widows:3; }
+  li{ orphans:2; widows:2; }
+  ul{ margin:4px 0 10px; padding-left:20px; }
+  li{ margin:0 0 3px; }
+  .lbl{ font-weight:bold; color:var(--navy); }
+  .muted{ color:var(--grey); font-size:9pt; font-style:italic; }
+  .red{ color:var(--red); font-weight:bold; }
+
+  table{ border-collapse:collapse; width:100%; margin:8px 0 12px; font-size:9.5pt; page-break-inside:auto; }
+  th,td{ border:1px solid var(--line); padding:4px 7px; vertical-align:top; text-align:left; }
+  th{ background:var(--navy); color:#fff; }
+  tr:nth-child(even) td{ background:var(--light); }
+  td.c{ text-align:center; } td.r{ text-align:right; }
+  .tot td{ background:var(--navy); color:#fff; font-weight:bold; }
+  .kv td:first-child{ background:var(--light); font-weight:bold; color:var(--navy); width:32%; }
+  .kv tr:nth-child(even) td{ background:#fff; }
+  .kv tr:nth-child(even) td:first-child{ background:var(--light); }
+
+  figure{ margin:14px 0; text-align:center; page-break-inside:avoid; }
+  figure img{ max-width:100%; border:1px solid var(--line); }
+  figure.exhibit{ page-break-before:always; }
+  figure.exhibit img{ max-height:112mm; display:block; margin:0 auto 6px; }
+  figcaption{ font-size:8.5pt; color:var(--grey); font-style:italic; margin-top:4px; }
+  .ok{ color:var(--green); } .warn{ color:#B26A00; }
+
+  .cover-title{ text-align:center; font-weight:bold; color:var(--navy); }
+  .page-break{ page-break-before:always; }
+  .sig{ display:flex; gap:30px; margin-top:26px; }
+  .sig div{ flex:1; }
+  .sigline{ color:var(--grey); margin-bottom:2px; }
+  .att-title{ text-align:center; margin-top:30px; }
+  .att-title .big{ font-size:30pt; font-weight:bold; color:var(--navy); }
+  .att-title .sub{ font-size:16pt; font-weight:bold; color:var(--teal); }
+  .note{ font-style:italic; color:#333; }
+  .keep{ page-break-inside:avoid; }
+  thead{ display:table-header-group; }
+</style>

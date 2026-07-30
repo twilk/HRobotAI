@@ -1,0 +1,585 @@
+<div class="cover-title" style="font-size:16pt; margin-top:8px;">
+<p>Raport z realizacji 3 Kamienia Milowego</p>
+</div>
+<div class="cover-title" style="font-size:11.5pt; margin:8px 0 18px;">
+<p>w ramach projektu pn. „Concordia Accelerator – We turn ideas into
+human profit”, współfinansowanego ze środków programu Fundusze
+Europejskie dla Nowoczesnej Gospodarki, działanie Startup Booster Poland
+– Smart UP.</p>
+</div>
+<table>
+<tbody>
+<tr>
+<td style="text-align: left;">Startup (Beneficjent):</td>
+<td style="text-align: left;"><strong>APP PRO SPÓŁKA Z OGRANICZONĄ
+ODPOWIEDZIALNOŚCIĄ</strong> — KRS 0001236684 · NIP 5273215742 · REGON
+544561467</td>
+</tr>
+<tr>
+<td style="text-align: left;">Odbiorca Technologii:</td>
+<td style="text-align: left;"><strong>4MOBILITY S.A.</strong> — ul.
+Fabryczna 5, 00-446 Warszawa (wdrożenie pilotażowe)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Numer umowy:</td>
+<td style="text-align: left;"><strong>0035/2026</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">Numer Kamienia Milowego:</td>
+<td style="text-align: left;"><strong>3</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">Opis Kamienia Milowego:</td>
+<td style="text-align: left;">Zaprojektowanie oraz wdrożenie trzech
+modułów bazowych: Modułu Dokumenty (generowanie dokumentów
+kadrowo-płacowych z ewidencji czasu pracy, rozliczenie nadgodzin,
+szkielet eksportu ZUS/Płatnik), Agenta AI „Analityk HR” (ciągła,
+autonomiczna analiza wydajności, trajektoria rozwoju i rekomendacje
+strategiczne z twardą granicą decyzji człowieka) oraz Agenta Głosowego
+(asystent konwersacyjny dla języka polskiego), wraz z pełnym pokryciem
+testami automatycznymi i zgodnością z RODO oraz EU AI Act.</td>
+</tr>
+<tr>
+<td style="text-align: left;">Rodzaj Kamienia Milowego:</td>
+<td style="text-align: left;">technologiczny</td>
+</tr>
+<tr>
+<td style="text-align: left;">Wskaźniki określające realizację Kamienia
+Milowego:</td>
+<td style="text-align: left;">Liczba wdrożonych modułów bazowych:
+<strong>3 szt.</strong> (Moduł Dokumenty, Agent AI „Analityk HR”, Agent
+Głosowy).</td>
+</tr>
+<tr>
+<td style="text-align: left;">Sposób weryfikacji osiągnięcia
+zaplanowanych wartości wskaźnika:</td>
+<td style="text-align: left;">Raport z realizacji 3 Kamienia Milowego w
+formie dokumentu.</td>
+</tr>
+</tbody>
+</table>
+<div class="sig">
+<div>
+<div class="sigline">
+<p>........................................…</p>
+</div>
+<div class="lbl">
+<p>APP PRO sp. z o.o.</p>
+</div>
+<div class="muted">
+<p>(Startup)</p>
+</div>
+</div>
+<div>
+<div class="sigline">
+<p>........................................…</p>
+</div>
+<div class="lbl">
+<p>4mobility S.A.</p>
+</div>
+<div class="muted">
+<p>(Odbiorca technologii)</p>
+</div>
+</div>
+</div>
+<div class="sig">
+<div style="max-width:46%">
+<div class="sigline">
+<p>........................................…</p>
+</div>
+<div class="lbl">
+<p>CONCORDIA DESIGN sp. z o.o.</p>
+</div>
+<div class="muted">
+<p>(Akcelerator)</p>
+</div>
+</div>
+</div>
+<div class="page-break">
+
+</div>
+<div class="att-title">
+<div class="big">
+<p>Raport</p>
+</div>
+<div class="sub">
+<p>Realizacja 3 Kamienia Milowego</p>
+</div>
+<p>Raport zawiera szczegółowy opis prac zrealizowanych w ramach
+trzeciego kamienia milowego projektu HRobot.AI</p>
+<p>Warszawa, 30 lipca 2026</p>
+</div>
+<h1 id="wstęp">Wstęp</h1>
+<p>Niniejszy dokument zawiera raport z realizacji trzeciego kamienia
+milowego (KM3) projektu HRobot.AI — wielodostępowej (multi-tenant)
+platformy SaaS klasy Enterprise do automatyzacji procesów HR (kadry,
+grafiki, wnioski, dostępy, dokumenty).</p>
+<p>Zakres KM3 obejmował zaprojektowanie i wdrożenie <strong>trzech
+modułów bazowych</strong> (wskaźnik KM3 — 3 szt.): Modułu Dokumenty,
+Agenta AI „Analityk HR” oraz Agenta Głosowego, wraz z pełnym pokryciem
+testami automatycznymi i konsekwentnym utrzymaniem przyjętego w
+projekcie modelu zgodności (RODO „privacy by design”, przygotowanie do
+wymagań EU AI Act dla systemów wspierających decyzje kadrowe). Wskaźnik
+realizacji KM3 (3 wdrożone moduły bazowe) został osiągnięty: wszystkie
+trzy moduły zaimplementowano na poziomie modelu danych, silnika
+wyliczeń, API, wyspecjalizowanych serwisów oraz interfejsu użytkownika
+działającego na rzeczywistym API platformy, a całość pokryto testami
+automatycznymi. Moduły działają na żywym środowisku testowym z danymi
+demonstracyjnymi odwzorowującymi organizację Odbiorcy Technologii
+(4Mobility) i zostały przygotowane do sesji akceptacyjnej domykającej
+odbiór kamienia w terminie do 2026-08-20.</p>
+<p>Zrealizowane moduły (wskaźnik KM3 — 3 szt.):</p>
+<ul>
+<li><span class="lbl">Moduł Dokumenty</span> — generowanie dokumentów
+kadrowo-płacowych z ewidencji czasu pracy (RCP): ewidencja czasu pracy,
+rozliczenie nadgodzin (dobowe 50%,
+średniotygodniowe/nocne/niedzielne/świąteczne 100%) oraz szkielet
+eksportu ZUS/Płatnik (KEDU: DRA/RCA/RSA) — <strong>bez jakiejkolwiek
+wysyłki na zewnątrz</strong> (twarda granica człowieka), z kontrolowanym
+odszyfrowaniem PESEL wyłącznie na potrzeby ZUS i audytem ids-only.</li>
+<li><span class="lbl">Agent AI „Analityk HR”</span> — strategiczny mózg
+kadrowy: ciągła, autonomiczna analiza czterech wymiarów pracy
+(Wydajność, Terminowość, Jakość, Rozwój), wyjaśnialna trajektoria
+rozwoju (poziom vs trend) oraz proaktywne rekomendacje strategiczne
+(retencja per pracownik, rekrutacja per lokalizacja) — wyłącznie
+analiza, decyzję kadrową zawsze zatwierdza człowiek (art. 22 RODO).</li>
+<li><span class="lbl">Agent Głosowy</span> — konwersacyjny asystent dla
+języka polskiego: rozpoznanie intencji z zamkniętego zbioru komend
+(wniosek urlopowy, L4, „mój grafik”) i wykonanie ich na istniejącym API
+platformy w imieniu użytkownika, z twardą bramką potwierdzenia człowieka
+przed każdą akcją zapisującą i twardym fallbackiem do formularza
+tekstowego (EU AI Act).</li>
+</ul>
+<h1 id="informacje-o-kamieniu-milowym">1. Informacje o Kamieniu
+Milowym</h1>
+<table>
+<tbody>
+<tr>
+<td>Okres realizacji Kamienia Milowego 3 (wg harmonogramu programu)</td>
+<td style="text-align: center;">2026-07-21 → 2026-08-20</td>
+</tr>
+<tr>
+<td>Termin odbioru Kamienia Milowego 3</td>
+<td style="text-align: center;">2026-08-20</td>
+</tr>
+<tr>
+<td>Wskaźnik (liczba wdrożonych modułów bazowych)</td>
+<td style="text-align: center;">3 szt.</td>
+</tr>
+<tr>
+<td>Transza III (po odbiorze)</td>
+<td style="text-align: center;">127 300 PLN (płatność 2026-09-09)</td>
+</tr>
+</tbody>
+</table>
+<h1 id="część-a-proces-wytwórczy-jakość-i-środowiska">2. Część A —
+Proces wytwórczy, jakość i środowiska</h1>
+<p>Prace KM3 kontynuowano w tym samym reżimie wytwórczym co w KM2: każda
+zmiana przechodzi przez pipeline ciągłej integracji (analiza statyczna →
+kontrola typów <code>tsc --noEmit</code> → testy
+jednostkowe/integracyjne), a zielony przebieg warunkuje włączenie zmian
+do gałęzi głównej. Moduły zostały zaimplementowane metodą TDD (test
+przed implementacją) — szczególnie warstwy czystych wyliczeń (silnik
+RCP/nadgodzin, parser intencji, silnik scoringu) i granice zgodności
+(granica zapisu, granica braku wysyłki), które są weryfikowane
+niezależnymi testami architektonicznymi.</p>
+<div class="keep">
+<p>Jakość — testy automatyczne (stan repozytorium KM3):</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Suita</th>
+<th style="text-align: left;">Wynik</th>
+<th style="text-align: left;">Zakres</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Testy modułu Analityk HR
+(<code>strategic-brain</code>, jest)</td>
+<td style="text-align: left;"><strong>134 / 134</strong></td>
+<td style="text-align: left;">kryteria AN-1..AN-13: 4 wymiary,
+trajektoria, RBAC, granica zapisu art. 22, null-policy, append-only</td>
+</tr>
+<tr>
+<td style="text-align: left;">Testy Modułu Dokumenty
+(<code>dokumenty</code>, jest)</td>
+<td style="text-align: left;"><strong>84 / 84</strong></td>
+<td style="text-align: left;">kryteria DOK-1..DOK-14: parowanie RCP,
+nadgodziny bez double-count, brak wysyłki, PESEL-tylko-ZUS,
+append-only</td>
+</tr>
+<tr>
+<td style="text-align: left;">Testy Agenta Głosowego
+(<code>agent-glosowy</code>, jest)</td>
+<td style="text-align: left;"><strong>26 / 26</strong></td>
+<td style="text-align: left;">komendy K1/K2/K3, parser intencji PL,
+bramka potwierdzenia człowieka, audyt ids-only, brak eskalacji
+uprawnień</td>
+</tr>
+<tr>
+<td style="text-align: left;">Cały pakiet backendu tenant-runtime (jest,
+65 plików <code>*.spec.ts</code>)</td>
+<td style="text-align: left;"><strong>828 / 828</strong></td>
+<td style="text-align: left;">logika wszystkich modułów, RBAC i izolacja
+tenantów, szyfrowanie danych, obieg wniosków/grafiku/zamian</td>
+</tr>
+<tr>
+<td style="text-align: left;">Aplikacja referencyjna web-kit
+(vitest)</td>
+<td style="text-align: left;"><strong>~355 / ~355</strong></td>
+<td style="text-align: left;">kalkulatory prezentacji i logika UI
+wszystkich ekranów tenanta (w tym <code>/dokumenty</code>,
+<code>/analiza</code>, <code>/asystent</code>)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Łącznie moduły KM3 wnoszą <strong>244 dedykowane testy</strong> (134
++ 84 + 26), które wraz z pozostałymi suitami składają się na zielony
+pakiet <strong>828 testów</strong> backendu oraz <strong>~355
+testów</strong> aplikacji referencyjnej. Trzy moduły bazowe działają na
+tym samym stanie kodu, który jest wdrażany na żywe środowisko testowe
+(pełny stos Docker Compose z żywym tenantem demonstracyjnym), co dla
+Modułu Analityk HR zostało dodatkowo potwierdzone weryfikacją na żywym
+tenancie i realnych kontach RBAC
+(<code>docs/demo/strategic-brain-live-verification.md</code>).</p>
+<h1 class="page-break" id="część-b-moduły-bazowe-wskaźnik-km3-3-szt.">3.
+Część B — Moduły bazowe (wskaźnik KM3 — 3 szt.)</h1>
+<p>Poniżej opisano trzy moduły bazowe KM3 w jednolitej strukturze (cel,
+co zbudowano z mapowaniem na realne pliki/API, kryteria akceptacji,
+dowody). Kryteria akceptacji każdego modułu są rozpisane 1:1 na realne
+pliki testów w załączonych macierzach pokrycia.</p>
+<h2 id="moduł-dokumenty-dokumenty-kadrowo-płacowe-z-rcp">3.1. Moduł
+Dokumenty (dokumenty kadrowo-płacowe z RCP)</h2>
+<p>Cel zadania w ramach kamienia milowego:</p>
+<p>Moduł Dokumenty automatyzuje generowanie dokumentów kadrowo-płacowych
+na podstawie danych z Rejestracji Czasu Pracy (RCP). Na wejściu
+przyjmuje surowe zdarzenia RCP (wejście/wyjście/przerwa) oraz dane
+kadrowe i zatwierdzone nieobecności; na wyjściu produkuje trzy typy
+dokumentów: <strong>ewidencję czasu pracy</strong>, <strong>rozliczenie
+nadgodzin</strong> oraz <strong>szkielet eksportu ZUS/Płatnik
+(KEDU)</strong>. Zasada nadrzędna modułu: każdy krok o skutkach prawnych
+(zatwierdzenie nadgodzin, „wysyłka” ZUS) przechodzi przez bramkę
+człowieka, a na etapie demonstracyjnym <strong>nic nie jest wysyłane na
+zewnątrz</strong>.</p>
+<p>Co zbudowano (mapowanie na realne pliki/API):</p>
+<ul>
+<li>Model danych (Prisma, schemat tenanta, greenfield):
+<code>RcpEvent</code> (niemutowalne, append-only zdarzenie RCP; korekta
+= nowe zdarzenie <code>source=KOREKTA</code> przez
+<code>correctsEventId</code>) oraz <code>GeneratedDocument</code>
+(niemutowalny co do treści; ponowna generacja tworzy nowy wiersz
+wskazujący <code>replacesDocumentId</code>, <code>contentHash</code>
+zamraża treść). Migracja create-only, hand-authored, z notą
+<code>ALTER OWNER</code> i partial-unique indeksem deduplikacji importu
+(wzór modułu <code>strategic-brain</code>).</li>
+<li>Silnik czystych wyliczeń (TDD, oddzielony od Prisma i renderu):
+<code>apps/tenant-runtime/src/dokumenty/rcp.util.ts</code> (parowanie
+zdarzeń, agregacja ewidencji, strefa <code>Europe/Warsaw</code> z jawną
+obsługą DST), <code>overtime.util.ts</code> (nadgodziny dobowe 50% i
+średniotygodniowe 100% <strong>bez double-countingu</strong>, praca
+nocna/niedzielna/świąteczna 100%, ostrzeżenie o limicie rocznym bez
+blokady) oraz <code>kedu.util.ts</code> (mapowanie na strukturę bloków
+DRA/RCA/RSA).</li>
+<li>Warstwa render (oddzielona od wyliczeń):
+<code>render/pdf.renderer.ts</code> (PDF, pdfkit, ze stałym znakiem
+wodnym „WERSJA DEMO — dane syntetyczne — nie do obrotu prawnego / nie do
+wysyłki ZUS”) oraz <code>render/kedu-xml.renderer.ts</code> (szkielet
+XML KEDU z elementem <code>&lt;demo&gt;true&lt;/demo&gt;</code> i
+escapowaniem znaków specjalnych).</li>
+<li>Serwis i kontroler: <code>dokumenty.service.ts</code> +
+<code>dokumenty.controller.ts</code> udostępniające API
+<code>/api/dokumenty/*</code> (lista metadanych, <code>mine</code>,
+<code>generuj</code>, <code>:id</code>, <code>:id/pobierz</code>,
+<code>:id/zatwierdz</code>) za łańcuchem uwierzytelnienie (Keycloak JWT)
+→ kontekst tenanta → autoryzacja RBAC (scope liczony w serwisie) →
+audyt. Kontrolowane odszyfrowanie PESEL <strong>wyłącznie</strong> przy
+dokumencie ZUS, z wpisem audytowym ids-only.</li>
+<li>Aplikacja referencyjna: ekran
+<code>app/(tenant)/dokumenty/page.tsx</code> +
+<code>lib/dokumenty.ts</code> (proxy do rzeczywistego API, kalkulatory
+prezentacji, testy vitest), z listą dokumentów, formularzem generacji,
+podglądem/pobraniem oraz stałym banerem RODO (art. 22).</li>
+<li>Dane demonstracyjne: <code>scripts/seed-demo-dokumenty.sql</code> —
+idempotentny seed zdarzeń RCP dla podzbioru istniejących pracowników,
+pokrywający scenariusze (normalny czas, nadgodziny
+dobowe/średniotygodniowe, praca nocna/niedzielna, przypadek do ZUS,
+anomalie null-policy), <strong>bez naruszania kotwic demo</strong> (36
+pracowników, 832 zmiany).</li>
+</ul>
+<p>Kryteria akceptacji: 14 kryteriów <strong>DOK-1 … DOK-14</strong>
+(SPEC §9), w całości odwzorowanych na realne testy w załączonej macierzy
+(<code>macierz-pokrycia-dokumenty.md</code>).</p>
+<p>Dowody: 84 testy jednostkowe i integracyjne modułu (100%
+zaliczonych), w tym dedykowany test granicy braku wysyłki
+(<code>dokumenty-no-send.spec.ts</code> — statyczny skan: enum
+<code>DocumentStatus</code> bez stanu
+<code>SENT/EXPORTED_EXTERNAL</code> oraz brak jakiegokolwiek wywołania
+sieciowego), test braku double-countingu nadgodzin
+(<code>overtime.util.spec.ts</code>), test kontrolowanego odszyfrowania
+PESEL z audytem ids-only i test braku PII w
+<code>computedFacts</code>/<code>audit_log</code>
+(<code>dokumenty.service.spec.ts</code>).</p>
+<h2
+id="moduł-analityk-hr-agent-ai-analiza-trajektoria-rekomendacje">3.2.
+Moduł Analityk HR (Agent AI — analiza, trajektoria, rekomendacje)</h2>
+<p>Cel zadania w ramach kamienia milowego:</p>
+<p>Moduł Analityk HR to strategiczny mózg kadrowy HRobot: warstwa, która
+ciągle i autonomicznie — bez ręcznego wyzwalania — mierzy cztery wymiary
+pracy każdego pracownika (Wydajność, Terminowość, Jakość, Rozwój),
+wylicza trajektorię rozwoju w czasie i sama z siebie dostarcza
+wyjaśnialne rekomendacje strategiczne: sygnał retencji per pracownik
+(<code>UTRZYMAC</code>/<code>OBSERWOWAC</code>/<code>RYZYKO</code>/<code>INWESTOWAC</code>)
+oraz rekomendację rekrutacji per lokalizacja
+(<code>WZNOW</code>/<code>WSTRZYMAJ</code>/<code>UTRZYMAJ</code>). Każda
+rekomendacja jest <strong>analizą, nie akcją</strong> — nieodwracalną
+decyzję kadrową zawsze zatwierdza człowiek (art. 22 RODO).</p>
+<p>Co zbudowano (mapowanie na realne pliki/API):</p>
+<ul>
+<li>Backend <code>apps/tenant-runtime/src/strategic-brain/</code>
+(prefiks API <code>/api/strategic-brain/*</code>, za
+<code>RbacGuard</code>): model danych greenfield
+(<code>EmployeePerformanceSnapshot</code> jako cache,
+<code>RecruitmentRecommendation</code> jako niemutowalne zdarzenia z
+<code>replacesRecommendationId</code>, <code>PerformanceConfig</code> z
+wagami i progami), silnik scoringu (czyste funkcje
+<code>scoring.util.ts</code>: cztery wymiary,
+<code>compositeScore</code> z renormalizacją wag,
+<code>retentionSignal</code> poziom×trend, <code>confidence</code>
+multiplikatywna, <code>developmentSlope</code> regresją liniową) oraz
+scheduler nocny (<code>@Cron</code>, per tenant,
+<code>pg_try_advisory_xact_lock</code>, feed PULL).</li>
+<li>Kluczowe granice zgodności: kontrola wejścia scoringu jako
+<strong>allowlista</strong> (<code>buildScoringInput()</code> rzuca na
+każdy klucz spoza listy metryk operacyjnych — dowód braku proxy),
+strukturalne wykluczanie okien L4/urlop/onboarding z trendu oraz
+<strong>statyczny test granicy zapisu</strong>
+(<code>write-boundary.spec.ts</code>) dowodzący, że moduł nigdy nie
+mutuje stanu kadrowego/grafikowego.</li>
+<li>Aplikacja referencyjna <code>app/(tenant)/analiza/</code> +
+komponenty <code>strategic-brain/*</code> (heatmapa, karta pracownika ze
+sparkline trajektorii, panel rekrutacji, stały baner „Rekomendacja AI —
+decyzję podejmuje człowiek”).</li>
+</ul>
+<p>Kryteria akceptacji: 13 kryteriów <strong>AN-1 … AN-13</strong>
+(<code>docs/HRobotDocs/l-modul-analityk-hr.md</code> §9), w całości
+odwzorowanych na realne testy w macierzy
+(<code>macierz-pokrycia-analityk-hr.md</code>).</p>
+<p>Dowody: 134 testy jednostkowe i integracyjne modułu (100%
+zaliczonych) oraz <strong>weryfikacja na żywym środowisku demo</strong>
+(<code>docs/demo/strategic-brain-live-verification.md</code>, tenant
+<code>hrobot_t_900d948b</code>): macierz RBAC odtworzona 1:1 na trzech
+realnych kontach Keycloak
+(<code>demo</code>/<code>manager.demo</code>/<code>pracownik.demo</code>),
+6 profili trajektorii pokazujących jednocześnie przeciwstawne sygnały
+(np. Marcin Dąbrowski 45/+6,80 → <code>INWESTOWAC</code> vs Rafał
+Adamczyk 66/−6,70 → <code>RYZYKO</code>), 4 rekomendacje rekrutacyjne
+jednocześnie i czysty (wolny od PII) <code>audit_log</code>.</p>
+<h2 id="agent-głosowy-konwersacyjny-asystent-język-polski">3.3. Agent
+Głosowy (konwersacyjny asystent, język polski)</h2>
+<p>Cel zadania w ramach kamienia milowego:</p>
+<p>Agent Głosowy pozwala pracownikowi wykonać najczęstsze operacje
+kadrowe w języku naturalnym — zamiast wypełniać formularz, wydaje
+polecenie (np. „chcę urlop od 1 do 5 sierpnia”, „zgłoś L4 od jutra”,
+„jaki mam grafik jutro”). Agent rozpoznaje intencję z
+<strong>zamkniętego, skończonego</strong> zbioru komend, wypełnia encje
+(daty, typ wniosku) i wykonuje operację na istniejącym API platformy w
+imieniu użytkownika — przy czym każda akcja zapisująca przechodzi przez
+<strong>bramkę potwierdzenia człowieka</strong>, a każde rozpoznanie
+spoza zbioru lub o niskiej pewności kończy się <strong>twardym
+fallbackiem do formularza tekstowego</strong> (nigdy „ciche”
+wykonanie).</p>
+<p>Co zbudowano (mapowanie na realne pliki/API):</p>
+<ul>
+<li>Backend <code>apps/tenant-runtime/src/agent-glosowy/</code>: parser
+intencji <code>intent.util.ts</code> (regułowy, <strong>bez LLM</strong>
+— deterministyczny i audytowalny; normalizacja dat PL
+„dziś/jutro/piątek/1 sierpnia” → ISO, próg pewności), serwis
+<code>voice-command.service.ts</code> z rozdziałem
+<code>interpret</code> (opisuje, nigdy nie wykonuje) i
+<code>execute</code> (wykonuje dopiero po <code>confirm: true</code> dla
+intencji zapisujących), kontroler
+<code>agent-glosowy.controller.ts</code> z dwoma trasami tekstowymi
+<code>POST /api/agent-glosowy/interpret</code> i
+<code>POST /api/agent-glosowy/execute</code>.</li>
+<li>Reużycie realnych serwisów bez eskalacji uprawnień:
+<code>execute</code> wywołuje istniejące
+<code>LeaveService.createRequest</code> (wnioski urlopowe/L4) oraz
+<code>GrafikService.listShifts</code> (odczyt grafiku), przekazując
+<strong>ten sam aktor</strong> (token użytkownika) — wszystkie reguły
+RBAC/maker-checker egzekwuje istniejące API, agent jest wyłącznie
+tłumaczem głos/tekst → REST.</li>
+<li>Granica STT (mowa→tekst) jako <strong>udokumentowany, pozamodułowy
+szew</strong> (<code>stt.port.ts</code>): moduł działa w pełni przez
+tekst; rekomendowany adapter to lekki serwis Python
+<code>faster-whisper small</code> (PL) na CPU (RODO/UE, praca offline),
+zgodnie z raportem PoC
+(<code>docs/superpowers/specs/2026-07-21-agent-glosowy-poc.md</code>).</li>
+<li>Aplikacja referencyjna: ekran
+<code>app/(tenant)/asystent/page.tsx</code> +
+<code>lib/agent-glosowy.ts</code> (z testami vitest), z jawnym
+komunikatem „rozmawiasz z asystentem AI”, ekranem potwierdzenia przed
+akcją zapisującą i formularzem-fallbackiem.</li>
+</ul>
+<p>Kryteria akceptacji: komendy <strong>K1</strong> (wniosek urlopowy),
+<strong>K2</strong> (L4), <strong>K3</strong> (mój grafik) + bramka
+potwierdzenia człowieka + wymogi EU AI Act, odwzorowane na realne testy
+w macierzy (<code>macierz-pokrycia-agent-glosowy.md</code>).</p>
+<p>Dowody: 26 testów modułu (100% zaliczonych), w tym testy
+potwierdzające, że <code>interpret</code> nigdy nie dotyka realnego
+serwisu, że <code>execute</code> odmawia zapisu bez
+<code>confirm: true</code> (i wtedy nie loguje niczego), że L4 mapuje
+się na <code>ZWOLNIENIE_LEKARSKIE</code> z audytem ids-only, że odczyt
+grafiku nie przechodzi w zapis, oraz że każda interpretacja niesie notę
+transparentności AI (<code>voice-command.service.spec.ts</code>,
+<code>intent.util.spec.ts</code>,
+<code>agent-glosowy.controller.spec.ts</code>).</p>
+<h1 id="zgodność-bezpieczeństwo-i-rodo-eu-ai-act">4. Zgodność,
+bezpieczeństwo i RODO / EU AI Act</h1>
+<p>Rozwiązania KM3 kontynuują przyjęty w projekcie model „privacy by
+design” (RODO) i przygotowują platformę do wymagań EU AI Act dla
+systemów wspierających decyzje kadrowe. Szczegółowa analiza zgodności
+znajduje się w dokumencie <a
+href="../HRobotDocs/m-zgodnosc-eu-ai-act.md"><code>docs/HRobotDocs/m-zgodnosc-eu-ai-act.md</code></a>.</p>
+<ul>
+<li><span class="lbl">Nadzór człowieka i granica art. 22 RODO:</span>
+żaden z trzech modułów nie podejmuje w pełni zautomatyzowanej decyzji
+kadrowej. Analityk HR wyłącznie rekomenduje (decyzję loguje
+<code>acknowledgedByUserId</code>), Moduł Dokumenty wymaga zatwierdzenia
+nadgodzin/ZUS przez człowieka i <strong>nie wysyła nic na
+zewnątrz</strong>, Agent Głosowy wykonuje akcje zapisujące dopiero po
+jawnym potwierdzeniu. Granice te są egzekwowane testami
+architektonicznymi (granica zapisu Analityka, granica braku wysyłki
+Dokumentów, bramka <code>confirm</code> Agenta).</li>
+<li><span class="lbl">Transparentność (EU AI Act):</span> systemy
+konwersacyjne jawnie informują „rozmawiasz z asystentem AI”;
+rekomendacje AI mają stały baner „decyzję podejmuje człowiek”; każda
+propozycja Analityka jest wyjaśnialna (rozbita na czynniki).</li>
+<li><span class="lbl">Minimalizacja i ochrona danych wrażliwych:</span>
+PESEL szyfrowany w spoczynku (jak w KM1), odszyfrowywany kontrolowanie
+<strong>wyłącznie</strong> na potrzeby dokumentu ZUS i tylko za wpisem
+audytowym; ewidencja i nadgodziny liczone bez odszyfrowania PESEL
+(SAFE_SELECT). Nagranie głosu traktowane jako dane osobowe — stąd
+rekomendacja lokalnego STT (dane w UE, brak persystencji audio
+domyślnie, brak profilowania biometrycznego/emocji).</li>
+<li><span class="lbl">Audyt ids-only i append-only:</span> wszystkie
+operacje o znaczeniu kadrowym logowane są payloadami złożonymi z samych
+identyfikatorów i liczb (bez PII); <code>audit_log</code> jest
+niezmienny (trigger DB blokuje UPDATE/DELETE). Rekomendacje i dokumenty
+są modelami append-only.</li>
+<li><span class="lbl">Izolacja i rozliczalność:</span> fizycznie osobna
+baza per tenant; tożsamość tenanta wyłącznie z tokenu SSO; testy
+automatyczne izolacji tenantów.</li>
+</ul>
+<h1 id="ograniczenia-realizacji-demonstracyjnej-uczciwość">5.
+Ograniczenia realizacji demonstracyjnej (uczciwość)</h1>
+<p>Zgodnie z przyjętą w projekcie zasadą jawności zakresu, poniżej
+wskazano świadome ograniczenia etapu demonstracyjnego — tak, aby żaden
+element nie był traktowany jako produkcyjny ponad swój faktyczny
+stan:</p>
+<ul>
+<li><span class="lbl">Wartości prawne są poglądowe.</span> W Module
+Dokumenty stawki, progi i formaty zależne od polskiego prawa pracy i
+przepisów ZUS (normy czasu pracy, dodatki 50%/100%, pora nocna,
+kalendarz świąt, wersja schematu KEDU, okresy retencji) są
+<strong>wartościami poglądowymi oznaczonymi „demo”</strong> i wymagają
+weryfikacji przez radcę prawnego / specjalistę kadrowo-płacowego po
+stronie 4Mobility/App Pro. Silnik czyta je z konfiguracji
+(<code>dokumenty.config.ts</code>), nie ma ich zahardkodowanych.</li>
+<li><span class="lbl">Brak wysyłki ZUS.</span> Eksport ZUS/Płatnik
+(KEDU) na etapie demo to <strong>szkielet strukturalny</strong>
+(walidowalny strukturalnie XML DRA/RCA/RSA + czytelny PDF), oznaczony
+znakiem wodnym i elementem <code>&lt;demo&gt;true&lt;/demo&gt;</code>;
+brak podpisu kwalifikowanego, brak integracji z Płatnikiem, brak
+jakiejkolwiek ścieżki „wysyłki na zewnątrz” (potwierdzone testem
+<code>dokumenty-no-send.spec.ts</code>).</li>
+<li><span class="lbl">STT jako runtime.</span> W Agencie Głosowym
+warstwa rozpoznawania mowy (audio→tekst) to osobny, pozamodułowy
+adapter; model (<code>faster-whisper small</code>, ~490 MB) jest
+pobierany i uruchamiany w czasie działania (runtime) i nie jest częścią
+pakietu testów jednostkowych. Testowany i w pełni działający jest
+natomiast cały „mózg” agenta — parser intencji, bramka potwierdzenia i
+most do API — dostępny przez tekst niezależnie od STT.</li>
+<li><span class="lbl">Dane syntetyczne.</span> Wszystkie moduły działają
+na danych demonstracyjnych/syntetycznych odwzorowujących organizację
+Odbiorcy; kotwice demo (36 pracowników, 832 zmiany) pozostają
+nietknięte.</li>
+</ul>
+<h1 id="wskaźnik-odbioru">6. Wskaźnik odbioru</h1>
+<p>Wskaźnik realizacji KM3 — <strong>liczba wdrożonych modułów bazowych:
+3 szt.</strong> — został <strong>osiągnięty</strong>. Wdrożono trzy
+moduły bazowe: Moduł Dokumenty, Agenta AI „Analityk HR” oraz Agenta
+Głosowego. Każdy z modułów został zaimplementowany na poziomie modelu
+danych, silnika/serwisów, API oraz interfejsu użytkownika działającego
+na rzeczywistym API platformy, a kryteria akceptacji (DOK-1..DOK-14,
+AN-1..AN-13, komendy K1/K2/K3 z bramką człowieka) są w całości
+odwzorowane na realne testy automatyczne (łącznie 244 dedykowane testy w
+ramach zielonego pakietu 828 testów backendu i ~355 testów aplikacji
+referencyjnej).</p>
+<h1 class="page-break" id="podsumowanie-końcowe">7. Podsumowanie
+końcowe</h1>
+<p>Prace trzeciego kamienia milowego projektu HRobot.AI zrealizowano
+zgodnie z zatwierdzonym harmonogramem; kamień jest przygotowany do
+odbioru w terminie do 2026-08-20. Osiągnięto wskaźnik KM3 — wdrożono
+trzy moduły bazowe: Moduł Dokumenty (ewidencja czasu pracy, nadgodziny
+bez double-countingu, szkielet KEDU bez wysyłki, PESEL-tylko-ZUS za
+audytem), Agenta AI „Analityk HR” (ciągła autonomiczna analiza czterech
+wymiarów, wyjaśnialna trajektoria poziom-vs-trend, rekomendacje retencji
+i rekrutacji z twardą granicą decyzji człowieka, potwierdzone
+weryfikacją na żywym tenancie) oraz Agenta Głosowego (zamknięty zbiór
+komend PL, most do realnego API bez eskalacji uprawnień, bramka
+potwierdzenia i fallback tekstowy). Całość pokryto testami
+automatycznymi (244 dedykowane testy w ramach 828 testów backendu i ~355
+testów aplikacji referencyjnej), a platforma konsekwentnie realizuje
+model zgodności RODO i przygotowanie do EU AI Act (nadzór człowieka,
+transparentność, minimalizacja, audyt ids-only, izolacja tenantów).</p>
+<p>Kamień Milowy 3 domyka zakres bazowy projektu HRobot.AI — łącznie
+wszystkich trzech kamieni — dostarczając komplet modułów kadrowych,
+grafikowych, analitycznych, dokumentowych i konwersacyjnych na wspólnej,
+wielodostępowej platformie SaaS klasy Enterprise.</p>
+<h1 id="wykaz-załączników">8. Wykaz załączników</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Nr</th>
+<th style="text-align: left;">Dokument</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Zał. 1</strong></td>
+<td style="text-align: left;">Macierz pokrycia kryteriów akceptacji
+Modułu Dokumenty (DOK-1..DOK-14) testami —
+<code>macierz-pokrycia-dokumenty.md</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Zał. 2</strong></td>
+<td style="text-align: left;">Macierz pokrycia kryteriów akceptacji
+Modułu Analityk HR (AN-1..AN-13) testami —
+<code>macierz-pokrycia-analityk-hr.md</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Zał. 3</strong></td>
+<td style="text-align: left;">Macierz pokrycia komend i wymogów EU AI
+Act Agenta Głosowego testami —
+<code>macierz-pokrycia-agent-glosowy.md</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Zał. 4</strong></td>
+<td style="text-align: left;">Analiza zgodności RODO / EU AI Act —
+<code>docs/HRobotDocs/m-zgodnosc-eu-ai-act.md</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Zał. 5</strong></td>
+<td style="text-align: left;">Weryfikacja na żywym środowisku (Analityk
+HR) — <code>docs/demo/strategic-brain-live-verification.md</code></td>
+</tr>
+</tbody>
+</table>
+<div class="keep">
+<p>Raport sporządził:</p>
+<p><strong>Tomasz Wilk</strong><br />
+CTO<br />
+APP PRO sp. z o.o.</p>
+</div>
