@@ -160,3 +160,9 @@ export const IconSparkles = (p: IconProps) => (
     <path d="M18.5 15.5l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7.7-1.9Z" />
   </Icon>
 )
+export const IconMessageCircle = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3.5 12a8.5 8.5 0 1 1 3.6 6.9L3.5 20l1.1-3.6A8.4 8.4 0 0 1 3.5 12Z" />
+    <path d="M8 11h8M8 14.5h5" />
+  </Icon>
+)

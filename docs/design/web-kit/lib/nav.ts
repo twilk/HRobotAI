@@ -9,6 +9,7 @@ import {
   IconUser,
   IconSparkles,
   IconFileText,
+  IconMessageCircle,
 } from '@/components/icons'
 
 export type Role = 'PRACOWNIK' | 'MANAGER' | 'HR' | 'ADMIN_KLIENTA'
@@ -55,6 +56,10 @@ export const NAV: NavGroup[] = [
       // app/(tenant)/dokumenty/page.tsx) — this gate only hides the SIDEBAR entry, mirroring how
       // /dostepy is gated here.
       { label: 'Dokumenty', href: '/dokumenty', icon: IconFileText, roles: ['MANAGER', 'HR', 'ADMIN_KLIENTA'] },
+      // Agent Głosowy (M3 module 3) — a text/voice command assistant that always acts AS the caller
+      // (self, no escalation; ANY_ROLE gate on AgentGlosowyController). No `roles` restriction — every
+      // authenticated role sees this entry, unlike Dostępy/Dokumenty above which hide from PRACOWNIK.
+      { label: 'Asystent', href: '/asystent', icon: IconMessageCircle, tag: 'AI' },
     ],
   },
   {
