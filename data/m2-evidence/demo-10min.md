@@ -57,7 +57,10 @@ Potem **„Poprzedni tydzień"** → wróć na 13–19.
 z każdej korekty menedżera." Klik **„Reset & replay"** → pokaż **spadek liczby korekt** w rundach +
 `rationale` (dlaczego taki przydział) + auto-naprawę niewykonalnej propozycji.
 - **Uczciwie:** „Pilotowy inkrement, uczy się na danych syntetycznych; pełna autonomia produkcyjna —
-  kolejny etap." **NIE mów „RL/Stable-Baselines3".**
+  kolejny etap." **NIE mów „RL/Stable-Baselines3"** — mechanizm to affinity-learner + wsadowy re-fit.
+- **Uczciwie, o liczbie na ekranie (HON-2):** ten scenariusz zbiega szybko, bo wzorzec odniesienia
+  generuje ta sama funkcja, której używa agent. Jeśli ktoś drąży — pokaż scenariusz niezależny
+  (`evidence/ag2_independent_chart.svg`): **96 → 0 w 17 rundach**, niemonotonicznie, ablacja płaska.
 
 **8:00–9:15 · Dwustronność + RBAC + zamiana**
 - Wyloguj → zaloguj **`pracownik.demo`** (Anna Kowalska): **Grafik → „mój grafik" read-only** (badge

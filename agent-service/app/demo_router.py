@@ -8,10 +8,14 @@ optimizer the rest of ``/agent/*`` talks to. The scripted manager stays **server
 (not forked into the client), and everything here is on the fixed synthetic scenario (RODO-safe).
 
 Endpoints:
-  POST /agent/demo/corrections  { proposalId, budget?, tenantId? }
-      → { editDistance, normalizedEditDistance, acceptanceMetric, edits[], acceptedAssignments, managerPreference }
+  POST /agent/demo/corrections  { proposalId, budget?, tenantId?, manager? }
+      → { editDistance, normalizedEditDistance, acceptanceMetric, edits[], acceptedAssignments,
+          managerModel, managerPreference }
         The scripted manager's MOVE corrections toward its preferred schedule for a given proposal,
         plus the live edit-distance / acceptance of that proposal vs. the manager-accepted schedule.
+        ``manager`` selects the reference: ``constructed`` (default, unchanged J4 behaviour — but
+        built by the agent's own ``propose``, see HON-2) or ``independent`` (built without the
+        agent's policy; the honest number, and a much longer climb).
   GET  /agent/demo               → a self-served, same-origin HTML page that runs the same loop
         visually (optional stretch). It only calls the same-origin ``/agent/*`` endpoints, so no CORS.
 
@@ -27,7 +31,13 @@ from pydantic import BaseModel
 
 from . import agent_router
 from .contract import Assignment, ProblemInput
-from .demo_ag2 import _edits_toward, manager_accepted_schedule
+from .demo_ag2 import (
+    MANAGER_CONSTRUCTED,
+    MANAGER_DESCRIPTION,
+    MANAGER_INDEPENDENT,
+    _edits_toward,
+    manager_truth,
+)
 from .metrics import acceptance_metric, edit_distance, normalized_edit_distance
 from .service import DEFAULT_TENANT
 
@@ -43,6 +53,10 @@ class CorrectionsRequest(BaseModel):
     proposalId: str
     budget: int = 6
     tenantId: str = DEFAULT_TENANT
+    #: Which reference schedule to correct toward — ``constructed`` (the original scenario, built by
+    #: the agent's own ``propose``) or ``independent`` (HON-2: built without the agent's policy).
+    #: Defaults to ``constructed`` so the committed J4 script and page are unchanged.
+    manager: str = MANAGER_CONSTRUCTED
 
 
 @router.post("/corrections")
@@ -56,12 +70,14 @@ def corrections(req: CorrectionsRequest):
     """
     # Look the store up dynamically (not captured at import) so we always share the *current*
     # process-wide store — including after the test fixture reloads ``agent_router``.
+    if req.manager not in (MANAGER_CONSTRUCTED, MANAGER_INDEPENDENT):
+        raise HTTPException(status_code=422, detail=f"unknown manager model {req.manager!r}")
     proposal = agent_router._store.get_proposal(req.tenantId, req.proposalId)
     if proposal is None:
         raise HTTPException(status_code=404, detail="unknown proposalId for tenant")
     problem = ProblemInput.model_validate(proposal["problem"])
     proposed = [Assignment.model_validate(a) for a in proposal["assignments"]]
-    accepted = manager_accepted_schedule(problem)
+    accepted = manager_truth(problem, req.manager)
 
     dist = edit_distance(proposed, accepted)
     norm = round(normalized_edit_distance(proposed, accepted), 4)
@@ -72,7 +88,12 @@ def corrections(req: CorrectionsRequest):
         "acceptanceMetric": acceptance_metric(proposed, accepted),
         "edits": edits,
         "acceptedAssignments": len(accepted),
-        "managerPreference": MANAGER_PREFERENCE,
+        "managerModel": req.manager,
+        "managerPreference": (
+            MANAGER_PREFERENCE
+            if req.manager == MANAGER_CONSTRUCTED
+            else MANAGER_DESCRIPTION[MANAGER_INDEPENDENT]
+        ),
     }
 
 

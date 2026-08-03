@@ -9,7 +9,7 @@
 | `../acceptance-criteria-M2.md` | Kryteria odbioru + mapowanie a–f → dowód | 🟡 (sloty [4M]) |
 | `README.md` (ten) | Indeks + dashboard statusu + macierz a–f | 🟡 |
 | `uat-journeys.md` | 5 user-journey J1–J5 (pass/fail) + skrypt UAT + gdzie robić screeny | 🟡 [CAPTURE] |
-| `known-limitations.md` | Uczciwy zakres: H1–H4 twarde, AI=affinity-learner nie SB3/RL, statusy c/d/e (aktualizacja 14.07) | ✅ |
+| `known-limitations.md` | Uczciwy zakres: H1–H4 twarde, AI=affinity-learner nie SB3/RL, wada metodologiczna AG2 + wynik scenariusza niezależnego, statusy c/d/e (aktualizacja 03.08) | ✅ |
 | `rodo-security-checklist.md` | Checklista RODO/bezpieczeństwo stagingu | ✅ |
 | `protokol-odbioru-template.md` | Szablon protokołu do podpisu 4Mobility | 🟡 [4M] |
 
@@ -17,7 +17,7 @@
 | Moduł/punkt | Kod | Demo | Dowód uchwycony | Blokery |
 |---|:--:|:--:|:--:|---|
 | a Grafik | ✅ | ✅ (:5601, solve OPTIMAL) | 🟡 screeny do zrobienia | — |
-| b Agent AI | ✅ | ✅ (:8010 J4) | 🟡 wykres AG2 istnieje w repo | ujęcie „nie SB3/RL" |
+| b Agent AI | ✅ | ✅ (:8010 J4) | ✅ wykres AG2 + scenariusz niezależny (HON-2) w repo | ujęcie „nie SB3/RL" domknięte 03.08 |
 | c Zamiany | ✅ backend + UI na realnym API | ✅ 62/62 testów (14.07) | 🟡 | screeny J5 z sesji UAT |
 | d CI | ✅ na main (PR #9) + job pytest | ✅ zielone runy 29166512951 / 29166696122 | 🟡 | branch protection po merge linii demo |
 | e Staging | ✅ stoi | ✅ | 🟡 URL do wpisania | auto-deploy/runner |
@@ -26,7 +26,7 @@
 ## Jak uchwycić dowody (kapitan)
 1. Stack: `docker start hrobot-{postgres,redis,keycloak,rabbitmq,control-plane,optimizer,tenant-runtime}-1`; front: `cd HRobot-m2/docs/design/web-kit && node start-live.mjs`.
 2. Screeny (web-kit :5601 / agent :8010) per journey — patrz `uat-journeys.md`, sekcje [CAPTURE]. Wzorzec jak w raportach KM.
-3. Zielone runy testów jako artefakt: `apps/tenant-runtime` jest (107) + `agent-service` pytest (51) — zrzut do `evidence/`.
+3. Zielone runy testów jako artefakt — **liczby uruchamiać, nie przepisywać** (tabela źródłowa: `known-limitations.md`, stan 03.08: TS 857/66 suit, `agent-service` 62 passed/3 skipped, `grafik-optimizer` 24 passed) — zrzut do `evidence/`.
 4. URL stagingu (Cloudflare tunnel) + lista kont testowych → wpisać w `uat-journeys.md`.
 5. Uzupełnić [4M] w `../acceptance-criteria-M2.md` po rozmowie z 4Mobility (PRE2).
 

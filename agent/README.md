@@ -5,8 +5,12 @@
 This module is the home of project point (b), the self-learning scheduling agent. **Phase A** (this
 directory today) delivers the *cold-start imitation dataset*: `(ProblemInput → assignments)` pairs
 where the assignments come from the existing CP-SAT solver acting as the baseline **teacher**. A later,
-separate task builds the SB3 agent service, the Gym environment, the `/agent/*` FastAPI endpoints and
-the retrain pipeline on a Python 3.12 + SB3 runtime — **none of that is built here.**
+separate task builds the agent service, the Gym environment, the `/agent/*` FastAPI endpoints and
+the retrain pipeline on a Python 3.12 runtime — **none of that is built here.**
+
+> Historical note: this file used to call that service "the SB3 agent service". It is not — the
+> service that shipped (`agent-service/`) serves an **affinity learner + batch re-fit** and imports
+> no Stable-Baselines3. See `agent-service/README.md`.
 
 ## What phase A produces
 
@@ -83,6 +87,7 @@ pnpm --filter @hrobot/agent build       # tsc --noEmit type-check
 
 ## Out of scope (separate, currently-blocked task)
 
-The Python/SB3 agent service, the Gym env, the `/agent/*` endpoints and the retrain pipeline. Those
-need a Python 3.12 + SB3 container runtime not available in this environment and are handled
-separately. This module delivers only the phase-A cold-start dataset + its reproducible generator.
+The Python agent service, the Gym env, the `/agent/*` endpoints and the retrain pipeline. Those need
+a Python 3.12 container runtime not available in this environment and are handled separately (they
+now live in `agent-service/`). This module delivers only the phase-A cold-start dataset + its
+reproducible generator.

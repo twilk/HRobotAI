@@ -1,0 +1,178 @@
+{
+  "scenario": "canonical-feasible (36 employees, 38 demands, 52 assignments)",
+  "managerModel": "independent",
+  "managerReferenceBuiltBy": "app.manager_profile.independent_manager_schedule (never calls the agent's policy)",
+  "managerPreference": "spread the work (least-loaded first, weekly shift cap) and, within that, a personal taste for who works mornings vs afternoons. REFERENCE BUILT WITHOUT THE AGENT'S POLICY \u2014 different demand order, load-dependent rule, preference uncorrelated with the agent's features (app/manager_profile.py).",
+  "metric": "edit_distance = |proposed \u25b3 manager_accepted| (symmetric difference of (employee,demand) pairs)",
+  "rounds": 20,
+  "correctionBudgetPerRound": 6,
+  "useFeedback": true,
+  "acceptedAssignments": 52,
+  "history": [
+    {
+      "round": 0,
+      "policyVersion": 1,
+      "editDistance": 96,
+      "normalizedEditDistance": 0.9231,
+      "acceptanceMetric": 0.0769,
+      "feasible": true
+    },
+    {
+      "round": 1,
+      "policyVersion": 2,
+      "editDistance": 76,
+      "normalizedEditDistance": 0.7308,
+      "acceptanceMetric": 0.2692,
+      "feasible": true
+    },
+    {
+      "round": 2,
+      "policyVersion": 3,
+      "editDistance": 62,
+      "normalizedEditDistance": 0.5962,
+      "acceptanceMetric": 0.4038,
+      "feasible": true
+    },
+    {
+      "round": 3,
+      "policyVersion": 4,
+      "editDistance": 70,
+      "normalizedEditDistance": 0.6731,
+      "acceptanceMetric": 0.3269,
+      "feasible": true
+    },
+    {
+      "round": 4,
+      "policyVersion": 5,
+      "editDistance": 60,
+      "normalizedEditDistance": 0.5769,
+      "acceptanceMetric": 0.4231,
+      "feasible": true
+    },
+    {
+      "round": 5,
+      "policyVersion": 6,
+      "editDistance": 52,
+      "normalizedEditDistance": 0.5,
+      "acceptanceMetric": 0.5,
+      "feasible": true
+    },
+    {
+      "round": 6,
+      "policyVersion": 7,
+      "editDistance": 50,
+      "normalizedEditDistance": 0.4808,
+      "acceptanceMetric": 0.5192,
+      "feasible": true
+    },
+    {
+      "round": 7,
+      "policyVersion": 8,
+      "editDistance": 52,
+      "normalizedEditDistance": 0.5,
+      "acceptanceMetric": 0.5,
+      "feasible": true
+    },
+    {
+      "round": 8,
+      "policyVersion": 9,
+      "editDistance": 44,
+      "normalizedEditDistance": 0.4231,
+      "acceptanceMetric": 0.5769,
+      "feasible": true
+    },
+    {
+      "round": 9,
+      "policyVersion": 10,
+      "editDistance": 40,
+      "normalizedEditDistance": 0.3846,
+      "acceptanceMetric": 0.6154,
+      "feasible": true
+    },
+    {
+      "round": 10,
+      "policyVersion": 11,
+      "editDistance": 34,
+      "normalizedEditDistance": 0.3269,
+      "acceptanceMetric": 0.6731,
+      "feasible": true
+    },
+    {
+      "round": 11,
+      "policyVersion": 12,
+      "editDistance": 36,
+      "normalizedEditDistance": 0.3462,
+      "acceptanceMetric": 0.6538,
+      "feasible": true
+    },
+    {
+      "round": 12,
+      "policyVersion": 13,
+      "editDistance": 28,
+      "normalizedEditDistance": 0.2692,
+      "acceptanceMetric": 0.7308,
+      "feasible": true
+    },
+    {
+      "round": 13,
+      "policyVersion": 14,
+      "editDistance": 26,
+      "normalizedEditDistance": 0.25,
+      "acceptanceMetric": 0.75,
+      "feasible": true
+    },
+    {
+      "round": 14,
+      "policyVersion": 15,
+      "editDistance": 20,
+      "normalizedEditDistance": 0.1923,
+      "acceptanceMetric": 0.8077,
+      "feasible": true
+    },
+    {
+      "round": 15,
+      "policyVersion": 16,
+      "editDistance": 16,
+      "normalizedEditDistance": 0.1538,
+      "acceptanceMetric": 0.8462,
+      "feasible": true
+    },
+    {
+      "round": 16,
+      "policyVersion": 17,
+      "editDistance": 10,
+      "normalizedEditDistance": 0.0962,
+      "acceptanceMetric": 0.9038,
+      "feasible": true
+    },
+    {
+      "round": 17,
+      "policyVersion": 18,
+      "editDistance": 0,
+      "normalizedEditDistance": 0.0,
+      "acceptanceMetric": 1.0,
+      "feasible": true
+    },
+    {
+      "round": 18,
+      "policyVersion": 18,
+      "editDistance": 0,
+      "normalizedEditDistance": 0.0,
+      "acceptanceMetric": 1.0,
+      "feasible": true
+    },
+    {
+      "round": 19,
+      "policyVersion": 18,
+      "editDistance": 0,
+      "normalizedEditDistance": 0.0,
+      "acceptanceMetric": 1.0,
+      "feasible": true
+    }
+  ],
+  "firstEditDistance": 96,
+  "lastEditDistance": 0,
+  "monotoneNonIncreasing": false,
+  "measurableDrop": true,
+  "firstZeroRound": 17
+}

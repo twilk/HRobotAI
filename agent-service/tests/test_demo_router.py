@@ -72,3 +72,42 @@ def test_demo_page_is_self_served_html(client):
     assert "/agent/propose" in html and "/agent/demo/corrections" in html
     # Fully self-contained + same-origin: no external hosts anywhere (no CDN, no CORS).
     assert "http://" not in html and "https://" not in html
+
+
+def test_corrections_default_manager_is_unchanged(client):
+    """Backward compatibility: omitting `manager` keeps the committed J4 behaviour unchanged."""
+    prop = client.post(
+        "/agent/propose", json={"problemInputId": CANONICAL_ID}, headers=auth("t5")
+    ).json()
+    body = client.post(
+        "/agent/demo/corrections", json={"proposalId": prop["proposalId"], "tenantId": "t5"}
+    ).json()
+    assert body["managerModel"] == "constructed"
+    assert body["editDistance"] == 50
+
+
+def test_corrections_can_serve_the_independent_manager(client):
+    """HON-2: the live demo surface can show the honest reference, not only the constructed one."""
+    prop = client.post(
+        "/agent/propose", json={"problemInputId": CANONICAL_ID}, headers=auth("t6")
+    ).json()
+    body = client.post(
+        "/agent/demo/corrections",
+        json={"proposalId": prop["proposalId"], "tenantId": "t6", "manager": "independent"},
+    ).json()
+    assert body["managerModel"] == "independent"
+    # The same cold-start proposal is much further from a manager the agent had no hand in defining.
+    assert body["editDistance"] == 96
+    assert body["acceptanceMetric"] == 0.0769
+    assert "WITHOUT THE AGENT'S POLICY" in body["managerPreference"]
+
+
+def test_corrections_rejects_an_unknown_manager_model(client):
+    prop = client.post(
+        "/agent/propose", json={"problemInputId": CANONICAL_ID}, headers=auth("t7")
+    ).json()
+    r = client.post(
+        "/agent/demo/corrections",
+        json={"proposalId": prop["proposalId"], "tenantId": "t7", "manager": "marketing"},
+    )
+    assert r.status_code == 422

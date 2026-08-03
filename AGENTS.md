@@ -25,8 +25,8 @@ Workspace packages must be built before an app type-checks/builds: a bare `nest 
 
 The top-level `agent/` dir (`@hrobot/agent`, added to `pnpm-workspace.yaml`) is a pnpm-workspace
 member but typecheck-only: no `dist`, `build` is `tsc --noEmit`, code runs via `tsx`. It holds the
-M2-C1 phase-A cold-start dataset generator — see `agent/README.md`. The eventual Python/SB3 agent
-service is a separate runtime and does NOT live here.
+M2-C1 phase-A cold-start dataset generator — see `agent/README.md`. The Python agent service is a
+separate runtime (`agent-service/`) and does NOT live here.
 
 `docs/design/web-kit` (the Next.js tenant reference app, port 5601) is NOT a pnpm-workspace member —
 turbo won't build it. Install + build it standalone from that dir: `npm install && npm run build`
@@ -53,9 +53,11 @@ they run runner-side via `infra/deploy/edge-up.sh`.
 
 ## Python/ML services & docker.exe
 
-The Python services (`grafik-optimizer/` = lean CP-SAT; `agent-service/` = RL/imitation, a
-**distinct** image — never merge their deps) build on `python:3.12-slim` (SB3/ortools/torch have no
-CPython ≥ 3.13 wheels). On the WSL host use **`docker.exe`** (Windows binary → Docker Desktop
+The Python services (`grafik-optimizer/` = lean CP-SAT; `agent-service/` = affinity learner + batch
+re-fit, plus an offline `imitation` BC CLI — a **distinct** image, never merge their deps) build on
+`python:3.12-slim` (ortools/torch/SB3 have no CPython ≥ 3.13 wheels). `agent-service` is **not** an
+RL service and imports no Stable-Baselines3 — don't describe it as one; see its `README.md`.
+On the WSL host use **`docker.exe`** (Windows binary → Docker Desktop
 daemon), not `docker`; there is no usable host Python. `docker.exe` chokes on this repo's WSL
 symlinks (every `CLAUDE.md` → `AGENTS.md`), so each build context's `.dockerignore` MUST exclude
 `**/CLAUDE.md`. Both services consume the FROZEN grafik contract via an own pydantic mirror +
