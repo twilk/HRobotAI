@@ -16,16 +16,19 @@ services:
     image: postgres:16-alpine
     # POSTGRES_DB creates hrobot_control on first boot; the `postgres`
     # maintenance DB (used by POSTGRES_SUPERUSER_URL) always exists too.
+    #
+    # Credentials come from .env (see .env.example). The `:-` fallbacks keep a bare
+    # `docker compose up -d` working on a fresh clone; STAGING MUST override them. [ENV-2]
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: hrobot_control
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-hrobot_control}
     ports:
       - "5432:5432"
     volumes:
       - hrobot_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -42,7 +45,11 @@ services:
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
-    # Default guest/guest; management UI at http://localhost:15672
+    # Dev default guest/guest; management UI at http://localhost:15672. Override on staging. [ENV-2]
+    # NOTE: rabbitmq only applies RABBITMQ_DEFAULT_* on a FIRST boot with an empty data dir.
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -57,8 +64,12 @@ services:
     command: ["start-dev"]
     environment:
       # KC 25+ renamed KEYCLOAK_ADMIN* -> KC_BOOTSTRAP_ADMIN*.
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      # Dev default admin/admin; STAGING MUST override via .env. [ENV-2]
+      # NOTE: the bootstrap admin is only created on a FIRST boot against an empty
+      # hrobot_keycloak volume — changing this later requires resetting the password in the KC
+      # admin console (or `docker compose down -v`), not just editing .env.
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
     ports:
       - "8080:8080"
     # Persist KC's embedded H2 so realms/clients/users survive `docker compose down` (without -v).
@@ -80,10 +91,10 @@ services:
       - path: .env
         required: false
     environment:
-      CONTROL_PLANE_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/hrobot_control
-      POSTGRES_SUPERUSER_URL: postgresql://postgres:postgres@postgres:5432/postgres
+      CONTROL_PLANE_DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-hrobot_control}
+      POSTGRES_SUPERUSER_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/postgres
       REDIS_URL: redis://redis:6379
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672
       KEYCLOAK_URL: http://keycloak:8080
       PORT: "3000"
     depends_on:
@@ -107,10 +118,10 @@ services:
       - path: .env
         required: false
     environment:
-      CONTROL_PLANE_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/hrobot_control
-      POSTGRES_SUPERUSER_URL: postgresql://postgres:postgres@postgres:5432/postgres
+      CONTROL_PLANE_DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-hrobot_control}
+      POSTGRES_SUPERUSER_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/postgres
       REDIS_URL: redis://redis:6379
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672
       KEYCLOAK_URL: http://keycloak:8080
       PORT: "3001"
     depends_on:
