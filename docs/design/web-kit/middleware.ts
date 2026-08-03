@@ -28,5 +28,6 @@ export const config = {
     '/wnioski/:path*',
     '/dostepy/:path*',
     '/ustawienia/:path*',
+    '/analityk/:path*',
   ],
 }
