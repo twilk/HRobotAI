@@ -350,14 +350,13 @@ export class AnalitykService {
     const [employees, names, deactivations, shifts] = await Promise.all([
       this.scopedEmployees(client, scope, range),
       this.unitNames(client, scope),
-      // The WHOLE deactivation history up to the end of the range, not just the rows inside it: the
-      // headcount at `range.from` depends on everything that happened before it too.
+      // The WHOLE deactivation history, deliberately UNBOUNDED in time. Both ends of the range need
+      // it: the headcount at `od` depends on what happened before the range, and — less obviously —
+      // an account switched off AFTER the range must still be counted as employed inside it. Cutting
+      // the query at `toExcl` would make such a row invisible, and an employee who is inactive today
+      // with no visible record would be treated as never having been on the books at all.
       client.auditLog.findMany({
-        where: {
-          action: AKCJA_DEZAKTYWACJI,
-          entityType: 'User',
-          createdAt: { lt: range.toExcl },
-        },
+        where: { action: AKCJA_DEZAKTYWACJI, entityType: 'User' },
         select: { entityId: true, createdAt: true },
       }),
       client.shift.findMany({
@@ -386,7 +385,9 @@ export class AnalitykService {
     // Departures are only measurable when at least one employee record is joined to a user account.
     // An empty scope is a different thing entirely: there is nobody to depart, so 0 is the truth.
     const mierzalne = employees.length === 0 || employees.some((e) => e.userId !== null)
-    const wZakresie = scopedDeactivations.filter((d) => d.createdAt.getTime() >= range.from.getTime())
+    const wZakresie = scopedDeactivations.filter(
+      (d) => d.createdAt.getTime() >= range.from.getTime() && d.createdAt.getTime() < range.toExcl.getTime(),
+    )
     const odejscia = mierzalne ? wZakresie.length : null
 
     const wgJednostekMap = new Map<string, number>()

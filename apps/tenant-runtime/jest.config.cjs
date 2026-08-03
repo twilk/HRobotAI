@@ -5,6 +5,9 @@ module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   testMatch: ['**/*.spec.ts'],
+  // `**/*.spec.ts` also matches `*.integration.spec.ts`, which needs a live Postgres. Keep the unit
+  // lane hermetic — the integration lane runs those via jest.integration.config.cjs.
+  testPathIgnorePatterns: ['/node_modules/', '\\.integration\\.spec\\.ts$'],
   moduleNameMapper: {
     // Strip .js extensions from relative imports (NodeNext ESM style)
     '^(\\.{1,2}/.*)\\.js$': '$1',

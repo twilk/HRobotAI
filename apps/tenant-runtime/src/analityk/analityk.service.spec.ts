@@ -250,12 +250,14 @@ describe('AnalitykService', () => {
       expect(r.rotacjaWOkresie).toBe(0.3333)
     })
 
-    it('reads the WHOLE deactivation history up to the end of the range, not just rows inside it', async () => {
+    it('reads the WHOLE deactivation history, unbounded in time — not just the rows inside the range', async () => {
       await service.zatrudnienie(asClient(client), null, RANGE)
       const where = client.auditLog.findMany.mock.calls[0][0].where
       expect(where).toMatchObject({ action: 'user.deactivated', entityType: 'User' })
-      // No lower bound: the headcount AT `od` depends on everything that happened before it too.
-      expect(where.createdAt).toEqual({ lt: RANGE.toExcl })
+      // No date bound at all. The headcount AT `od` depends on what happened BEFORE the range, and
+      // an account switched off AFTER it must still count as employed inside it — a query cut at
+      // `toExcl` would hide that row and strike the person off the books retroactively.
+      expect(where.createdAt).toBeUndefined()
     })
 
     it('reports odejscia/rotacja as UNKNOWN (null), never 0, when no kartoteka has a user account', async () => {
