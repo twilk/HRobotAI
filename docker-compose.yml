@@ -179,7 +179,16 @@ services:
       dockerfile: Dockerfile
     environment:
       PYTHONUNBUFFERED: "1"
+      # Doubles as the default trusted-issuer base: /voice/* refuses to fetch JWKS from any address
+      # that is not <trusted base>/realms/<realm>, so a forged token cannot point key resolution at
+      # a host the attacker owns. [track J — see .env.example KEYCLOAK_TRUSTED_ISSUERS]
+      #
+      # This value is correct for the demo: the seeded `hrobot-staging` realm pins
+      # frontendUrl=http://keycloak:8080, so its tokens carry exactly this base even though the
+      # browser reaches Keycloak on :8081. A realm WITHOUT a frontendUrl issues the host the caller
+      # used, so a deployment mixing both needs the comma-separated list below instead.
       KEYCLOAK_URL: "http://keycloak:8080"
+      # KEYCLOAK_TRUSTED_ISSUERS: "http://keycloak:8080,https://auth.example.com"
       STT_MODEL_SIZE: "small"
       STT_COMPUTE_TYPE: "int8"
       STT_LANGUAGE: "pl"
