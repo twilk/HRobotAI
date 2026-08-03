@@ -32,6 +32,11 @@ export const config = {
     // still the precondition — without the cookie the page rendered the full AppShell for an
     // ANONYMOUS visitor while every sibling tenant route redirected to /login.
     '/dokumenty/:path*',
+    // Analityk HR (M3) — agregaty kadrowe całego najemcy. Ekran był osierocony: brak w nav.ts i brak
+    // tutaj, więc odpowiadał 200 anonimowi.
+    '/analiza/:path*',
+    // Agent Głosowy (M3) — wykonuje akcje na danych najemcy (wnioski, grafik) w imieniu zalogowanego.
+    '/asystent/:path*',
     '/ustawienia/:path*',
   ],
 }

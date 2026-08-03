@@ -41,14 +41,14 @@ function matcherRoutes(): string[] {
 }
 
 /**
- * Tenant routes KNOWN to be ungated, owned by another autonomy track. Listed so the guard passes on
- * a true statement of today's repo rather than being switched off. Remove an entry the moment its
- * owner adds the matcher line — the "exactly" assertion below will demand it.
+ * Tenant routes KNOWN to be ungated. EMPTY as of the 2026-08-03 integration: `/analiza` and
+ * `/asystent` were closed in the integration branch alongside `/dokumenty`, so all three M3 gaps are
+ * now shut and every screen under `app/(tenant)/` is behind the session middleware.
  *
- *   analiza  — Analityk HR (TOR C)
- *   asystent — Agent Głosowy (TOR D)
+ * Keep this list empty. It exists as a ledger for a gap that is temporarily owned by another branch —
+ * never as a place to silence the guard for a route you simply forgot.
  */
-const ZNANE_LUKI = ['analiza', 'asystent'] as const
+const ZNANE_LUKI = [] as const
 
 describe('middleware matcher ↔ app/(tenant) parity', () => {
   it('gates every tenant screen except the documented known gaps', () => {
