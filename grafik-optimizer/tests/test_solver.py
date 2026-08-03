@@ -120,7 +120,6 @@ def hard_violations(problem: ProblemInput, assignments) -> list[str]:
     """Return a list of H1–H4 violations found in ``assignments`` (empty == clean)."""
     violations: list[str] = []
     week_start = date.fromisoformat(problem.horizon.weekStart)
-    by_id = {d.id: d for d in problem.demands}
     emp_by_id = {e.id: e for e in problem.employees}
     windows = {d.id: _abs_window(week_start, d) for d in problem.demands}
 

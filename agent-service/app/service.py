@@ -13,7 +13,7 @@ from .contract import Assignment, ProblemInput
 from .fixtures import canonical_problem, canonical_solution
 from .metrics import acceptance_metric
 from .optimizer_client import OptimizerClient
-from .policy import ImitationPolicy, PolicyState, ScoredCandidate, reward_for_edit, slot_signature
+from .policy import ImitationPolicy, PolicyState, ScoredCandidate, reward_for_edit
 from .store import AgentStore
 from .validate import validate
 

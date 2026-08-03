@@ -96,8 +96,15 @@ jobs:
 
       # pytest + httpx are TEST-ONLY deps (TestClient) — kept out of the lean runtime image
       # on purpose, so they are installed here, pinned to agent-service's versions.
+      # ruff is likewise test/CI-only and pinned so a new ruff release cannot turn the lane red
+      # on its own. [CI-6]
       - name: Install dependencies
-        run: pip install -r requirements.txt pytest==8.3.4 httpx==0.27.2
+        run: pip install -r requirements.txt pytest==8.3.4 httpx==0.27.2 ruff==0.15.8
+
+      # Lint before tests — ruff is seconds, pytest is minutes, so fail fast on dead code.
+      # Config comes from the repo-root ruff.toml (lint only; formatting is not a gate).
+      - name: ruff
+        run: python -m ruff check .
 
       # G1–G4 acceptance tests: independent H1–H4 checker, metrics, determinism, INFEASIBLE→unmet.
       - name: pytest
@@ -127,9 +134,14 @@ jobs:
         run: |
           pip install torch==2.3.1 --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements.txt
+          pip install ruff==0.15.8
+
+      # Lint before tests — ruff is seconds, the torch-backed suite is minutes. [CI-6]
+      - name: ruff
+        run: python -m ruff check .
 
       # AG1–AG6 lanes. The live-optimizer integration guards self-skip here (no optimizer service);
-      # the full 51/51 bieg runs in-container — see data/m2-evidence/test-logs/.
+      # the full bieg runs in-container — see data/m2-evidence/test-logs/.
       - name: pytest
         run: python -m pytest -q
 

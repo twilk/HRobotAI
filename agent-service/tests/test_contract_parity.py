@@ -21,7 +21,6 @@ from pathlib import Path
 from types import ModuleType
 from typing import ForwardRef, get_args, get_origin
 
-import pytest
 from pydantic import BaseModel
 
 from app import contract as agent_contract
