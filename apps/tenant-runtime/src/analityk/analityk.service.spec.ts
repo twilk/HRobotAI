@@ -308,11 +308,41 @@ describe('AnalitykService', () => {
       expect(r.dniNieobecnosci).toBe(7)
     })
 
-    it('computes the rate against working days × headcount', async () => {
+    it('computes the rate against EMPLOYMENT EXPOSURE, not working days × current headcount', async () => {
       const r = await service.absencje(asClient(client), null, RANGE)
       expect(r.meta.dniRobocze).toBe(10)
-      expect(r.dniRoboczeLacznie).toBe(30) // 10 working days × 3 active employees
-      expect(r.wskaznik).toBe(0.2333) // 7 / 30
+      // e1 full 10 · e2 hired 06-03 → 8 · e3 full 10 · e4 deactivated 06-10 → 8. Total 36.
+      // The old denominator was 10 × 3 = 30: e4's leave days could land in the numerator while e4
+      // had vanished from the denominator, and e2 contributed a full 10 days from their 3rd day.
+      expect(r.dniRoboczeLacznie).toBe(36)
+      expect(r.wskaznik).toBe(0.1944) // 7 / 36
+    })
+
+    it('pro-rates a mid-range HIRE instead of charging a full period of working days', async () => {
+      // e2 alone, hired 06-03: 8 working days of exposure, not 10.
+      client.employee.findMany.mockResolvedValue([EMPLOYEES[1]])
+      client.leaveRequest.findMany.mockResolvedValue([])
+      const r = await service.absencje(asClient(client), null, RANGE)
+      expect(r.dniRoboczeLacznie).toBe(8)
+    })
+
+    it('pro-rates a mid-range DEPARTURE instead of dropping the person from the denominator', async () => {
+      // e4 alone, account switched off 06-10: 8 working days of exposure, not 0 (the old code
+      // filtered them out entirely) and not 10.
+      client.employee.findMany.mockResolvedValue([EMPLOYEES[3]])
+      client.leaveRequest.findMany.mockResolvedValue([])
+      const r = await service.absencje(asClient(client), null, RANGE)
+      expect(r.dniRoboczeLacznie).toBe(8)
+    })
+
+    it('leaves an employee who is gone WITHOUT an audit row out of BOTH sides of the ratio', async () => {
+      // Inactive, no `user.deactivated` row: we know they are gone, not since when. Inventing an
+      // exposure window would bias the rate in an unknown direction, so they contribute to neither.
+      client.employee.findMany.mockResolvedValue([{ ...EMPLOYEES[3], userId: 'u-nieznany' }])
+      client.leaveRequest.findMany.mockResolvedValue([])
+      const r = await service.absencje(asClient(client), null, RANGE)
+      expect(r.dniRoboczeLacznie).toBe(0)
+      expect(r.wskaznik).toBeNull()
     })
 
     it('only counts APPROVED leave', async () => {
@@ -329,13 +359,13 @@ describe('AnalitykService', () => {
       ])
     })
 
-    it('computes a per-unit rate against that unit’s own headcount', async () => {
+    it('computes a per-unit rate against that unit’s own exposure', async () => {
       const r = await service.absencje(asClient(client), null, RANGE)
       expect(r.wgJednostek).toEqual([
-        // unit-A: 2 active × 10 days = 20; 5 absence days → 0.25
-        { unitId: 'unit-A', nazwa: 'Serwis', dni: 5, dniRobocze: 20, wskaznik: 0.25 },
-        // unit-B: 1 active (e4 deactivated) × 10 = 10; 2 absence days → 0.2
-        { unitId: 'unit-B', nazwa: 'Biuro', dni: 2, dniRobocze: 10, wskaznik: 0.2 },
+        // unit-A: e1 10 + e2 8 = 18 exposure days; 5 absence days → 0.2778
+        { unitId: 'unit-A', nazwa: 'Serwis', dni: 5, dniRobocze: 18, wskaznik: 0.2778 },
+        // unit-B: e3 10 + e4 8 = 18 exposure days; 2 absence days → 0.1111
+        { unitId: 'unit-B', nazwa: 'Biuro', dni: 2, dniRobocze: 18, wskaznik: 0.1111 },
       ])
     })
 
@@ -450,7 +480,7 @@ describe('AnalitykService', () => {
       // (02-02..02-04) is 3 working days and MUST count. e3's rows are sick / unpaid / maternity
       // leave: absences, but none of them consume the art. 154 pool.
       expect(r.wykorzystaneDni).toBe(8)
-      expect(r.wskaznikWykorzystania).toBe(0.1026) // 8 / (26 x 3)
+      expect(r.wskaznikWykorzystania).toBe(0.1333) // 8 / (20 x 3)
     })
 
     it('EXCLUDES leave that does not consume the art. 154 pool, however "URLOP" it looks', async () => {
@@ -458,13 +488,22 @@ describe('AnalitykService', () => {
       // e3 carries CHOROBOWE + URLOP_BEZPLATNY + URLOP_MACIERZYNSKI in the year — 15 working days
       // the old prefix filter would have charged against a 26-day entitlement, driving the balance
       // of anyone back from maternity leave deeply negative.
-      expect(r.srednieSaldo).toBe(23.33) // (21 + 23 + 26) / 3, e3 untouched at 26
+      expect(r.srednieSaldo).toBe(17.33) // (15 + 17 + 20) / 3, e3 untouched at the full entitlement
+    })
+
+    it('applies the LOWER statutory rate (20 days), so the risk list is not padded with false alarms', async () => {
+      const r = await service.urlopy(asClient(client), null, RANGE)
+      // At the 26-day rate every employee actually entitled to 20 carried a balance overstated by
+      // six days, which pushed the whole cohort up the histogram and filled the named forfeiture
+      // list with people whose real balance was 4 days.
+      expect(r.wymiarDni).toBe(20)
+      expect(r.meta.uwagi.join(' ')).toMatch(/stawkę NIŻSZĄ/)
     })
 
     it('averages the remaining balance across employees in scope', async () => {
       const r = await service.urlopy(asClient(client), null, RANGE)
-      // balances: e1 = 26-5 = 21, e2 = 26-3 = 23, e3 = 26-0 = 26 -> 70/3 = 23.33
-      expect(r.srednieSaldo).toBe(23.33)
+      // balances: e1 = 20-5 = 15, e2 = 20-3 = 17, e3 = 20-0 = 20 -> 52/3 = 17.33
+      expect(r.srednieSaldo).toBe(17.33)
     })
 
     it('buckets the balance distribution', async () => {
@@ -473,9 +512,9 @@ describe('AnalitykService', () => {
         { przedzial: '0', liczba: 0 },
         { przedzial: '1-5', liczba: 0 },
         { przedzial: '6-10', liczba: 0 },
-        { przedzial: '11-15', liczba: 0 },
-        { przedzial: '16-20', liczba: 0 },
-        { przedzial: '21+', liczba: 3 },
+        { przedzial: '11-15', liczba: 1 }, // e1 = 15
+        { przedzial: '16-20', liczba: 2 }, // e2 = 17, e3 = 20
+        { przedzial: '21+', liczba: 0 },
       ])
     })
 
@@ -487,11 +526,11 @@ describe('AnalitykService', () => {
     it('flags high balances in Q4, worst first, with IDs only', async () => {
       const q4 = buildRange('2026-11-01', '2026-11-30')
       const r = await service.urlopy(asClient(client), null, q4)
-      // Same used-days data → balances 21 / 23 / 26, all ≥ the 10-day threshold.
+      // Same used-days data → balances 15 / 17 / 20, all ≥ the 10-day threshold.
       expect(r.ryzykoPrzepadniecia).toEqual([
-        { employeeId: 'e3', unitId: 'unit-B', saldo: 26, wykorzystane: 0 },
-        { employeeId: 'e2', unitId: 'unit-A', saldo: 23, wykorzystane: 3 },
-        { employeeId: 'e1', unitId: 'unit-A', saldo: 21, wykorzystane: 5 },
+        { employeeId: 'e3', unitId: 'unit-B', saldo: 20, wykorzystane: 0 },
+        { employeeId: 'e2', unitId: 'unit-A', saldo: 17, wykorzystane: 3 },
+        { employeeId: 'e1', unitId: 'unit-A', saldo: 15, wykorzystane: 5 },
       ])
     })
   })
@@ -567,7 +606,7 @@ describe('AnalitykService', () => {
     it('returns all five aggregates with figures identical to the individual endpoints', async () => {
       const r = await service.podsumowanie(asClient(client), null, RANGE)
       expect(r.zatrudnienie.stanNaKoniec).toBe(3)
-      expect(r.absencje.wskaznik).toBe(0.2333)
+      expect(r.absencje.wskaznik).toBe(0.1944)
       expect(r.czasPracy.sumaGodzin).toBe(102)
       expect(r.urlopy.wykorzystaneDni).toBe(8)
       expect(r.wnioski.wToku).toBe(3)
@@ -610,15 +649,17 @@ describe('AnalitykService', () => {
       expect(r.poprzedni).toMatchObject({ od: '2026-05-18', do: '2026-05-31' })
 
       // The SAME leave rows clip very differently into the two windows, which is the whole point:
-      //   current  (06-01..06-14): L1 = 5 working days + L2 clipped to 06-01,06-02 = 2 → 7/30 = 23,33%
+      //   current  (06-01..06-14): L1 = 5 working days + L2 clipped to 06-01,06-02 = 2 → 7/36 = 19,44%
       //   previous (05-18..05-31): only L2 clipped to Thu 05-28 + Fri 05-29 = 2      → 2/30 =  6,67%
-      expect(r.biezacy.wskaznikAbsencji).toBe(0.2333)
+      // The denominators differ because exposure differs: e2 is not yet hired in the earlier window
+      // and e4 is still on the books for all of it.
+      expect(r.biezacy.wskaznikAbsencji).toBe(0.1944)
       expect(r.poprzedni.wskaznikAbsencji).toBe(0.0667)
 
       const absencja = r.anomalie.find((a) => a.kod === 'ABSENCJA_SKOK')
       expect(absencja).toBeDefined()
-      expect(absencja?.waga).toBe('wysoka') // +16,7 p.p. is far past the 3 p.p. high bar
-      expect(absencja?.wartoscBiezaca).toBe(0.2333)
+      expect(absencja?.waga).toBe('wysoka') // +12,8 p.p. is far past the 3 p.p. high bar
+      expect(absencja?.wartoscBiezaca).toBe(0.1944)
       expect(absencja?.wartoscPoprzednia).toBe(0.0667)
     })
 

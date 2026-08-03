@@ -58,6 +58,15 @@ export function addDays(date: Date, n: number): Date {
   return new Date(date.getTime() + n * DAY_MS)
 }
 
+/**
+ * The UTC-midnight instant of the calendar day `date` falls in. `Employee.hiredAt` and
+ * `AuditLog.createdAt` are full timestamps, unlike the `@db.Date` columns; normalizing them before
+ * any day-counting keeps a 09:00 hire and a midnight one worth the same number of working days.
+ */
+export function startOfUtcDay(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+}
+
 /** `YYYY-MM-DD` key for a UTC date (grouping / display). */
 export function dayKey(date: Date): string {
   return date.toISOString().slice(0, 10)

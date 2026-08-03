@@ -14,6 +14,7 @@ import {
   monthKey,
   ratio,
   round,
+  startOfUtcDay,
   weekKey,
   type AnalitykRange,
 } from './analityk.range.js'
@@ -36,13 +37,23 @@ export type UnitScope = string[] | null
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 
 /**
- * Statutory annual leave entitlement in working days. The tenant schema models NO leave-balance
- * table, so the module cannot read a per-employee entitlement; it applies the higher of the two
- * Polish Kodeks pracy art. 154 §1 rates (26 days, ≥10 years of seniority) uniformly. Employees on the
- * 20-day rate will therefore show an OVERSTATED remaining balance — disclosed in
- * {@link AnalitykMeta.uwagi} rather than presented as an exact figure.
+ * Statutory annual leave entitlement in working days, applied as a FLAT rate.
+ *
+ * The tenant schema models no leave-balance table, so no per-employee entitlement can be read, and
+ * it cannot be derived either: art. 155 KP counts service with PREVIOUS employers plus an education
+ * credit (up to 8 years for a university degree), while `Employee.hiredAt` only knows service HERE.
+ * Guessing from `hiredAt` would be worse than a flat rate, because it would look precise.
+ *
+ * The rate is the LOWER of the two art. 154 §1 figures (20 days, under 10 years of service) rather
+ * than the higher one. Both choices are wrong for somebody; this one is wrong in the CAUTIOUS
+ * direction. At 26 days every employee actually entitled to 20 carried a balance overstated by six
+ * days, which pushed the whole cohort a bucket or two up the histogram and filled
+ * {@link UrlopyResult.ryzykoPrzepadniecia} — a list meant to be acted on, by name — with people
+ * whose real balance was 4 days. A named list of false alarms is worse than a shorter one: it stops
+ * being read. At 20 days the error runs the other way and the list can MISS somebody on the 26-day
+ * rate, which is stated in {@link AnalitykMeta.uwagi} alongside the figure.
  */
-export const WYMIAR_URLOPU_DNI = 26
+export const WYMIAR_URLOPU_DNI = 20
 
 /** The `user.deactivated` audit action departures and the historical headcount are reconstructed from. */
 const AKCJA_DEZAKTYWACJI = 'user.deactivated'
@@ -331,6 +342,39 @@ export class AnalitykService {
     return wylaczone !== undefined && wylaczone.getTime() >= at.getTime()
   }
 
+  /**
+   * The WHOLE `user.deactivated` history, deliberately UNBOUNDED in time. Both ends of a range need
+   * it: the headcount at `od` depends on what happened before the range, and — less obviously — an
+   * account switched off AFTER the range must still count as employed inside it. A query cut at
+   * `toExcl` would hide that row, leaving an employee who is inactive today with no visible record
+   * and striking them off the books retroactively.
+   */
+  private async dezaktywacje(client: TenantClient): Promise<{ entityId: string; createdAt: Date }[]> {
+    return client.auditLog.findMany({
+      where: { action: AKCJA_DEZAKTYWACJI, entityType: 'User' },
+      select: { entityId: true, createdAt: true },
+    })
+  }
+
+  /**
+   * `userId → the LATEST deactivation` for the employees in scope. Audit rows are tenant-wide, so
+   * rows belonging to a user outside the caller's scope are dropped here rather than leaking into a
+   * manager's figures.
+   */
+  private static ostatniaDezaktywacja(
+    employees: ScopedEmployee[],
+    rows: { entityId: string; createdAt: Date }[],
+  ): Map<string, Date> {
+    const wZakresie = new Set(employees.filter((e) => e.userId).map((e) => e.userId as string))
+    const latest = new Map<string, Date>()
+    for (const row of rows) {
+      if (!wZakresie.has(row.entityId)) continue
+      const previous = latest.get(row.entityId)
+      if (!previous || previous.getTime() < row.createdAt.getTime()) latest.set(row.entityId, row.createdAt)
+    }
+    return latest
+  }
+
   // --- 1. Stan zatrudnienia -----------------------------------------------------------------------
 
   /**
@@ -350,15 +394,7 @@ export class AnalitykService {
     const [employees, names, deactivations, shifts] = await Promise.all([
       this.scopedEmployees(client, scope, range),
       this.unitNames(client, scope),
-      // The WHOLE deactivation history, deliberately UNBOUNDED in time. Both ends of the range need
-      // it: the headcount at `od` depends on what happened before the range, and — less obviously —
-      // an account switched off AFTER the range must still be counted as employed inside it. Cutting
-      // the query at `toExcl` would make such a row invisible, and an employee who is inactive today
-      // with no visible record would be treated as never having been on the books at all.
-      client.auditLog.findMany({
-        where: { action: AKCJA_DEZAKTYWACJI, entityType: 'User' },
-        select: { entityId: true, createdAt: true },
-      }),
+      this.dezaktywacje(client),
       client.shift.findMany({
         where: { date: { gte: range.from, lt: range.toExcl }, employee: this.employeeScope(scope) },
         select: { employeeId: true, lokalizacjaId: true, lokalizacja: { select: { name: true } } },
@@ -367,15 +403,9 @@ export class AnalitykService {
 
     // Re-scope departures: audit rows are tenant-wide, so keep only those whose User maps to an
     // employee inside the caller's scope.
-    const userIdToEmployee = new Map(employees.filter((e) => e.userId).map((e) => [e.userId as string, e]))
-    const scopedDeactivations = deactivations.filter((d) => userIdToEmployee.has(d.entityId))
-
-    // Latest deactivation per user — the one that decides the state at any instant we ask about.
-    const ostatniaDezaktywacja = new Map<string, Date>()
-    for (const d of scopedDeactivations) {
-      const previous = ostatniaDezaktywacja.get(d.entityId)
-      if (!previous || previous.getTime() < d.createdAt.getTime()) ostatniaDezaktywacja.set(d.entityId, d.createdAt)
-    }
+    const userIdsWScope = new Set(employees.filter((e) => e.userId).map((e) => e.userId as string))
+    const scopedDeactivations = deactivations.filter((d) => userIdsWScope.has(d.entityId))
+    const ostatniaDezaktywacja = AnalitykService.ostatniaDezaktywacja(employees, deactivations)
 
     const naKoniec = employees.filter((e) => AnalitykService.naStanie(e, range.toExcl, ostatniaDezaktywacja))
     const stanNaKoniec = naKoniec.length
@@ -439,13 +469,30 @@ export class AnalitykService {
   // --- 2. Absencje --------------------------------------------------------------------------------
 
   /**
-   * Absence rate = APPROVED-leave working days ÷ (working days in range × headcount), tenant-wide and
+   * Absence rate = APPROVED-leave working days ÷ working days of EMPLOYMENT EXPOSURE, tenant-wide and
    * per unit, plus a split by leave type. Only APPROVED leave counts — a PENDING request is not an
-   * absence yet. Leave days outside the range are clipped, so a leave straddling the boundary
-   * contributes only the days that actually fall inside it.
+   * absence yet.
+   *
+   * NUMERATOR AND DENOMINATOR ARE THE SAME POPULATION, PRO-RATED. They used not to be: the numerator
+   * took every leave row of the unit (no `active` filter, no `hiredAt` filter) while the denominator
+   * was `dni robocze × liczba OBECNIE aktywnych`. Two consequences, in opposite directions:
+   *  - somebody deactivated after the period ended still contributed their leave days to the top of
+   *    the fraction but had vanished from the bottom → rate overstated;
+   *  - somebody hired on the last day of the period contributed a FULL set of working days to the
+   *    bottom → rate understated.
+   *
+   * Each employee now contributes only the working days for which they were actually on the books
+   * inside the range — from `max(od, hiredAt)` to the earlier of `do` and their deactivation — and
+   * their leave is clipped to that same interval. An employee whose account is off today with no
+   * audit row contributes to NEITHER side: we know they are gone, not since when, and inventing an
+   * exposure window would bias the rate in an unknown direction.
+   *
+   * STILL APPROXIMATE, and disclosed as such: working days are Mon–Fri rather than the employee's own
+   * shift pattern (this product models weekend shift work), and exposure is not weighted by `etat`,
+   * so a half-time employee contributes as many working days as a full-time one.
    */
   async absencje(client: TenantClient, scope: UnitScope, range: AnalitykRange): Promise<AbsencjeResult> {
-    const [employees, names, leaves] = await Promise.all([
+    const [employees, names, leaves, deactivations] = await Promise.all([
       this.scopedEmployees(client, scope, range),
       this.unitNames(client, scope),
       client.leaveRequest.findMany({
@@ -463,42 +510,67 @@ export class AnalitykService {
           employee: { select: { unitId: true } },
         },
       }),
+      this.dezaktywacje(client),
     ])
 
     const dniRobocze = businessDaysBetween(range.from, range.toIncl)
-    const active = employees.filter((e) => AnalitykService.isActive(e))
-    const dniRoboczeLacznie = dniRobocze * active.length
+    const ostatniaDezaktywacja = AnalitykService.ostatniaDezaktywacja(employees, deactivations)
+
+    // The exposure window per employee: the slice of the range they were actually on the books for.
+    const ekspozycja = new Map<string, { unitId: string; from: Date; toIncl: Date; dni: number }>()
+    for (const e of employees) {
+      const hired = startOfUtcDay(e.hiredAt)
+      const from = hired.getTime() > range.from.getTime() ? hired : range.from
+      let toIncl = range.toIncl
+      if (!AnalitykService.isActive(e)) {
+        const wylaczone = e.userId ? ostatniaDezaktywacja.get(e.userId) : undefined
+        if (wylaczone === undefined) continue // gone, since when unknown → neither side of the ratio
+        const ostatniDzien = startOfUtcDay(wylaczone)
+        if (ostatniDzien.getTime() < toIncl.getTime()) toIncl = ostatniDzien
+      }
+      if (toIncl.getTime() < from.getTime()) continue
+      ekspozycja.set(e.id, { unitId: e.unitId, from, toIncl, dni: businessDaysBetween(from, toIncl) })
+    }
+
+    const dniRoboczeLacznie = [...ekspozycja.values()].reduce((sum, e) => sum + e.dni, 0)
 
     const perType = new Map<string, number>()
     const perUnitDni = new Map<string, number>()
     let dniNieobecnosci = 0
 
     for (const leave of leaves) {
-      const dni = businessDaysInRange(leave.startDate, leave.endDate, range)
+      // A leave row whose employee is not in the population cannot count — that asymmetry is exactly
+      // what made the two sides of the fraction describe different groups of people.
+      const okno = ekspozycja.get(leave.employeeId)
+      if (!okno) continue
+      const dni = businessDaysInRange(leave.startDate, leave.endDate, okno)
       if (dni === 0) continue
       dniNieobecnosci += dni
       perType.set(leave.type, (perType.get(leave.type) ?? 0) + dni)
-      const unitId = leave.employee?.unitId
-      if (unitId) perUnitDni.set(unitId, (perUnitDni.get(unitId) ?? 0) + dni)
+      perUnitDni.set(okno.unitId, (perUnitDni.get(okno.unitId) ?? 0) + dni)
     }
 
-    const perUnitHeadcount = new Map<string, number>()
-    for (const e of active) perUnitHeadcount.set(e.unitId, (perUnitHeadcount.get(e.unitId) ?? 0) + 1)
+    const perUnitDniRobocze = new Map<string, number>()
+    for (const e of ekspozycja.values()) perUnitDniRobocze.set(e.unitId, (perUnitDniRobocze.get(e.unitId) ?? 0) + e.dni)
 
     const wgTypu = [...perType.entries()]
       .map(([typ, dni]) => ({ typ, dni, udzial: ratio(dni, dniNieobecnosci) }))
       .sort((a, b) => b.dni - a.dni || a.typ.localeCompare(b.typ, 'pl'))
 
-    const wgJednostek = [...new Set([...perUnitHeadcount.keys(), ...perUnitDni.keys()])]
+    const wgJednostek = [...new Set([...perUnitDniRobocze.keys(), ...perUnitDni.keys()])]
       .map((unitId) => {
-        const unitDniRobocze = dniRobocze * (perUnitHeadcount.get(unitId) ?? 0)
+        const unitDniRobocze = perUnitDniRobocze.get(unitId) ?? 0
         const dni = perUnitDni.get(unitId) ?? 0
         return { unitId, nazwa: names.get(unitId) ?? unitId, dni, dniRobocze: unitDniRobocze, wskaznik: ratio(dni, unitDniRobocze) }
       })
       .sort((a, b) => (b.wskaznik ?? -1) - (a.wskaznik ?? -1) || a.nazwa.localeCompare(b.nazwa, 'pl'))
 
     return {
-      meta: this.buildMeta(range, scope, ['Liczone wyłącznie wnioski ZATWIERDZONE; dni poza zakresem są przycinane.']),
+      meta: this.buildMeta(range, scope, [
+        'Liczone wyłącznie wnioski ZATWIERDZONE; dni poza zakresem są przycinane.',
+        `Mianownik to dni robocze FAKTYCZNEGO zatrudnienia w zakresie (proporcjonalnie do daty zatrudnienia i dezaktywacji konta), a nie ${dniRobocze} dni × liczba osób.`,
+        'Mianownik nie jest ważony etatem, a dni robocze to pn–pt, nie indywidualny rozkład zmian — dla pracy weekendowej wskaźnik jest przybliżeniem.',
+      ]),
       dniNieobecnosci,
       dniRoboczeLacznie,
       wskaznik: ratio(dniNieobecnosci, dniRoboczeLacznie),
@@ -693,7 +765,8 @@ export class AnalitykService {
 
     return {
       meta: this.buildMeta(range, scope, [
-        `Wymiar urlopu przyjęty ryczałtowo (${WYMIAR_URLOPU_DNI} dni, KP art. 154) — schemat nie przechowuje indywidualnych wymiarów; dla osób uprawnionych do 20 dni saldo jest zawyżone o 6 dni.`,
+        `Wymiar urlopu przyjęty ryczałtowo (${WYMIAR_URLOPU_DNI} dni, KP art. 154 §1) — schemat nie przechowuje indywidualnych wymiarów, a stażu z art. 155 (poprzedni pracodawcy, zaliczenie za wykształcenie) nie da się z niego wyprowadzić.`,
+        'Przyjęto stawkę NIŻSZĄ: dla osób uprawnionych do 26 dni saldo jest zaniżone o 6 dni, więc lista ryzyka przepadnięcia może kogoś POMINĄĆ. Odwrotny błąd (ryczałt 26 dni) zapełniał ją fałszywymi alarmami.',
         `Ryzyko przepadnięcia sygnalizowane od saldo ≥ ${PROG_RYZYKA_PRZEPADNIECIA} dni w IV kwartale.`,
         'Wymiar pomniejszają wyłącznie urlop wypoczynkowy i na żądanie; bezpłatny, macierzyński, rodzicielski i wychowawczy są nieobecnością, ale puli z art. 154 nie konsumują.',
       ]),
