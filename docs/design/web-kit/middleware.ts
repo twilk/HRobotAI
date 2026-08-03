@@ -38,5 +38,6 @@ export const config = {
     // Agent Głosowy (M3) — wykonuje akcje na danych najemcy (wnioski, grafik) w imieniu zalogowanego.
     '/asystent/:path*',
     '/ustawienia/:path*',
+    '/analityk/:path*',
   ],
 }

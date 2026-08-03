@@ -24,6 +24,7 @@ import { UsersModule } from './users/users.module.js'
 import { StrategicBrainModule } from './strategic-brain/strategic-brain.module.js'
 import { DokumentyModule } from './dokumenty/dokumenty.module.js'
 import { AgentGlosowyModule } from './agent-glosowy/agent-glosowy.module.js'
+import { AnalitykModule } from './analityk/analityk.module.js'
 import { RedisService } from './common/redis/redis.service.js'
 
 @Module({
@@ -63,6 +64,7 @@ import { RedisService } from './common/redis/redis.service.js'
     StrategicBrainModule,
     DokumentyModule,
     AgentGlosowyModule,
+    AnalitykModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
