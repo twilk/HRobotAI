@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common'
 import { PassportStrategy } from '@nestjs/passport'
 import { ExtractJwt, Strategy } from 'passport-jwt'
 import * as jwt from 'jsonwebtoken'
@@ -10,10 +10,17 @@ export interface JwtPayload {
   iss: string
   hrobot_roles: string[]
   exp: number
+  /** Authorized party — the client the token was actually minted for. */
+  azp?: string
+  /** Audience. Keycloak defaults this to "account" unless an audience mapper is configured. */
+  aud?: string | string[]
   [key: string]: unknown
 }
 
 type JwtDoneCallback = (err: Error | null, key?: string) => void
+
+/** Kept in lockstep with the KEYCLOAK_ALLOWED_AZP default in packages/config env.ts. */
+const DEFAULT_ALLOWED_AZP = 'hrobot-web'
 
 @Injectable()
 export class KeycloakJwtStrategy extends PassportStrategy(Strategy, 'keycloak-jwt') {
@@ -84,7 +91,56 @@ export class KeycloakJwtStrategy extends PassportStrategy(Strategy, 'keycloak-jw
     return /^\/realms\/hrobot-[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/.test(iss.slice(base.length))
   }
 
+  /**
+   * Q10 — audience / authorized-party check.
+   *
+   * `isTrustedIssuer` proves the token came from OUR Keycloak and a real tenant realm, but says
+   * nothing about WHICH client minted it. Without this second check, any client in that realm is
+   * as good as the web app: a tenant admin who creates an OIDC client for some unrelated
+   * integration gets tokens the tenant API honours in full.
+   *
+   * `azp` is the claim that carries the answer. `aud` is checked only as a fallback, because
+   * Keycloak leaves `aud` as "account" unless an audience mapper is configured — a live demo token
+   * really does read `aud: "account", azp: "hrobot-web"`, so an `aud`-only rule would reject every
+   * legitimate request.
+   *
+   * A token with neither claim is rejected: no client identity means nothing to authorize.
+   */
+  isAllowedClient(payload: Pick<JwtPayload, 'azp' | 'aud'>, allowed: readonly string[]): boolean {
+    if (allowed.length === 0) return false
+    if (typeof payload.azp === 'string' && payload.azp.length > 0) {
+      return allowed.includes(payload.azp)
+    }
+    const aud = payload.aud
+    if (typeof aud === 'string') return allowed.includes(aud)
+    if (Array.isArray(aud)) return aud.some((a) => allowed.includes(a))
+    return false
+  }
+
+  /**
+   * Read straight from process.env, NOT via parseEnv(). parseEnv() validates the whole environment
+   * and throws when anything unrelated is missing — on the request path that would turn one
+   * misconfigured variable into a 500 for every authenticated call, and it would make this strategy
+   * impossible to unit-test without a fully populated environment. The variable's shape and default
+   * are still declared in packages/config env.ts, which is what boot-time validation enforces.
+   */
+  private get allowedClients(): readonly string[] {
+    return (process.env.KEYCLOAK_ALLOWED_AZP ?? DEFAULT_ALLOWED_AZP)
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+  }
+
+  /** Runs AFTER signature + expiry verification, so these claims are trustworthy here. */
   validate(payload: JwtPayload): JwtPayload {
+    if (!this.isAllowedClient(payload, this.allowedClients)) {
+      // Log the rejected client for forensics; never echo it back to the caller.
+      this.logger.warn(
+        { azp: payload.azp, aud: payload.aud, iss: payload.iss },
+        'Rejected token from a non-allowlisted client',
+      )
+      throw new UnauthorizedException('Token was not issued for this application')
+    }
     return payload
   }
 }
