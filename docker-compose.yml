@@ -162,6 +162,34 @@ services:
       PYTHONUNBUFFERED: "1"
     # command:  # set by the RL-agent task (shares the optimizer image; runs the agent loop, not uvicorn)
 
+  # Local speech-to-text for the Agent Głosowy module (M3). faster-whisper `small` (PL) on CPU, in
+  # its own image — CTranslate2, not torch/SB3, so it must not be mixed into the heavy RL image
+  # (see docs/superpowers/specs/2026-07-21-agent-glosowy-poc.md §1/§3).
+  #
+  # RODO: a voice recording is personal data, so transcription runs HERE and audio never leaves EU
+  # infrastructure. That is why the browser records with MediaRecorder and posts to this service
+  # rather than using Chrome's Web Speech API, which uploads audio to the vendor.
+  #
+  # Behind "full" like the other app services. The ~490 MB model is downloaded on FIRST use and
+  # cached in the named volume, so a restart does not re-download it; after that it runs offline.
+  stt:
+    profiles: ["full"]
+    build:
+      context: ./stt-service
+      dockerfile: Dockerfile
+    environment:
+      PYTHONUNBUFFERED: "1"
+      KEYCLOAK_URL: "http://keycloak:8080"
+      STT_MODEL_SIZE: "small"
+      STT_COMPUTE_TYPE: "int8"
+      STT_LANGUAGE: "pl"
+      HF_HOME: "/models"
+    volumes:
+      - hrobot_stt_models:/models
+    ports:
+      - "8010:8010"
+
 volumes:
   hrobot_pgdata:
   hrobot_keycloak:
+  hrobot_stt_models:

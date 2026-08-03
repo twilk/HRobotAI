@@ -31,8 +31,15 @@ interface ResolvedAuth {
   source: 'header' | 'cookie' | 'minted' | 'dev'
 }
 
-/** Bearer token to forward, or null if the caller supplied none and nothing else is configured. */
-async function resolveAuthorization(req: Request): Promise<ResolvedAuth | null> {
+/**
+ * Bearer token to forward, or null if the caller supplied none and nothing else is configured.
+ *
+ * Exported because the STT service (app/api/voice/transcribe) is a DIFFERENT backend that needs the
+ * IDENTICAL bearer resolution — its FastAPI dependency verifies the same Keycloak token and derives
+ * the same tenant from `iss` (stt-service/app/deps.py). Reusing this keeps one resolution order in
+ * the codebase instead of a second, slowly-diverging copy.
+ */
+export async function resolveAuthorization(req: Request): Promise<ResolvedAuth | null> {
   const header = req.headers.get('authorization')
   if (header) return { authorization: header, source: 'header' }
 
