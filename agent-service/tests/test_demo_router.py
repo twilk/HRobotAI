@@ -75,3 +75,17 @@ def test_demo_page_is_self_served_html(client):
     assert "/agent/propose" in html and "/agent/demo/corrections" in html
     # Fully self-contained + same-origin: no external hosts anywhere (no CDN, no CORS).
     assert "http://" not in html and "https://" not in html
+
+
+def test_demo_page_sends_a_bearer_token_and_no_body_tenant(client):
+    """The page must drive the *authenticated* surface, or the whole demo 401s at the first call.
+
+    It also must not smuggle a tenant in the body: the token's realm is the only thing that decides
+    which tenant's rosters the page can see (AG6).
+    """
+    html = client.get("/agent/demo").text
+    assert 'id="token"' in html  # somewhere to paste the access token
+    assert '"Authorization":"Bearer " + tok' in html
+    # No route takes a tenant from the request body any more, so the page must never build one.
+    # (The word still appears in an explanatory comment — it is the JS object key we forbid.)
+    assert "tenantId:" not in html
