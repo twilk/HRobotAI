@@ -24,12 +24,18 @@ import importlib  # noqa: E402
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from tests._authkit import TEST_JWKS, auth  # noqa: E402
+from tests._authkit import KC_URL, TEST_JWKS, auth  # noqa: E402
 
 
 def _fresh_app(tmp_path, monkeypatch):
     """Reload the app against an isolated SQLite file and a stubbed realm JWKS."""
     monkeypatch.setenv("AGENT_DB_PATH", str(tmp_path / "agent.db"))
+    # Pin the trusted-issuer config to the realm base `_authkit` mints tokens for. `require_tenant`
+    # now reads this at request time (track J), so without pinning, a developer shell that exports
+    # KEYCLOAK_URL (e.g. the `http://localhost:8080` in .env.example) would 401 every auth test.
+    monkeypatch.setenv("KEYCLOAK_URL", KC_URL)
+    monkeypatch.delenv("KEYCLOAK_TRUSTED_ISSUERS", raising=False)
+    monkeypatch.delenv("KEYCLOAK_PUBLIC_URL", raising=False)
 
     import app.agent_router as agent_router
     import app.deps as deps

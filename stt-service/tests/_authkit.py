@@ -1,9 +1,13 @@
 """Test auth kit — a throwaway RSA keypair plus helpers to mint realm-issuer JWTs.
 
+COPIED from ``agent-service/tests/_authkit.py`` for the same reason ``app/deps.py`` is: the two
+services are separate images with no shared Python package, and the auth behaviour they must both
+uphold is one behaviour. See the note at the top of ``app/deps.py``.
+
 ``app.deps.require_tenant`` verifies the bearer token against a realm's JWKS (fetched via
-``app.deps._jwks``) and derives the tenant slug from the ``iss`` claim. In tests we point ``_jwks`` at
-:data:`TEST_JWKS` (see ``conftest``) and hand out tokens signed by this in-process key, so the real
-verification path runs without a live Keycloak.
+``app.deps._jwks``) and derives the tenant slug from the ``iss`` claim. Tests point ``_jwks`` at
+:data:`TEST_JWKS` and hand out tokens signed by this in-process key, so the real verification path
+runs without a live Keycloak.
 """
 
 from __future__ import annotations
