@@ -1,11 +1,20 @@
 import { Inject, Injectable, Logger } from '@nestjs/common'
 import { randomBytes } from 'node:crypto'
 import { parseEnv } from '@hrobot/config'
-import { ProvisioningStep, Role } from '@hrobot/shared'
+import type { ControlPlanePrisma } from '@hrobot/db'
+import { EncryptionService, ProvisioningStep, Role } from '@hrobot/shared'
 import { ControlPlanePrismaService } from '../../common/prisma/control-plane-prisma.service.js'
 import type { ProvisioningStepHandler } from '../provisioning.service.js'
 
 type FetchFn = typeof fetch
+
+/** G-2: metadata keys holding the one-time bootstrap credential (see the class doc-comment). */
+export const BOOTSTRAP_PASSWORD_KEY = 'bootstrapPassword'
+export const BOOTSTRAP_ISSUED_AT_KEY = 'bootstrapPasswordIssuedAt'
+
+/** G-2: AAD binding a bootstrap ciphertext to its tenant, so a blob cannot be copied to another
+ *  tenant's row and still authenticate. Shared with the retrieval endpoint. */
+export const bootstrapAad = (tenantId: string): string => `tenant:${tenantId}:bootstrap`
 
 @Injectable()
 export class KeycloakSetupStep implements ProvisioningStepHandler {
@@ -16,6 +25,7 @@ export class KeycloakSetupStep implements ProvisioningStepHandler {
   constructor(
     private readonly prisma: ControlPlanePrismaService,
     @Inject('FETCH') private readonly fetchFn: FetchFn,
+    private readonly encryption: EncryptionService,
   ) {
     const env = parseEnv()
     this.keycloakUrl = env.KEYCLOAK_URL
@@ -119,7 +129,11 @@ export class KeycloakSetupStep implements ProvisioningStepHandler {
       }),
     })
 
-    // 4. Create the initial admin user with a temporary password
+    // 4. Create the initial admin user with a temporary password. `temporary: true` makes
+    //    Keycloak force a password change on first login, so this credential is single-use by
+    //    construction. On a retry the user already exists → 409 → Keycloak IGNORES the
+    //    credentials in the body, so `tempPassword` is only real when the create actually
+    //    succeeded; `userCreated` records that (see step 7).
     const tempPassword = randomBytes(12).toString('base64url')
     const createUserResp = await kc(`${adminBase}/${realmName}/users`, {
       method: 'POST',
@@ -131,6 +145,8 @@ export class KeycloakSetupStep implements ProvisioningStepHandler {
         credentials: [{ type: 'password', value: tempPassword, temporary: true }],
       }),
     })
+
+    const userCreated = createUserResp.status !== 409
 
     // FIX-C4: never derive the userId from Location alone — on a retry the user already
     // exists (409, no Location header), so fall back to looking it up by email.
@@ -162,13 +178,14 @@ export class KeycloakSetupStep implements ProvisioningStepHandler {
     // 6. Send credential-reset email so the admin sets their own password. BEST-EFFORT: this
     //    needs SMTP configured on the realm; a dev Keycloak without SMTP returns 500. The tenant
     //    is already fully provisioned (realm + client + roles + admin user + role mapping), so a
-    //    failure here must NOT fail provisioning — log and continue. The admin can be sent the
-    //    reset later (or use the temporary password set above).
+    //    failure here must NOT fail provisioning — log and continue.
+    let emailDelivered = false
     try {
       const emailResp = await this.fetchFn(
         `${adminBase}/${realmName}/users/${userId}/execute-actions-email`,
         { method: 'PUT', headers, body: JSON.stringify(['UPDATE_PASSWORD']) },
       )
+      emailDelivered = emailResp.ok
       if (!emailResp.ok) {
         this.logger.warn(
           { tenantId: job.tenantId, realmName, status: emailResp.status },
@@ -181,9 +198,41 @@ export class KeycloakSetupStep implements ProvisioningStepHandler {
 
     this.logger.log({ tenantId: job.tenantId, realmName }, 'Keycloak realm provisioned')
 
+    // 7. G-2: guarantee an onboarding path even with no SMTP. Previously the temp password was
+    //    generated, handed to Keycloak and then DROPPED, so when the reset e-mail could not be
+    //    delivered the freshly provisioned tenant had a working realm and an admin account nobody
+    //    could log into. Now, and ONLY when the e-mail did not go out, the credential is kept as a
+    //    one-time bootstrap secret:
+    //      - encrypted at rest with the same AES-256-GCM service that protects tenants.db_url,
+    //        AAD-bound to this tenant id (a blob cannot be moved to another tenant's row);
+    //      - never logged, never returned by the public status endpoint;
+    //      - readable exactly once, by a GLOBAL_ADMIN, via
+    //        GET /provision/bootstrap-credentials/:tenantId, which wipes it on read;
+    //      - already single-use downstream, because Keycloak marks it `temporary: true`.
+    //    Only stored when THIS run actually created the user — on a 409 retry Keycloak ignored
+    //    the credential in the request body, so `tempPassword` was never set on the account and
+    //    persisting it would hand out a password that does not work. If the e-mail DID go out the
+    //    admin has a real reset link, so any previously stored blob is wiped: no secret lingers
+    //    longer than it is needed.
+    const nextMeta: Record<string, unknown> = { ...meta, realmName, keycloakClientId: 'hrobot-web' }
+    if (emailDelivered) {
+      delete nextMeta[BOOTSTRAP_PASSWORD_KEY]
+      delete nextMeta[BOOTSTRAP_ISSUED_AT_KEY]
+    } else if (userCreated) {
+      nextMeta[BOOTSTRAP_PASSWORD_KEY] = this.encryption.encrypt(
+        tempPassword,
+        bootstrapAad(job.tenantId),
+      )
+      nextMeta[BOOTSTRAP_ISSUED_AT_KEY] = new Date().toISOString()
+      this.logger.warn(
+        { tenantId: job.tenantId, realmName, adminEmail },
+        'No password-reset e-mail was delivered — stored a one-time bootstrap credential; a GLOBAL_ADMIN can retrieve it once via GET /provision/bootstrap-credentials/:tenantId',
+      )
+    }
+
     await this.prisma.tenant.update({
       where: { id: job.tenantId },
-      data: { metadata: { ...meta, realmName, keycloakClientId: 'hrobot-web' } },
+      data: { metadata: nextMeta as ControlPlanePrisma.InputJsonObject },
     })
 
     await this.prisma.provisioningJob.update({

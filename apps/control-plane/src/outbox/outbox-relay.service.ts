@@ -32,8 +32,9 @@ export class OutboxRelayService {
       try {
         await firstValueFrom(this.client.emit(event.routingKey, event.payload))
       } catch (err) {
-        // Emit failed after claim — release the claim so it retries next tick. The provisioning
-        // consumer is idempotent, so an occasional duplicate delivery is safe.
+        // Emit failed after claim — release the claim so it retries next tick. A duplicate
+        // delivery is safe because ProvisioningService compare-and-sets a per-step claim before
+        // running anything (G-1); until that landed this comment was an assumption, not a fact.
         this.logger.error({ err, eventId: event.id }, 'Failed to publish outbox event; releasing claim')
         await this.prisma.outboxEvent.update({
           where: { id: event.id },

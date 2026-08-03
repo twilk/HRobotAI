@@ -59,6 +59,11 @@ model ProvisioningJob {
   // C1: durable retry schedule. ProvisioningService stamps this on a failed step; RetryRelay
   // re-enqueues jobs whose time is due. Replaces the lost-on-restart in-process setTimeout.
   nextAttemptAt DateTime?       @map("next_attempt_at")
+  // G-1: at-least-once claim (a lease, not a lock). RabbitMQ can deliver the same
+  // `tenant.provision` message twice; ProvisioningService compare-and-sets this together with
+  // `step` before running a handler, so exactly one consumer executes a given step. The lease
+  // expires after CLAIM_LEASE_MS so a consumer that crashed mid-step does not strand the job.
+  claimedAt     DateTime?       @map("claimed_at")
 
   @@index([nextAttemptAt])
   @@map("provisioning_jobs")

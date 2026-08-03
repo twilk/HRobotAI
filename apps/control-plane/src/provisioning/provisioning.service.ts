@@ -15,6 +15,14 @@ export interface ProvisioningStepHandler {
 
 const RETRY_DELAYS_MS = [30_000, 120_000, 600_000] as const
 
+/**
+ * G-1: how long a claimed step stays "in flight" before another consumer may retake it.
+ * Must exceed the slowest step so a healthy consumer is never overtaken: RunMigrationsStep
+ * spawns `prisma migrate deploy` with a 120 s timeout, so 5 min leaves ample head-room while
+ * still bounding how long a crashed consumer can strand a job.
+ */
+export const CLAIM_LEASE_MS = 300_000
+
 @Injectable()
 export class ProvisioningService {
   private readonly logger = new Logger(ProvisioningService.name)
@@ -52,6 +60,14 @@ export class ProvisioningService {
       return
     }
 
+    // G-1: RabbitMQ is AT-LEAST-ONCE, so a duplicate delivery of this exact message is a normal
+    // event, not a fault (consumer crash before ack, OutboxRelay releasing+re-publishing a claim,
+    // RetryRelay re-enqueueing while the pipeline's own emit is still in flight). Without a claim
+    // two consumers run the same step concurrently: SeedStep would create a second "Cała firma"
+    // root, CreateDbStep would interleave two password rotations and leave the stored db_url out
+    // of sync with the role. Claim the step FIRST; only the winner executes anything.
+    if (!(await this.claimStep(job))) return
+
     try {
       await handler.execute(job)
       // Drive the pipeline forward: each step handler advances job.step in the DB but emits no
@@ -61,7 +77,16 @@ export class ProvisioningService {
       // KEYCLOAK_SETUP->DONE re-emits and DoneStep runs; DoneStep leaves step=DONE (unchanged), so
       // no further emit. FAILED is terminal too. emit() returns a cold Observable, so it MUST be
       // subscribed (firstValueFrom) or nothing is published.
-      const after = await this.prisma.provisioningJob.findUnique({ where: { id: job.id } })
+      //
+      // G-1: releasing the claim is part of the same write. It MUST happen before the emit below,
+      // because the follow-up message races back in and has to be able to claim the NEXT step —
+      // a still-held lease would make the winner block its own successor for CLAIM_LEASE_MS.
+      // nextAttemptAt is cleared too: this attempt succeeded, so any retry armed by a contended
+      // duplicate delivery (see claimStep) is now stale and must not fire.
+      const after = await this.prisma.provisioningJob.update({
+        where: { id: job.id },
+        data: { claimedAt: null, nextAttemptAt: null },
+      })
       const next = after?.step
       if (this.client && next && next !== job.step && next !== ProvisioningStep.FAILED) {
         await firstValueFrom(this.client.emit('tenant.provision', { jobId: job.id, tenantId: job.tenantId }))
@@ -80,7 +105,12 @@ export class ProvisioningService {
         this.logger.error({ jobId: job.id, err }, 'Provisioning permanently failed after 3 attempts')
         await this.prisma.provisioningJob.update({
           where: { id: job.id },
-          data: { step: ProvisioningStep.FAILED, lastError: message, attemptCount: nextAttempt },
+          data: {
+            step: ProvisioningStep.FAILED,
+            lastError: message,
+            attemptCount: nextAttempt,
+            claimedAt: null,
+          },
         })
         this.logger.error({ tenantId: job.tenantId }, 'ALERT: tenant provisioning failed permanently')
         return
@@ -95,9 +125,74 @@ export class ProvisioningService {
           attemptCount: nextAttempt,
           lastError: message,
           nextAttemptAt: new Date(Date.now() + delayMs),
+          // G-1: release the claim so the scheduled retry can take it immediately instead of
+          // waiting out the lease.
+          claimedAt: null,
         },
       })
       this.logger.warn({ jobId: job.id, delayMs }, 'Scheduled durable retry')
     }
+  }
+
+  /**
+   * G-1: compare-and-set the step claim. A single UPDATE takes a row lock in Postgres, so the
+   * `(id, step, lease-free)` predicate is evaluated and the claim written atomically — exactly
+   * one of N concurrent consumers can observe `count === 1`.
+   *
+   * Chosen over per-step idempotency alone because idempotency cannot fix CONCURRENT
+   * interleavings (two CreateDbStep runs can still crossover their password rotation), and
+   * because a single central invariant also covers steps added later. Per-step idempotency is
+   * still kept as defence in depth for SeedStep/DoneStep, whose re-run is destructive even when
+   * strictly sequential (after a lease expiry or a crash).
+   */
+  private async claimStep(job: { id: string; step: string; claimedAt: Date | null }): Promise<boolean> {
+    const now = new Date()
+    const staleBefore = new Date(now.getTime() - CLAIM_LEASE_MS)
+
+    const claimed = await this.prisma.provisioningJob.updateMany({
+      where: {
+        id: job.id,
+        // CAS: the step must not have moved since we read it…
+        step: job.step as ProvisioningStep,
+        // …and no live lease may be held. An expired lease is retaken (holder crashed).
+        OR: [{ claimedAt: null }, { claimedAt: { lt: staleBefore } }],
+      },
+      data: { claimedAt: now },
+    })
+    if (claimed.count === 1) return true
+
+    // Lost the race. Two distinguishable causes, and they need different handling:
+    const fresh = await this.prisma.provisioningJob.findUnique({ where: { id: job.id } })
+    const stillOnSameStep =
+      fresh !== null &&
+      fresh.step === job.step &&
+      fresh.step !== ProvisioningStep.DONE &&
+      fresh.step !== ProvisioningStep.FAILED
+
+    if (stillOnSameStep) {
+      // (a) another consumer holds a live lease on this same step. It may yet crash, and THIS
+      // delivery is about to be acked — dropping it silently would strand the job. Arm a durable
+      // retry just past the lease expiry: if the holder succeeds it clears nextAttemptAt (see the
+      // success path above) and RetryRelay never fires; if it died, RetryRelay re-enqueues and the
+      // now-expired lease is retaken.
+      const leaseEnds = (fresh.claimedAt?.getTime() ?? now.getTime()) + CLAIM_LEASE_MS
+      await this.prisma.provisioningJob.update({
+        where: { id: job.id },
+        data: { nextAttemptAt: new Date(leaseEnds + 1_000) },
+      })
+      this.logger.warn(
+        { jobId: job.id, step: job.step },
+        'Provisioning step already claimed by another consumer — skipping duplicate delivery, retry armed',
+      )
+      return false
+    }
+
+    // (b) the step already advanced (or reached DONE/FAILED): the other consumer finished and
+    // emitted its own follow-up message. Nothing to do, and nothing to re-arm.
+    this.logger.log(
+      { jobId: job.id, step: job.step, currentStep: fresh?.step },
+      'Provisioning step already completed by another consumer — dropping duplicate delivery',
+    )
+    return false
   }
 }
