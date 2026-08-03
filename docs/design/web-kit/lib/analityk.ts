@@ -72,12 +72,14 @@ export interface ZatrudnienieResult {
   stanNaKoniec: number
   stanNaPoczatek: number
   przyjecia: number
-  odejscia: number
-  zmiana: number
-  rotacja: number | null
+  /** `null` = UNKNOWN (no employee record is linked to a user account), never a reassuring 0. */
+  odejscia: number | null
+  zmiana: number | null
+  /** Raw rate FOR THE SELECTED PERIOD — not annualized. Labelled as such everywhere it is rendered. */
+  rotacjaWOkresie: number | null
   wgJednostek: UnitBreakdown[]
   wgLokalizacji: UnitBreakdown[]
-  dynamika: { miesiac: string; przyjecia: number; odejscia: number }[]
+  dynamika: { miesiac: string; przyjecia: number; odejscia: number | null }[]
 }
 
 export interface AbsencjeResult {
@@ -96,10 +98,14 @@ export interface CzasPracyResult {
   osobodni: number
   sredniaDzienna: number | null
   normaGodzin: number
-  nadgodziny: number
-  niedobor: number
-  wgJednostek: { unitId: string; nazwa: string; godziny: number; nadgodziny: number }[]
-  topNadgodziny: { employeeId: string; unitId: string; nadgodziny: number }[]
+  /**
+   * Rostered hours above the WEEKLY norm. NOT "nadgodziny" under the Kodeks pracy: planned time, no
+   * unpaid-break deduction, no daily norm (art. 151 §1). Every label rendering it must say so.
+   */
+  nadwyzkaPonadNorme: number
+  niedoborDoNormy: number
+  wgJednostek: { unitId: string; nazwa: string; godziny: number; nadwyzka: number }[]
+  topNadwyzka: { employeeId: string; unitId: string; nadwyzka: number }[]
 }
 
 export interface UrlopyResult {
@@ -149,7 +155,7 @@ export interface PorownanieKpi {
   stanZatrudnienia: number
   wskaznikAbsencji: number | null
   sumaGodzin: number
-  nadgodziny: number
+  nadwyzkaPonadNorme: number
   wnioskiWToku: number
   medianaGodzinDoDecyzji: number | null
 }
@@ -163,7 +169,7 @@ export interface PorownanieResult {
 /** Machine code per detection rule — parity with `KodAnomalii` in analityk.anomalie.ts. */
 export type KodAnomalii =
   | 'ABSENCJA_SKOK'
-  | 'NADGODZINY_SKOK'
+  | 'NADWYZKA_SKOK'
   | 'KOLEJKA_WNIOSKOW'
   | 'CZAS_DECYZJI'
   | 'SPADEK_ZATRUDNIENIA'

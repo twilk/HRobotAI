@@ -19,6 +19,7 @@ import {
   monthToDateRange,
   podsumowanieToCsv,
   shortId,
+  zebraneUwagi,
   TONE_TEXT,
   yearToDateRange,
   WAGA_CLASSES,
@@ -159,18 +160,8 @@ export function AnalitykDashboard() {
     URL.revokeObjectURL(url)
   }, [data])
 
-  const uwagi = useMemo(() => {
-    if (!data) return []
-    const all = [
-      ...data.meta.uwagi,
-      ...data.czasPracy.meta.uwagi,
-      ...data.urlopy.meta.uwagi,
-      ...data.wnioski.meta.uwagi,
-      ...data.zatrudnienie.meta.uwagi,
-      ...data.absencje.meta.uwagi,
-    ]
-    return [...new Set(all)]
-  }, [data])
+  // The SAME list the CSV export appends as its "Zastrzeżenia" section — one source, two renderings.
+  const uwagi = useMemo(() => (data ? zebraneUwagi(data) : []), [data])
 
   return (
     <div className="space-y-6">
@@ -312,10 +303,10 @@ export function AnalitykDashboard() {
               deltaLabel={porownanie ? TONE_TEXT[deltaTone(porownanie.zmiana.sumaGodzin)] : undefined}
             />
             <KpiTile
-              label="Nadgodziny"
-              value={formatHours(data.czasPracy.nadgodziny, 0)}
-              delta={porownanie ? formatDelta(porownanie.zmiana.nadgodziny) : undefined}
-              deltaLabel={porownanie ? TONE_TEXT[deltaTone(porownanie.zmiana.nadgodziny, true)] : undefined}
+              label="Nadwyżka ponad normę"
+              value={formatHours(data.czasPracy.nadwyzkaPonadNorme, 0)}
+              delta={porownanie ? formatDelta(porownanie.zmiana.nadwyzkaPonadNorme) : undefined}
+              deltaLabel={porownanie ? TONE_TEXT[deltaTone(porownanie.zmiana.nadwyzkaPonadNorme, true)] : undefined}
             />
             <KpiTile
               label="Wnioski w toku"
@@ -357,7 +348,9 @@ export function AnalitykDashboard() {
                   categories={data.zatrudnienie.dynamika.map((d) => monthLabel(d.miesiac))}
                   series={[
                     { label: 'Przyjęcia', values: data.zatrudnienie.dynamika.map((d) => d.przyjecia) },
-                    { label: 'Odejścia', values: data.zatrudnienie.dynamika.map((d) => d.odejscia) },
+                    // An unknown month plots as 0 but is never PRESENTED as a fact: the caveat list
+                    // below says departures are unmeasurable, and the figure above reads "—".
+                    { label: 'Odejścia', values: data.zatrudnienie.dynamika.map((d) => d.odejscia ?? 0) },
                   ]}
                 />
                 <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[12.5px] sm:grid-cols-4">
@@ -367,7 +360,7 @@ export function AnalitykDashboard() {
                   </div>
                   <div>
                     <dt className="text-muted-2">Odejścia</dt>
-                    <dd className="font-semibold tabular-nums text-navy">{data.zatrudnienie.odejscia}</dd>
+                    <dd className="font-semibold tabular-nums text-navy">{formatNumber(data.zatrudnienie.odejscia, 0)}</dd>
                   </div>
                   <div>
                     <dt className="text-muted-2">Zmiana netto</dt>
@@ -376,8 +369,8 @@ export function AnalitykDashboard() {
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-muted-2">Rotacja</dt>
-                    <dd className="font-semibold tabular-nums text-navy">{formatPercent(data.zatrudnienie.rotacja)}</dd>
+                    <dt className="text-muted-2">Rotacja w okresie</dt>
+                    <dd className="font-semibold tabular-nums text-navy">{formatPercent(data.zatrudnienie.rotacjaWOkresie)}</dd>
                   </div>
                 </dl>
               </Panel>
@@ -413,7 +406,10 @@ export function AnalitykDashboard() {
 
           {/* --- Czas pracy ------------------------------------------------------------------ */}
           <section>
-            <SectionHeading icon={IconCalendar} hint={`${data.czasPracy.liczbaZmian} zmian, ${data.czasPracy.osobodni} osobodni`}>
+            <SectionHeading
+              icon={IconCalendar}
+              hint={`${data.czasPracy.liczbaZmian} zmian, ${data.czasPracy.osobodni} osobodni — z grafiku`}
+            >
               Czas pracy
             </SectionHeading>
             <div className="grid gap-3 lg:grid-cols-2">
@@ -428,12 +424,12 @@ export function AnalitykDashboard() {
                     <dd className="font-semibold tabular-nums text-navy">{formatHours(data.czasPracy.normaGodzin)}</dd>
                   </div>
                   <div>
-                    <dt className="text-muted-2">Nadgodziny</dt>
-                    <dd className="font-semibold tabular-nums text-warn">{formatHours(data.czasPracy.nadgodziny)}</dd>
+                    <dt className="text-muted-2">Nadwyżka ponad normę</dt>
+                    <dd className="font-semibold tabular-nums text-warn">{formatHours(data.czasPracy.nadwyzkaPonadNorme)}</dd>
                   </div>
                   <div>
-                    <dt className="text-muted-2">Niedobór</dt>
-                    <dd className="font-semibold tabular-nums text-muted">{formatHours(data.czasPracy.niedobor)}</dd>
+                    <dt className="text-muted-2">Niedobór do normy</dt>
+                    <dd className="font-semibold tabular-nums text-muted">{formatHours(data.czasPracy.niedoborDoNormy)}</dd>
                   </div>
                   <div className="col-span-2">
                     <dt className="text-muted-2">Średnia dzienna</dt>
@@ -441,24 +437,28 @@ export function AnalitykDashboard() {
                   </div>
                 </dl>
                 <div className="mt-3">
-                  <ChartLegend items={['Godziny przepracowane', 'Nadgodziny']} />
+                  <ChartLegend items={['Godziny z grafiku', 'Nadwyżka ponad normę tygodniową']} />
                 </div>
+                <p className="mt-2 text-[11.5px] text-muted-2">
+                  Nadwyżka liczona wyłącznie wobec normy tygodniowej z grafiku — to nie są nadgodziny w
+                  rozumieniu Kodeksu pracy (brak normy dobowej z art. 151 §1 i odliczenia przerwy).
+                </p>
               </Panel>
               <Panel title="Godziny wg jednostek">
                 <BarChart
                   data={data.czasPracy.wgJednostek.map((u) => ({
                     label: u.nazwa,
                     value: u.godziny,
-                    hint: u.nadgodziny > 0 ? `+${formatNumber(u.nadgodziny)} nadg.` : undefined,
+                    hint: u.nadwyzka > 0 ? `+${formatNumber(u.nadwyzka)} nadwyżki` : undefined,
                   }))}
                   valueFormat={(v) => formatHours(v, 0)}
                   emptyLabel="Brak zmian w tym zakresie."
                 />
               </Panel>
-              {data.czasPracy.topNadgodziny.length > 0 ? (
-                <Panel title="Najwięcej nadgodzin" className="lg:col-span-2">
+              {data.czasPracy.topNadwyzka.length > 0 ? (
+                <Panel title="Największa nadwyżka ponad normę tygodniową" className="lg:col-span-2">
                   <BarChart
-                    data={data.czasPracy.topNadgodziny.map((e) => ({ label: shortId(e.employeeId), value: e.nadgodziny }))}
+                    data={data.czasPracy.topNadwyzka.map((e) => ({ label: shortId(e.employeeId), value: e.nadwyzka }))}
                     valueFormat={(v) => formatHours(v)}
                     barClass="bg-warn"
                   />
