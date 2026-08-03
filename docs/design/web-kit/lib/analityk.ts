@@ -448,18 +448,44 @@ export function toCsv(headers: string[], rows: (string | number | null)[][]): st
   return [headers, ...rows].map((row) => row.map(cell).join(';')).join('\r\n')
 }
 
-/** Flatten a full summary into the CSV rows the export button downloads. */
+/**
+ * Every caveat attached to any aggregate in the summary, de-duplicated, in the same order the screen
+ * renders them. Exported so the CSV and the on-screen "Jak liczone są te wskaźniki" block cannot
+ * drift apart — one list, two renderings.
+ */
+export function zebraneUwagi(data: PodsumowanieResult): string[] {
+  return [
+    ...new Set([
+      ...data.meta.uwagi,
+      ...data.zatrudnienie.meta.uwagi,
+      ...data.absencje.meta.uwagi,
+      ...data.czasPracy.meta.uwagi,
+      ...data.urlopy.meta.uwagi,
+      ...data.wnioski.meta.uwagi,
+    ]),
+  ]
+}
+
+/**
+ * Flatten a full summary into the CSV rows the export button downloads.
+ *
+ * The file ENDS WITH THE CAVEATS, and that is the point of this function's shape. `meta.uwagi` is
+ * the mechanism that makes these figures honest — "leave entitlement is a flat 26 days", "the
+ * surplus is not KP overtime", "departures come from account deactivations" — and this export is
+ * exactly the path by which the numbers travel into a management deck or a grant annex. Shipping
+ * them stripped of the caveats would strip them of the only thing keeping them truthful.
+ */
 export function podsumowanieToCsv(data: PodsumowanieResult): string {
   const rows: (string | number | null)[][] = [
     ['Stan zatrudnienia na koniec', data.zatrudnienie.stanNaKoniec, 'os.'],
     ['Przyjęcia w okresie', data.zatrudnienie.przyjecia, 'os.'],
-    ['Odejścia w okresie', data.zatrudnienie.odejscia, 'os.'],
-    ['Rotacja', data.zatrudnienie.rotacja, 'udział'],
+    ['Odejścia w okresie (dezaktywacje kont)', data.zatrudnienie.odejscia, 'os.'],
+    ['Rotacja w okresie (nie w ujęciu rocznym)', data.zatrudnienie.rotacjaWOkresie, 'udział'],
     ['Dni nieobecności', data.absencje.dniNieobecnosci, 'dni robocze'],
     ['Wskaźnik absencji', data.absencje.wskaznik, 'udział'],
-    ['Suma godzin', data.czasPracy.sumaGodzin, 'h'],
-    ['Nadgodziny', data.czasPracy.nadgodziny, 'h'],
-    ['Niedobór', data.czasPracy.niedobor, 'h'],
+    ['Suma godzin (z grafiku)', data.czasPracy.sumaGodzin, 'h'],
+    ['Nadwyżka ponad normę tygodniową (z grafiku, nie nadgodziny KP)', data.czasPracy.nadwyzkaPonadNorme, 'h'],
+    ['Niedobór do normy tygodniowej (z grafiku)', data.czasPracy.niedoborDoNormy, 'h'],
     ['Średnia dzienna', data.czasPracy.sredniaDzienna, 'h'],
     ['Wykorzystane dni urlopu', data.urlopy.wykorzystaneDni, 'dni'],
     ['Średnie saldo urlopu', data.urlopy.srednieSaldo, 'dni'],
@@ -468,5 +494,8 @@ export function podsumowanieToCsv(data: PodsumowanieResult): string {
     ['Odsetek odrzuceń', data.wnioski.odsetekOdrzucen, 'udział'],
   ]
   const header = [`Analityk HR ${data.meta.od} – ${data.meta.do}`]
-  return [header.join(';'), toCsv(['Wskaźnik', 'Wartość', 'Jednostka'], rows)].join('\r\n')
+  const uwagi = zebraneUwagi(data)
+  const zastrzezenia =
+    uwagi.length > 0 ? ['', 'Zastrzeżenia', toCsv(['Lp.', 'Treść'], uwagi.map((u, i) => [i + 1, u]))] : []
+  return [header.join(';'), toCsv(['Wskaźnik', 'Wartość', 'Jednostka'], rows), ...zastrzezenia].join('\r\n')
 }

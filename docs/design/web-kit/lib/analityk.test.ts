@@ -23,6 +23,7 @@ import {
   toIsoDate,
   xPositions,
   yearToDateRange,
+  zebraneUwagi,
   type PodsumowanieResult,
 } from './analityk'
 
@@ -257,13 +258,15 @@ describe('toCsv', () => {
 })
 
 describe('podsumowanieToCsv', () => {
+  const meta = (uwagi: string[] = []) => ({ od: '2026-06-01', do: '2026-06-14', unitIds: null, dniRobocze: 10, uwagi })
+
   const summary = {
-    meta: { od: '2026-06-01', do: '2026-06-14', unitIds: null, dniRobocze: 10, uwagi: [] },
-    zatrudnienie: { stanNaKoniec: 3, przyjecia: 1, odejscia: 1, rotacja: 0.3333 },
-    absencje: { dniNieobecnosci: 7, wskaznik: 0.2333 },
-    czasPracy: { sumaGodzin: 102, nadgodziny: 10, niedobor: 8, sredniaDzienna: 9.27 },
-    urlopy: { wykorzystaneDni: 5, srednieSaldo: 24.33 },
-    wnioski: { wToku: 3, medianaGodzinDoDecyzji: 12, odsetekOdrzucen: 0.3333 },
+    meta: meta(),
+    zatrudnienie: { meta: meta(), stanNaKoniec: 3, przyjecia: 1, odejscia: 1, rotacjaWOkresie: 0.3333 },
+    absencje: { meta: meta(), dniNieobecnosci: 7, wskaznik: 0.2333 },
+    czasPracy: { meta: meta(), sumaGodzin: 102, nadwyzkaPonadNorme: 10, niedoborDoNormy: 8, sredniaDzienna: 9.27 },
+    urlopy: { meta: meta(), wykorzystaneDni: 5, srednieSaldo: 24.33 },
+    wnioski: { meta: meta(), wToku: 3, medianaGodzinDoDecyzji: 12, odsetekOdrzucen: 0.3333 },
   } as unknown as PodsumowanieResult
 
   it('titles the export with the analysed range', () => {
@@ -274,12 +277,57 @@ describe('podsumowanieToCsv', () => {
     const csv = podsumowanieToCsv(summary)
     expect(csv).toContain('Stan zatrudnienia na koniec;3;os.')
     expect(csv).toContain('Wskaźnik absencji;0,23;udział')
-    expect(csv).toContain('Nadgodziny;10;h')
     expect(csv).toContain('Mediana czasu do decyzji;12;h')
   })
 
+  it('names the working-time figure honestly — never the bare legal term "Nadgodziny"', () => {
+    const csv = podsumowanieToCsv(summary)
+    expect(csv).toContain('Nadwyżka ponad normę tygodniową (z grafiku, nie nadgodziny KP);10;h')
+    expect(csv).not.toMatch(/(^|;)Nadgodziny;/m)
+  })
+
+  it('qualifies rotation with its period — a 14-day rate is not an annual one', () => {
+    expect(podsumowanieToCsv(summary)).toContain('Rotacja w okresie (nie w ujęciu rocznym);0,33;udział')
+  })
+
   it('leaves an unknown figure blank instead of exporting a fabricated 0', () => {
-    const blank = { ...summary, absencje: { dniNieobecnosci: 0, wskaznik: null } } as unknown as PodsumowanieResult
+    const blank = { ...summary, absencje: { meta: meta(), dniNieobecnosci: 0, wskaznik: null } } as unknown as PodsumowanieResult
     expect(podsumowanieToCsv(blank)).toContain('Wskaźnik absencji;;udział')
+  })
+
+  it('APPENDS the caveats — the export is the path to a deck, and numbers must not travel alone', () => {
+    const withUwagi = {
+      ...summary,
+      meta: meta(['Dni robocze liczone jako pn–pt; schemat nie zawiera kalendarza świąt.']),
+      czasPracy: { ...summary.czasPracy, meta: meta(['To NADWYŻKA PONAD NORMĘ TYGODNIOWĄ, a nie nadgodziny w rozumieniu KP.']) },
+    } as unknown as PodsumowanieResult
+
+    const csv = podsumowanieToCsv(withUwagi)
+    expect(csv).toContain('Zastrzeżenia')
+    expect(csv).toContain('kalendarza świąt')
+    expect(csv).toContain('nie nadgodziny w rozumieniu KP')
+    // The caveats come LAST, after the figures they qualify.
+    expect(csv.indexOf('Zastrzeżenia')).toBeGreaterThan(csv.indexOf('Stan zatrudnienia na koniec'))
+  })
+
+  it('omits the caveat block entirely rather than printing an empty heading', () => {
+    expect(podsumowanieToCsv(summary)).not.toContain('Zastrzeżenia')
+  })
+})
+
+describe('zebraneUwagi', () => {
+  const meta = (uwagi: string[]) => ({ od: '2026-06-01', do: '2026-06-14', unitIds: null, dniRobocze: 10, uwagi })
+
+  it('merges every aggregate’s caveats and de-duplicates them', () => {
+    const data = {
+      meta: meta(['wspólna']),
+      zatrudnienie: { meta: meta(['wspólna', 'o odejściach']) },
+      absencje: { meta: meta(['o absencji']) },
+      czasPracy: { meta: meta(['o godzinach']) },
+      urlopy: { meta: meta(['o urlopach']) },
+      wnioski: { meta: meta(['o wnioskach']) },
+    } as unknown as PodsumowanieResult
+
+    expect(zebraneUwagi(data)).toEqual(['wspólna', 'o odejściach', 'o absencji', 'o godzinach', 'o urlopach', 'o wnioskach'])
   })
 })
