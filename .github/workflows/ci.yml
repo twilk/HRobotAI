@@ -74,6 +74,59 @@ jobs:
       - name: Unit tests
         run: pnpm turbo run test --cache-dir=.turbo/cache
 
+  # CI-4 — integration gate: tenant isolation against a REAL Postgres with >=2 tenant databases.
+  # Separate job (not a step on `ci`) so the service container only spins up for the lane that needs
+  # it, and a failure here is attributable at a glance.
+  integration:
+    name: integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      # Superuser access is required: the spec does CREATE DATABASE / CREATE ROLE / DROP DATABASE to
+      # build two throwaway tenant databases per run, then tears them down.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      # NOTE: Redis is NOT started here yet — no *.integration.spec.ts touches it today, and this
+      # pipeline's rule is that a service container appears WITH the test that needs it. Add it
+      # alongside the first Redis-backed integration spec (tenant-context cache / throttler).
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # turbo's `test:integration` task depends on ^build + db:generate, so the Prisma clients and
+      # workspace builds are produced here before the spec runs.
+      - name: Integration tests (tenant isolation)
+        env:
+          # Throwaway credentials for the ephemeral service container — NOT a secret.
+          POSTGRES_SUPERUSER_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          # Test-only key. Real keys live in Actions secrets / the runner env, never in this file.
+          TENANT_DB_ENCRYPTION_KEY: '00000000000000000000000000000000000000000000000000000000000000ff'
+        run: pnpm turbo run test:integration --cache-dir=.turbo/cache
+
   # CI-6 — python test lanes for the two AI services. Separate jobs: distinct dep stacks
   # (lean CP-SAT image vs SB3/torch), parallel wall-clock, clean failure attribution.
   py-optimizer:
@@ -146,9 +199,6 @@ jobs:
         run: python -m pytest -q
 
   # --- Re-add WITH real coverage (do not un-comment empty lanes — they only burn minutes) ---
-  # CI-4: integration job with Postgres+Redis service containers + the app env block
-  #        (CONTROL_PLANE_DATABASE_URL, REDIS_URL, TENANT_DB_ENCRYPTION_KEY, KEYCLOAK_*, …)
-  #        once *.integration.spec.ts (tenant-isolation) exist.
   # CI-5: Playwright smoke job (login → /grafik, 0 console errors) once the web e2e package lands.
   # spec §8: fan-out tenant migrations (needs control-plane migrate + a provisioned tenant, M2-B2).
 

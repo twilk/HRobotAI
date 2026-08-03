@@ -20,7 +20,8 @@
     },
     "test:integration": {
       "dependsOn": ["^build", "db:generate"],
-      "cache": false
+      "cache": false,
+      "env": ["CI", "POSTGRES_SUPERUSER_URL", "TENANT_DB_ENCRYPTION_KEY"]
     },
     "test:e2e:smoke": {
       "dependsOn": ["^build"],
