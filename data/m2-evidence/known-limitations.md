@@ -7,6 +7,8 @@
 - **H5** (odpoczynek tygodniowy 35h): miękki proxy „≥N dni wolnych/tydz." (horyzont 1-tygodniowy nie modeluje rolling-35h). → pełne H5 w M3.
 - **H6** (limity godzin/nadgodziny): **nie egzekwowane** w M2 (etat tylko jako cel miękki). → M3.
 - **Fairness**: `fairnessScore = 0.0` (człon wariancji odroczony). → M3.
+- **Waga `weights.d` (zapotrzebowanie) jest przyjmowana, ale nieużywana** — pokrycie jest twardym ograniczeniem struktury modelu, więc nie ma czego ważyć w funkcji celu. Zmiana tej wagi nie wpływa na wynik. Udokumentowane w `grafik-optimizer/app/solver.py` i przypięte testem; dopisane tutaj 03.08 dla spójności ujęcia odbiorowego. Aktywne wagi: `e` (odchylenie etatu), `g` (dojazdy), `p` (preferencje miękkie).
+- **Preferencje pracownika** (`preferredDaysOff`, `preferredShiftStart`) są **miękkie** — optymalizowane przez człon `w_p`, nigdy gwarantowane.
 - Dojazdy: haversine na współrzędnych syntetycznych; OSRM (realny routing drogowy) → po pilocie. Brak self-hosted geokodera (Nominatim) w M2.
 - Determinizm: single-worker + stały seed; przy time-limit/FEASIBLE nie gwarantujemy bit-identyczności.
 
