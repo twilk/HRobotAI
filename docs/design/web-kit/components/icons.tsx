@@ -154,3 +154,12 @@ export const IconSparkles = (p: IconProps) => (
     <path d="M18.5 15.5l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7.7-1.9Z" />
   </Icon>
 )
+/** Bar-chart glyph — the Analityk HR module (M3). */
+export const IconChart = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M4 20h16" />
+    <rect x="5.5" y="12" width="3.4" height="6" rx="1" />
+    <rect x="10.9" y="8" width="3.4" height="10" rx="1" />
+    <rect x="16.3" y="4.5" width="3.4" height="13.5" rx="1" />
+  </Icon>
+)

@@ -8,6 +8,7 @@ import {
   IconSettings,
   IconUser,
   IconSparkles,
+  IconChart,
 } from '@/components/icons'
 
 export type Role = 'PRACOWNIK' | 'MANAGER' | 'HR' | 'ADMIN_KLIENTA'
@@ -49,6 +50,9 @@ export const NAV: NavGroup[] = [
       { label: 'Zamiany', href: '/zamiany', icon: IconRequests },
       { label: 'Wnioski', href: '/wnioski', icon: IconRequests, tag: '3' },
       { label: 'Dostępy', href: '/dostepy', icon: IconKey, roles: ['MANAGER', 'HR', 'ADMIN_KLIENTA'] },
+      // M3 Analityk HR: aggregate workforce analytics, so a plain PRACOWNIK never sees the entry
+      // (the tenant-runtime @Roles gate answers them with a 403 regardless).
+      { label: 'Analityk HR', href: '/analityk', icon: IconChart, roles: ['MANAGER', 'HR', 'ADMIN_KLIENTA'] },
     ],
   },
   {
