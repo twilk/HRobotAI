@@ -8,7 +8,7 @@ optimizer the rest of ``/agent/*`` talks to. The scripted manager stays **server
 (not forked into the client), and everything here is on the fixed synthetic scenario (RODO-safe).
 
 Endpoints:
-  POST /agent/demo/corrections  { proposalId, budget?, tenantId? }
+  POST /agent/demo/corrections  { proposalId, budget? }   — bearer token required
       → { editDistance, normalizedEditDistance, acceptanceMetric, edits[], acceptedAssignments, managerPreference }
         The scripted manager's MOVE corrections toward its preferred schedule for a given proposal,
         plus the live edit-distance / acceptance of that proposal vs. the manager-accepted schedule.
@@ -17,19 +17,26 @@ Endpoints:
 
 Reuses the one process-wide ``AgentStore`` from :mod:`app.agent_router` so it reads the very proposals
 ``POST /agent/propose`` just wrote.
+
+**Auth (AG6, same posture as the rest of ``/agent/*``):** ``/corrections`` reads a persisted proposal
+out of that shared, tenant-partitioned store, so it is a *data-read* surface even though it is
+demo-only — it must not be a back door around the tenant isolation the sibling routes enforce. It
+therefore depends on :func:`app.deps.require_tenant`: the tenant comes from the verified token issuer,
+and a ``tenantId`` in the request body is ignored (the model has no such field, and pydantic drops
+extras) exactly as in :mod:`app.schemas`.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from . import agent_router
 from .contract import Assignment, ProblemInput
 from .demo_ag2 import _edits_toward, manager_accepted_schedule
+from .deps import require_tenant
 from .metrics import acceptance_metric, edit_distance, normalized_edit_distance
-from .service import DEFAULT_TENANT
 
 router = APIRouter(prefix="/agent/demo", tags=["agent-demo"])
 
@@ -40,23 +47,27 @@ MANAGER_PREFERENCE = (
 
 
 class CorrectionsRequest(BaseModel):
+    # No ``tenantId``: the tenant is derived from the authenticated bearer token (AG6). A caller that
+    # still sends one has it silently dropped — it must never select which tenant's data is read.
     proposalId: str
     budget: int = 6
-    tenantId: str = DEFAULT_TENANT
 
 
 @router.post("/corrections")
-def corrections(req: CorrectionsRequest):
+def corrections(req: CorrectionsRequest, tenant: str = Depends(require_tenant)):
     """Return the scripted manager's corrections for a proposal + the live edit-distance/acceptance.
 
     Loads the proposal the service just persisted, reconstructs the manager-accepted schedule with the
     exact same helper the committed AG2 demo uses, and returns the MOVE edits toward it. The client
     feeds these straight back to ``POST /agent/feedback`` — so the whole learning loop is driven over
     HTTP against the running service, and the numbers here are the ones the audience watches fall.
+
+    The proposal lookup is scoped to ``tenant`` from the token, so a caller can only ever see the
+    rosters of the realm it authenticated against.
     """
     # Look the store up dynamically (not captured at import) so we always share the *current*
     # process-wide store — including after the test fixture reloads ``agent_router``.
-    proposal = agent_router._store.get_proposal(req.tenantId, req.proposalId)
+    proposal = agent_router._store.get_proposal(tenant, req.proposalId)
     if proposal is None:
         raise HTTPException(status_code=404, detail="unknown proposalId for tenant")
     problem = ProblemInput.model_validate(proposal["problem"])
