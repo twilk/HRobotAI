@@ -96,35 +96,51 @@ WHERE lr.employee_id = e.id AND lr.status = 'APPROVED' AND lr.decided_by_user_id
 
 -- 5b) Add 2 PENDING (manager inbox) + 1 REJECTED for Region Centrum employees, so the approval
 --     workflow is demonstrable. PENDING/REJECTED never feed the AI drop-out scan (only APPROVED does).
+--
+--     [L-1] ID CONTRACT. These ids used to be the readable slugs `lr-demo-p1/p2/r1`. `leave_requests`
+--     is addressed by `GET /wnioski/:id`, `POST /wnioski/:id/decision` and `POST /wnioski/:id/cancel`,
+--     all guarded by Nest's `ParseUUIDPipe`, so those three rows answered 400 to every request —
+--     including the Zatwierdź / Odrzuć buttons on the Wnioski screen, i.e. exactly the approval
+--     workflow this block exists to demonstrate (both PENDING rows were affected).
+--     They now carry fixed ids from the demo family `a1d00000-0000-4000-8000-…`, tail `…0a0N`
+--     (`a` = leave, matching scripts/seed-demo-strategic-brain.sql's convention).
+--
+--     The block was rewritten from `SELECT … FROM (VALUES …) g CROSS JOIN LATERAL (…)` into a plain
+--     VALUES list so that each id is a LITERAL in the statement — a generated id cannot be pinned by
+--     the seed guard, and with only three rows there is nothing to generate. The employee pick is
+--     unchanged in meaning: same unit, same (last_name, first_name) order, same offsets 0/1/2. The
+--     REJECTED decider is now resolved inline (an UNcorrelated scalar subquery is legal in VALUES —
+--     only the correlated form was not), which retires the follow-up UPDATE that used to patch it.
 INSERT INTO leave_requests
   (id, employee_id, start_date, end_date, status, type, created_at, updated_at, decided_at, decided_by_user_id, reason)
-SELECT 'lr-demo-' || g.n, e.id, g.sd, g.ed, g.st::"LeaveStatus", g.tp, now(), now(), g.dat, g.dby, g.rsn
-FROM (
-  VALUES
-    ('p1', DATE '2026-08-04', DATE '2026-08-08', 'PENDING',  'URLOP_WYPOCZYNKOWY', NULL::timestamp, NULL::text, NULL::text),
-    ('p2', DATE '2026-08-11', DATE '2026-08-12', 'PENDING',  'URLOP_NA_ZADANIE',   NULL,            NULL,       NULL),
-    ('r1', DATE '2026-07-28', DATE '2026-08-01', 'REJECTED', 'URLOP_WYPOCZYNKOWY',
-        TIMESTAMP '2026-07-14 09:00', NULL, 'Brak zastępstwa w tym terminie — proszę o inny termin')
-) AS g(n, sd, ed, st, tp, dat, dby, rsn)
-CROSS JOIN LATERAL (
-  SELECT id FROM employees
-  WHERE unit_id = (SELECT id FROM organizational_units WHERE name = 'Region Centrum')
-  ORDER BY last_name, first_name
-  OFFSET (CASE g.n WHEN 'p1' THEN 0 WHEN 'p2' THEN 1 ELSE 2 END) LIMIT 1
-) e
+VALUES
+  ('a1d00000-0000-4000-8000-000000000a01',
+   (SELECT id FROM employees WHERE unit_id = (SELECT id FROM organizational_units WHERE name = 'Region Centrum')
+    ORDER BY last_name, first_name OFFSET 0 LIMIT 1),
+   DATE '2026-08-04', DATE '2026-08-08', 'PENDING'::"LeaveStatus", 'URLOP_WYPOCZYNKOWY', now(), now(),
+   NULL, NULL, NULL),
+  ('a1d00000-0000-4000-8000-000000000a02',
+   (SELECT id FROM employees WHERE unit_id = (SELECT id FROM organizational_units WHERE name = 'Region Centrum')
+    ORDER BY last_name, first_name OFFSET 1 LIMIT 1),
+   DATE '2026-08-11', DATE '2026-08-12', 'PENDING'::"LeaveStatus", 'URLOP_NA_ZADANIE', now(), now(),
+   NULL, NULL, NULL),
+  ('a1d00000-0000-4000-8000-000000000a03',
+   (SELECT id FROM employees WHERE unit_id = (SELECT id FROM organizational_units WHERE name = 'Region Centrum')
+    ORDER BY last_name, first_name OFFSET 2 LIMIT 1),
+   DATE '2026-07-28', DATE '2026-08-01', 'REJECTED'::"LeaveStatus", 'URLOP_WYPOCZYNKOWY', now(), now(),
+   TIMESTAMP '2026-07-14 09:00',
+   (SELECT id FROM users WHERE email = 'manager.demo@demo.hrobot.local'),
+   'Brak zastępstwa w tym terminie — proszę o inny termin')
 ON CONFLICT (id) DO NOTHING;
-
--- resolve the REJECTED decider (manager) now that it can't be a correlated subquery in VALUES
-UPDATE leave_requests SET decided_by_user_id = (SELECT id FROM users WHERE email = 'manager.demo@demo.hrobot.local')
-WHERE id = 'lr-demo-r1';
 
 -- 5c) Demo DROP-OUT: an APPROVED leave landing on an assigned shift for a Region Centrum employee, so
 --     the MANAGER dashboard "Wyjątki obsady" panel shows a real staffing threat (the AI-Grafik tie-in:
 --     APPROVED leave overlapping an assigned shift → vacated shift surfaced by /replacements/scan).
 --     Picks a Centrum employee who has a shift in the demo fortnight and covers those two dates.
+--     [L-1] id was the slug `lr-demo-dropout-1` — see 5b for why that answered 400.
 INSERT INTO leave_requests
   (id, employee_id, start_date, end_date, status, type, created_at, updated_at, decided_at, decided_by_user_id, reason)
-SELECT 'lr-demo-dropout-1', pick.emp, pick.d0, pick.d0 + 1, 'APPROVED', 'URLOP_NA_ZADANIE', now(), now(),
+SELECT 'a1d00000-0000-4000-8000-000000000a04', pick.emp, pick.d0, pick.d0 + 1, 'APPROVED', 'URLOP_NA_ZADANIE', now(), now(),
        TIMESTAMP '2026-07-13 09:00', (SELECT id FROM users WHERE email = 'manager.demo@demo.hrobot.local'),
        'Pilny urlop na żądanie'
 FROM (
