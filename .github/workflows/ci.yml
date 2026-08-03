@@ -198,8 +198,62 @@ jobs:
       - name: pytest
         run: python -m pytest -q
 
+  # CI-5 — browser smoke: login → /grafik renders → 0 console errors → screenshot artifact.
+  #
+  # This lane drives a RUNNING stack (web-kit + Keycloak + tenant-runtime + Postgres), so unlike the
+  # other jobs it cannot stand alone on a hosted runner. It is therefore gated on the repo variable
+  # E2E_BASE_URL (set it to the staging URL once the self-hosted runner from ENV-1 is registered).
+  # Without that variable the job is skipped rather than red — but note the runner script FAILS in CI
+  # if the URL is set and nothing answers, so a broken staging cannot masquerade as a pass.
+  e2e-smoke:
+    name: e2e-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: ${{ vars.E2E_BASE_URL != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # web-kit is a standalone pnpm project outside the workspace — install it separately.
+      - name: Install web-kit deps
+        working-directory: docs/design/web-kit
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        working-directory: docs/design/web-kit
+        run: npx playwright install --with-deps chromium
+
+      - name: Smoke (login -> /grafik)
+        env:
+          E2E_BASE_URL: ${{ vars.E2E_BASE_URL }}
+          # Demo-realm accounts seeded by scripts/seed-keycloak-demo.mjs. Secrets, not literals, so
+          # the staging password is not readable from this file.
+          E2E_USERNAME: ${{ secrets.E2E_USERNAME }}
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+        run: node scripts/e2e-smoke.mjs
+
+      # The screenshot is the Evidence Pack deliverable (EV-3) — keep it even when the run is red,
+      # because a failure screenshot is exactly what you want to look at.
+      - name: Upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci5-smoke-evidence
+          path: |
+            data/m2-evidence/screenshots/
+            docs/design/web-kit/.playwright/test-results/
+          if-no-files-found: warn
+
   # --- Re-add WITH real coverage (do not un-comment empty lanes — they only burn minutes) ---
-  # CI-5: Playwright smoke job (login → /grafik, 0 console errors) once the web e2e package lands.
   # spec §8: fan-out tenant migrations (needs control-plane migrate + a provisioned tenant, M2-B2).
 
   # NOTE (branch protection): with paths-ignore, a docs-only PR does not trigger this workflow,

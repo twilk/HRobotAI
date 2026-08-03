@@ -4,3 +4,7 @@ next-env.d.ts
 *.tsbuildinfo
 .turbo/
 package-lock.json
+# Playwright run artifacts (traces/failure screenshots). The Evidence Pack screenshot is written
+# straight to data/m2-evidence/screenshots/ and IS committed. [CI-5]
+.playwright/
+playwright-report/
