@@ -21,6 +21,7 @@ const mockService = {
   urlopy: jest.fn(),
   wnioski: jest.fn(),
   porownanie: jest.fn(),
+  anomalie: jest.fn(),
 }
 const client = {} as TenantClient
 const hr: JwtPayload = { sub: 'kc-hr', iss: 'x', hrobot_roles: [Role.HR], exp: 0 }
@@ -40,6 +41,7 @@ const ROUTES = [
   ['urlopy', 'urlopy'],
   ['wnioski', 'wnioski'],
   ['porownanie', 'porownanie'],
+  ['anomalie', 'anomalie'],
 ] as const
 
 describe('AnalitykController', () => {

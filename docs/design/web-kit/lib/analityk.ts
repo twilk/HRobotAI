@@ -160,6 +160,35 @@ export interface PorownanieResult {
   zmiana: PorownanieKpi
 }
 
+/** Machine code per detection rule — parity with `KodAnomalii` in analityk.anomalie.ts. */
+export type KodAnomalii =
+  | 'ABSENCJA_SKOK'
+  | 'NADGODZINY_SKOK'
+  | 'KOLEJKA_WNIOSKOW'
+  | 'CZAS_DECYZJI'
+  | 'SPADEK_ZATRUDNIENIA'
+
+export type WagaAnomalii = 'wysoka' | 'srednia'
+
+/** One detected anomaly, carrying the two values it was derived from (never an unexplained badge). */
+export interface Anomalia {
+  kod: KodAnomalii
+  waga: WagaAnomalii
+  tytul: string
+  opis: string
+  wartoscBiezaca: number
+  wartoscPoprzednia: number
+  zmiana: number
+  zmianaWzgledna: number | null
+}
+
+/** `GET /analityk/anomalie` response. An empty `anomalie` array is the healthy answer. */
+export interface AnomalieResult {
+  biezacy: PorownanieKpi
+  poprzedni: PorownanieKpi
+  anomalie: Anomalia[]
+}
+
 /** The `od`/`do`/`unitId` triple every endpoint takes. */
 export interface AnalitykQuery {
   od: string
@@ -183,6 +212,13 @@ export const analitykApi = {
   getUrlopy: (q: AnalitykQuery): Promise<UrlopyResult> => anFetch<UrlopyResult>(`/api/analityk/urlopy${qs(q)}`),
   getWnioski: (q: AnalitykQuery): Promise<WnioskiResult> => anFetch<WnioskiResult>(`/api/analityk/wnioski${qs(q)}`),
   getPorownanie: (q: AnalitykQuery): Promise<PorownanieResult> => anFetch<PorownanieResult>(`/api/analityk/porownanie${qs(q)}`),
+  getAnomalie: (q: AnalitykQuery): Promise<AnomalieResult> => anFetch<AnomalieResult>(`/api/analityk/anomalie${qs(q)}`),
+}
+
+/** Tailwind classes per anomaly severity — a left stripe + a chip, mirroring the retention feed. */
+export const WAGA_CLASSES: Record<WagaAnomalii, { stripe: string; chip: string; label: string }> = {
+  wysoka: { stripe: 'bg-error', chip: 'border-error/30 bg-error/10 text-error', label: 'Wysoka' },
+  srednia: { stripe: 'bg-warn', chip: 'border-warn/30 bg-warn/10 text-warn', label: 'Średnia' },
 }
 
 // --- pure formatters ------------------------------------------------------------------------------

@@ -16,6 +16,7 @@ import {
   weekKey,
   type AnalitykRange,
 } from './analityk.range.js'
+import { wykryjAnomalie, type Anomalia } from './analityk.anomalie.js'
 
 /** The acting user projected from the JWT + IP (identical shape to `LeaveActor`/`AccessActor`). */
 export interface AnalitykActor {
@@ -767,6 +768,20 @@ export class AnalitykService {
         medianaGodzinDoDecyzji: deltaOrNull(biezacy.medianaGodzinDoDecyzji, poprzedni.medianaGodzinDoDecyzji, 1),
       },
     }
+  }
+
+  /**
+   * Period-over-period comparison PLUS the rules that fired on it ({@link wykryjAnomalie}) — an
+   * absence spike, an overtime surge, a growing approval queue, decisions slowing down, or headcount
+   * dropping. Pure observation: the module flags what a human should look at and never acts on it.
+   */
+  async anomalie(
+    client: TenantClient,
+    scope: UnitScope,
+    range: AnalitykRange,
+  ): Promise<{ biezacy: PorownanieKpi; poprzedni: PorownanieKpi; anomalie: Anomalia[] }> {
+    const { biezacy, poprzedni } = await this.porownanie(client, scope, range)
+    return { biezacy, poprzedni, anomalie: wykryjAnomalie(biezacy, poprzedni) }
   }
 
   /** The headline KPI strip for one range — the subset {@link porownanie} compares. */

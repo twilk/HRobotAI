@@ -21,7 +21,9 @@ import {
   shortId,
   TONE_TEXT,
   yearToDateRange,
+  WAGA_CLASSES,
   type AnalitykQuery,
+  type AnomalieResult,
   type PodsumowanieResult,
   type PorownanieResult,
   type UnitBreakdown,
@@ -98,6 +100,7 @@ export function AnalitykDashboard() {
   const [preset, setPreset] = useState<Preset>('30d')
   const [data, setData] = useState<PodsumowanieResult | null>(null)
   const [porownanie, setPorownanie] = useState<PorownanieResult | null>(null)
+  const [anomalie, setAnomalie] = useState<AnomalieResult | null>(null)
   const [units, setUnits] = useState<UnitBreakdown[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -111,14 +114,17 @@ export function AnalitykDashboard() {
 
     void (async () => {
       try {
-        const [summary, compare] = await Promise.all([
+        const [summary, compare, detected] = await Promise.all([
           analitykApi.getPodsumowanie(query),
-          // Best-effort: the comparison is a nicety, so a failure here must not blank the dashboard.
+          // Best-effort: the comparison and the anomaly feed are additive, so a failure in either
+          // must not blank the dashboard the user actually came for.
           analitykApi.getPorownanie(query).catch(() => null),
+          analitykApi.getAnomalie(query).catch(() => null),
         ])
         if (cancelledRef.current) return
         setData(summary)
         setPorownanie(compare)
+        setAnomalie(detected)
         // Remember the full unit list from an UNFILTERED load so narrowing to one unit does not
         // collapse the filter's own options to that single unit.
         if (!query.unitId) setUnits(summary.zatrudnienie.wgJednostek)
@@ -249,6 +255,41 @@ export function AnalitykDashboard() {
 
       {data && !loading ? (
         <>
+          {/* --- anomalies ------------------------------------------------------------------- */}
+          {anomalie && anomalie.anomalie.length > 0 ? (
+            <section>
+              <SectionHeading
+                icon={IconSparkles}
+                hint={`porównanie z okresem ${anomalie.poprzedni.od} – ${anomalie.poprzedni.do}`}
+              >
+                Na co zwrócić uwagę
+              </SectionHeading>
+              <ul className="grid gap-2 sm:grid-cols-2">
+                {anomalie.anomalie.map((a) => {
+                  const tone = WAGA_CLASSES[a.waga]
+                  return (
+                    <li
+                      key={a.kod}
+                      className="relative flex items-start gap-3 overflow-hidden rounded-md border border-line bg-card p-3 pl-4"
+                    >
+                      <span className={'absolute inset-y-0 left-0 w-1 ' + tone.stripe} aria-hidden />
+                      <span className={'mt-0.5 inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ' + tone.chip}>
+                        {tone.label}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-[13.5px] font-semibold text-navy">{a.tytul}</span>
+                        <span className="block text-[12px] text-muted">{a.opis}</span>
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+              <p className="mt-2 text-[11.5px] text-muted-2">
+                Sygnały porównawcze — moduł wyłącznie obserwuje i nie podejmuje żadnych działań kadrowych.
+              </p>
+            </section>
+          ) : null}
+
           {/* --- KPI row --------------------------------------------------------------------- */}
           <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <KpiTile

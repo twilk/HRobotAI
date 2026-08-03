@@ -139,4 +139,17 @@ export class AnalitykController {
     const { scope, range } = await this.prepare(client, user, ip, query)
     return this.analityk.porownanie(client, scope, range)
   }
+
+  /** Rules that fired on the period-over-period comparison — observation only, never an action. */
+  @Get('anomalie')
+  @Roles(...ANALITYK_ROLES)
+  async anomalie(
+    @CurrentTenantClient() client: TenantClient,
+    @CurrentUser() user: JwtPayload,
+    @Ip() ip: string,
+    @Query() query: AnalitykRangeQueryDto,
+  ): Promise<unknown> {
+    const { scope, range } = await this.prepare(client, user, ip, query)
+    return this.analityk.anomalie(client, scope, range)
+  }
 }

@@ -528,6 +528,31 @@ describe('AnalitykService', () => {
       expect(typeof r.zmiana.wnioskiWToku).toBe('number')
     })
 
+    it('detects an absence spike end-to-end, from Prisma rows through clipping to the rule', async () => {
+      const r = await service.anomalie(asClient(client), null, RANGE)
+
+      expect(r.biezacy).toMatchObject({ od: '2026-06-01', do: '2026-06-14' })
+      expect(r.poprzedni).toMatchObject({ od: '2026-05-18', do: '2026-05-31' })
+
+      // The SAME leave rows clip very differently into the two windows, which is the whole point:
+      //   current  (06-01..06-14): L1 = 5 working days + L2 clipped to 06-01,06-02 = 2 → 7/30 = 23,33%
+      //   previous (05-18..05-31): only L2 clipped to Thu 05-28 + Fri 05-29 = 2      → 2/30 =  6,67%
+      expect(r.biezacy.wskaznikAbsencji).toBe(0.2333)
+      expect(r.poprzedni.wskaznikAbsencji).toBe(0.0667)
+
+      const absencja = r.anomalie.find((a) => a.kod === 'ABSENCJA_SKOK')
+      expect(absencja).toBeDefined()
+      expect(absencja?.waga).toBe('wysoka') // +16,7 p.p. is far past the 3 p.p. high bar
+      expect(absencja?.wartoscBiezaca).toBe(0.2333)
+      expect(absencja?.wartoscPoprzednia).toBe(0.0667)
+    })
+
+    it('raises no OTHER anomaly when only absence moved', async () => {
+      const r = await service.anomalie(asClient(client), null, RANGE)
+      // Headcount, hours and the request backlog are identical across both windows in this fixture.
+      expect(r.anomalie.map((a) => a.kod)).toEqual(['ABSENCJA_SKOK'])
+    })
+
     it('refuses to invent a delta when either side is unknown', async () => {
       client.employee.findMany.mockResolvedValue([])
       const r = await service.porownanie(asClient(client), null, RANGE)
