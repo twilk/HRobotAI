@@ -18,8 +18,16 @@ Hard constraints:
     gap is negative). For every employee eligible for both, ``x[e,d1] + x[e,d2] ≤ 1``.
   * **H3 availability** — baked into variable eligibility (above).
 
-Soft (objective, minimised): ``w_d·unmet + w_e·etatL1 + w_g·commute + w_p·prefViolations`` plus an
-internal H5 proxy.
+Soft (objective, minimised): ``w_e·etatL1 + w_g·commute + w_p·prefViolations`` plus an internal H5
+proxy.
+
+  * **``weights.d`` IS NOT USED** — it is accepted for contract compatibility and deliberately has
+    no effect on either phase [Q6]. Phase 1 keeps coverage HARD, so there is no unmet term to
+    weight: a schedule either covers every demand or phase 1 is infeasible. Phase 2 then minimises
+    *unweighted* ``Σ unmet`` on purpose, so the reported ``unmet[]`` is the TRUE uncoverable set —
+    letting a caller's low ``w_d`` trade coverage away would make the diagnostic lie. ``d`` becomes
+    meaningful only if coverage is ever softened in phase 1 (not in M2).
+    ``test_weights_d_is_inert`` pins this; if you wire ``d`` in, that test fails and points here.
   * **etat L1** — ``Σ_e |workedMinutes(e) − etat·40·60|`` via two ``dev[e] ≥ ±(...)`` inequalities.
   * **commute** — ``Σ x[e,d]·commuteMinutes(e, d.locId)`` from :class:`MatrixWithHaversineFallback`.
   * **preferences (w_p)** — SOFT employee preferences (spec: employee-preferences phase 2). Each

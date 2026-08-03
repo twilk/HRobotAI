@@ -187,6 +187,38 @@ def test_g2_metrics_populated() -> None:
     assert m.fairnessScore == 0.0
 
 
+def test_weights_d_is_inert() -> None:
+    """``weights.d`` is documented as having NO effect — pin that instead of trusting the prose. [Q6]
+
+    Phase 1 keeps coverage hard and phase 2 minimises unweighted unmet, so no value of ``d`` can
+    change the produced schedule. If someone wires ``d`` into the objective, this test fails and the
+    ``weights.d`` note in solver.py's module docstring has to be updated with it.
+    """
+    baseline = solve(_problem(weights={"d": 100, "e": 10, "g": 1}))
+
+    for d_value in (0, 1, 10_000):
+        variant = solve(_problem(weights={"d": d_value, "e": 10, "g": 1}))
+        assert variant.status == baseline.status, f"status changed for weights.d={d_value}"
+        assert [(a.demandId, a.employeeId) for a in variant.assignments] == [
+            (a.demandId, a.employeeId) for a in baseline.assignments
+        ], f"schedule changed for weights.d={d_value} — weights.d is no longer inert"
+        assert variant.metrics.commuteTotal == baseline.metrics.commuteTotal
+        assert variant.metrics.etatDeviation == baseline.metrics.etatDeviation
+
+
+def test_weights_d_is_inert_on_the_infeasible_path() -> None:
+    """Same guarantee in phase 2: a low ``d`` must never let the solver trade coverage away, or the
+    reported ``unmet[]`` would stop being the true uncoverable set. [Q6]"""
+    demands = _DEMANDS + [
+        {"id": "d-impossible", "locId": "loc-1", "date": "2026-07-09", "start": "08:00", "end": "16:00", "role": "PILOT", "count": 1}
+    ]
+    greedy = solve(_problem(demands=demands, weights={"d": 10_000, "e": 10, "g": 1}))
+    indifferent = solve(_problem(demands=demands, weights={"d": 0, "e": 10, "g": 1}))
+
+    assert greedy.status == indifferent.status == "INFEASIBLE"
+    assert sorted(u.demandId for u in greedy.unmet) == sorted(u.demandId for u in indifferent.unmet)
+
+
 # --- G3 -----------------------------------------------------------------------------------------
 
 
