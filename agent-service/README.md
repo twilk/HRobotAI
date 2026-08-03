@@ -275,14 +275,24 @@ and is a **documented follow-up**, out of scope here.
 **2 — run the scripted demo (drives the running agent → live optimizer):**
 
 ```bash
-python3 agent-service/demo/j4_live_demo.py --base http://localhost:8010
+AGENT_DEMO_PASSWORD=… python3 agent-service/demo/j4_live_demo.py --base http://localhost:8010 --user demo
+# …or with a token you already hold:
+AGENT_TOKEN=eyJ… python3 agent-service/demo/j4_live_demo.py --base http://localhost:8010
 ```
 
 Pure-stdlib (`urllib`) client — runs on any host `python3`, no install. It walks the audience through:
 `heal` (proves the **live** solver answers) → `propose` (schedule **+ per-assignment rationale**) →
 `feedback` (scripted manager corrections) → `retrain` (batch self-development, new versioned policy +
-artifact) → re-propose, printing the **edit-distance drop `50 → 0`** live. A fresh per-run tenant means
-every run shows the full curve. Representative run captured in `demo/evidence/j4_live_demo_run.txt`.
+artifact) → re-propose, printing the **edit-distance drop `50 → 0`** live. Representative run captured
+in `demo/evidence/j4_live_demo_run.txt`.
+
+**Auth — there is no `--tenant` flag.** Every `/agent/*` route (including `/agent/demo/corrections`)
+requires a Keycloak bearer token and derives the tenant from the token's issuer realm, never from a
+`tenantId` in the request body (AG6 tenant isolation — see `app/deps.py`). The client mints its token
+with the same password grant the rest of the stack uses (`client_id=hrobot-web`), so **the realm you
+authenticate against *is* the tenant**. Because that tenant is fixed rather than fresh per run, the
+demo opens with `POST /agent/reset` to put it back at cold-start — that is what keeps every run showing
+the full `50 → 0` climb (`--keep-training` skips it).
 
 **Bonus — a self-served visual page** (optional stretch, genuinely working — not a mock):
 
@@ -291,12 +301,14 @@ http://localhost:8010/agent/demo
 ```
 
 Same-origin vanilla-JS page (served by `app/demo_router.py`, no CDN/CORS) that runs the same loop with
-a live table + the edit-distance number falling to 0. Screenshot: `demo/evidence/j4_demo_page.png`.
+a live table + the edit-distance number falling to 0. Paste an access token into the field at the top —
+the page sends it as `Authorization: Bearer` on every call and builds no `tenantId` into any body, so
+the token's realm alone decides whose rosters it can read. Screenshot: `demo/evidence/j4_demo_page.png`.
 
 **Reset & replay (always shows the full climb from a FRESH agent).** The page's primary button —
 *"Reset demo agent to cold-start & replay"* — first calls `POST /agent/reset` then drives the loop, so
 UAT always sees the whole climb (**edit-distance `50 → 0`** AND **agreement `52% → 100%`**) from an
-untrained agent, deterministically every run. `POST /agent/reset` (body `{"tenantId": …}`) is
+untrained agent, deterministically every run. `POST /agent/reset` (tenant from the bearer token) is
 **tenant-scoped** (never a blanket wipe): it clears that tenant's `agent_feedback`, `policy_versions`
 and `policy_state` (via `AgentStore.reset_tenant`) and re-derives the day-1 cold-start BC baseline
 through the *existing* `AgentService._load_policy` cold start — no parallel policy. It is deterministic
@@ -305,7 +317,8 @@ reset semantics. Guarded by `tests/test_reset.py`. Evidence: `demo/evidence/rese
 `demo/evidence/j4_reset_replay_page.png`.
 
 The scripted manager stays **server-side and reused** (`/agent/demo/corrections` calls the committed
-`demo_ag2` helpers) so the client is thin. Guarded by `tests/test_demo_router.py`.
+`demo_ag2` helpers) so the client is thin. Guarded by `tests/test_demo_router.py`; its auth boundary
+(401 without a token, and tenant-A-token + tenant-B-body cannot read B) by `tests/test_demo_router_auth.py`.
 
 ## Consuming the FROZEN contract (mirror + parity)
 
