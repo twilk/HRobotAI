@@ -27,6 +27,11 @@ export const config = {
     '/zamiany/:path*',
     '/wnioski/:path*',
     '/dostepy/:path*',
+    // Moduł Dokumenty (M3). A PRACOWNIK legitimately reaches this route for their own ewidencja
+    // (app/(tenant)/dokumenty/page.tsx renders a read-only branch), but "logged in as somebody" is
+    // still the precondition — without the cookie the page rendered the full AppShell for an
+    // ANONYMOUS visitor while every sibling tenant route redirected to /login.
+    '/dokumenty/:path*',
     '/ustawienia/:path*',
   ],
 }
