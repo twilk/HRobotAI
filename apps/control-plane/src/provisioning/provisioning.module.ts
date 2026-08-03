@@ -6,6 +6,7 @@ import { Client as PgClient } from 'pg'
 import { parseEnv } from '@hrobot/config'
 import { EncryptionService } from '@hrobot/shared'
 import { TenantClient } from '@hrobot/db'
+import { AuthModule } from '../auth/auth.module.js'
 import { ProvisioningService } from './provisioning.service.js'
 import { ProvisioningConsumer } from './provisioning.consumer.js'
 import { ProvisioningController } from './provisioning.controller.js'
@@ -17,6 +18,9 @@ import { DoneStep } from './steps/done.step.js'
 
 @Module({
   imports: [
+    // G-2: ProvisioningController's bootstrap-credential route is operator-only, so it needs
+    // GlobalAdminGuard (and the passport strategy behind it) from AuthModule.
+    AuthModule,
     ClientsModule.registerAsync([
       {
         name: 'TENANT_PROVISION_CLIENT',

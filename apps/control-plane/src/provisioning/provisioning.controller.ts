@@ -1,10 +1,21 @@
-import { Controller, Get, NotFoundException, Param } from '@nestjs/common'
+import { Controller, Get, NotFoundException, Param, UseGuards } from '@nestjs/common'
 import { Throttle } from '@nestjs/throttler'
+import type { ControlPlanePrisma } from '@hrobot/db'
+import { EncryptionService } from '@hrobot/shared'
+import { GlobalAdminGuard } from '../auth/global-admin.guard.js'
 import { ControlPlanePrismaService } from '../common/prisma/control-plane-prisma.service.js'
+import {
+  BOOTSTRAP_ISSUED_AT_KEY,
+  BOOTSTRAP_PASSWORD_KEY,
+  bootstrapAad,
+} from './steps/keycloak-setup.step.js'
 
 @Controller('provision')
 export class ProvisioningController {
-  constructor(private readonly prisma: ControlPlanePrismaService) {}
+  constructor(
+    private readonly prisma: ControlPlanePrismaService,
+    private readonly encryption: EncryptionService,
+  ) {}
 
   /** 30 req/min/IP — jobId is a secret UUID; still cap polling abuse */
   @Throttle({ default: { ttl: 60_000, limit: 30 } })
@@ -27,6 +38,62 @@ export class ProvisioningController {
       done: failed || job.step === 'DONE',
       failed,
       errorCode: failed ? 'PROVISIONING_FAILED' : null,
+    }
+  }
+
+  /**
+   * G-2: break-glass onboarding path when Keycloak could not deliver the password-reset e-mail
+   * (no SMTP in dev, or an SMTP outage in production). KeycloakSetupStep stores the temporary
+   * admin password encrypted in tenants.metadata ONLY in that case; this route hands it over
+   * exactly once.
+   *
+   * Why this is safe to expose at all:
+   *   - GLOBAL_ADMIN JWT required (GlobalAdminGuard) — this is an operator route, not a tenant
+   *     route, and the control-plane is otherwise only publicly reachable for signup/status;
+   *   - the secret is AES-256-GCM encrypted at rest, AAD-bound to the tenant id;
+   *   - ONE-TIME: the ciphertext is wiped from metadata in the same request that reveals it, so a
+   *     replay returns 404 and a leaked log of the URL is worthless;
+   *   - the credential itself is Keycloak-`temporary`, so first login forces a password change;
+   *   - it is returned in the response body only — deliberately never logged, and deliberately
+   *     absent from the unauthenticated `status` route above.
+   */
+  @UseGuards(GlobalAdminGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @Get('bootstrap-credentials/:tenantId')
+  async bootstrapCredentials(@Param('tenantId') tenantId: string): Promise<{
+    username: string
+    password: string
+    issuedAt: string | null
+  }> {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
+    if (!tenant) throw new NotFoundException('Tenant not found')
+
+    const meta = (tenant.metadata ?? {}) as Record<string, unknown>
+    const blob = meta[BOOTSTRAP_PASSWORD_KEY]
+    if (typeof blob !== 'string' || blob.length === 0) {
+      // Either the reset e-mail went out normally, or this credential was already collected.
+      throw new NotFoundException('No bootstrap credential is pending for this tenant')
+    }
+
+    const password = this.encryption.decrypt(blob, bootstrapAad(tenantId))
+    const issuedAt = typeof meta[BOOTSTRAP_ISSUED_AT_KEY] === 'string'
+      ? (meta[BOOTSTRAP_ISSUED_AT_KEY] as string)
+      : null
+
+    // Burn it: revealed once, then gone. Done after a successful decrypt so a wrong-key/corrupt
+    // blob surfaces as an error instead of silently destroying the only onboarding path.
+    const nextMeta = { ...meta }
+    delete nextMeta[BOOTSTRAP_PASSWORD_KEY]
+    delete nextMeta[BOOTSTRAP_ISSUED_AT_KEY]
+    await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { metadata: nextMeta as ControlPlanePrisma.InputJsonObject },
+    })
+
+    return {
+      username: String(meta['adminEmail'] ?? ''),
+      password,
+      issuedAt,
     }
   }
 }

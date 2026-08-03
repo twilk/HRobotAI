@@ -15,12 +15,26 @@ review report, not here.
       @MessagePattern→@EventPattern; consumer providers→controllers; re-emit next step (incl. →DONE
       so DoneStep flips tenant ACTIVE); emit() wrapped in firstValueFrom; `pnpm prisma`→`node <prisma>`
       (Windows spawn hang); execute-actions-email best-effort (no dev SMTP). Live: 5 jobs reached DONE.
-- [ ] **SeedStep idempotency** (codex Medium): `process()` has no per-job claim/lock, and SeedStep
-      blindly creates "Cała firma" — at-least-once RMQ redelivery could double-process. Add a
-      compare-and-set on job.step (claim the step) or make each step idempotent.
-- [ ] **Keycloak temp-password fallback** (codex Medium): when `execute-actions-email` fails (no SMTP),
-      the generated temp password is neither persisted nor surfaced, so the initial admin has no
-      onboarding path. Persist/return it, or configure dev SMTP (Mailhog), or set a known dev password.
+- [x] **SeedStep idempotency / at-least-once claim** (G-1): `ProvisioningService.process()` now
+      compare-and-sets a per-step claim (`provisioning_jobs.claimed_at`, new nullable column +
+      migration `20260803230000_add_provisioning_claimed_at`) before running any handler, so a
+      redelivered RMQ message can never double-process a step. The claim is a LEASE
+      (`CLAIM_LEASE_MS` = 5 min > the 120 s migrate timeout), so a consumer that dies mid-step does
+      not strand the job; a contended delivery arms `nextAttemptAt` past the lease so RetryRelay
+      recovers it, and a successful step clears both claim and arm. Defence in depth on the two
+      steps whose *sequential* re-run was destructive: SeedStep only creates "Cała firma" when no
+      root unit exists, DoneStep keeps the FIRST `provisionedAt`. Proof tests (fail without the
+      fix): concurrent double-delivery executes the step once; a live claim is not re-run; a
+      re-seeded tenant gains no second root; provisionedAt is not moved forward.
+- [x] **Keycloak temp-password fallback** (G-2): when `execute-actions-email` cannot be delivered
+      (no SMTP), KeycloakSetupStep now keeps the temporary admin password as a one-time bootstrap
+      secret — AES-256-GCM encrypted at rest with the same service that protects `tenants.db_url`,
+      AAD-bound to the tenant id, stored in `tenants.metadata`, never logged and absent from the
+      public status route. A GLOBAL_ADMIN retrieves it exactly once via
+      `GET /provision/bootstrap-credentials/:tenantId`, which wipes it on read; the credential is
+      Keycloak-`temporary`, so first login forces a change. Stored only when that run actually
+      created the user (on a 409 retry Keycloak ignores the credential, so persisting it would hand
+      out a password that does not work), and wiped as soon as a reset e-mail does go through.
 
 ## Consolidation — `main` trunk (2026-06-01)
 
