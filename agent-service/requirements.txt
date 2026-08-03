@@ -1,6 +1,7 @@
 # agent-service runtime + training deps (single source of dep truth; the Dockerfile installs this).
-# DISTINCT image from grafik-optimizer on purpose — SB3/torch live here, NOT in the lean CP-SAT
-# image. Base is python:3.12-slim because SB3/ortools/torch publish wheels for CPython <= 3.12.
+# DISTINCT image from grafik-optimizer on purpose — the offline imitation stack is installed here,
+# NOT in the lean CP-SAT image. Installed does NOT mean used by the API: see the note below.
+# Base is python:3.12-slim because SB3/ortools/torch publish wheels for CPython <= 3.12.
 #
 # Versions are pinned to a known-good, imitation-1.0-compatible set. torch is installed separately
 # in the Dockerfile from the CPU wheel index (avoids pulling the multi-GB CUDA build); it is listed
@@ -15,7 +16,13 @@ httpx==0.27.2
 # backend python-jose needs for RSA signature checks. See app/deps.py.
 python-jose[cryptography]==3.3.0
 
-# --- RL / imitation stack ---
+# --- offline imitation stack (NOT the serving path) ---
+# Read this before describing the service: the ONLY module that imports `imitation` is
+# `app/train_bc.py`, an offline behavioural-cloning CLI. `stable_baselines3` and `torch` are imported
+# by NO module in this repo — they are pinned because `imitation==1.0.0` is built on them. `gymnasium`
+# backs `app/env.py`, an environment scaffold no RL algorithm is trained against. The serving path
+# (`/agent/propose`, `/agent/feedback`, `/agent/retrain`) runs `app/policy.py` + `app/retrain.py`,
+# which import only the standard library. Do not call this service "SB3" or "RL" anywhere.
 torch==2.3.1
 stable-baselines3==2.3.2
 gymnasium==0.29.1

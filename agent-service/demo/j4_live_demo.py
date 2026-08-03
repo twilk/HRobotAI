@@ -4,7 +4,10 @@
 This is the presentation-ready CLI an operator runs in front of 4Mobility (UAT). It talks HTTP to the
 agent-service brought up by ``demo/up.sh`` (default ``http://localhost:8010``), which in turn calls the
 **live CP-SAT optimizer**. It uses only the Python standard library, so it runs on any host ``python3``
-with zero install — nothing here needs the agent's heavy RL image.
+with zero install — this client needs nothing from the agent's container image.
+
+Framing for the room: what the agent runs is an **affinity learner re-fitted from manager feedback**,
+not reinforcement learning and not Stable-Baselines3. See ``known-limitations.md``.
 
 What it proves, in order (matches the J4 acceptance script):
   0. The agent reaches the **live optimizer** — ``POST /agent/heal`` repairs a broken proposal through

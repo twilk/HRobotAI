@@ -1,10 +1,13 @@
 """Imitation (behavioural-cloning) scheduling policy with an online feedback update.
 
-This is the **M2 increment** of the self-learning brain, deliberately kept dependency-light (numpy
-only — no torch/SB3). The spec's risk table sanctions exactly this minimal viable path: "BC przez
-imitation, RL jako warstwa na feedbacku; degradacja do samego BC+forecaster" (§112). The
-Gym-shaped RL scaffold lives in :mod:`env` (with the weight-0 manager-acceptance reward seam); this
-module is the policy that scaffold serves and that the feedback loop re-fits.
+This is the **M2 increment** of the self-learning brain, deliberately kept dependency-light: this
+module imports nothing but the standard library and the local contract — no numpy, no torch, no
+Stable-Baselines3, and **no reinforcement learning of any kind**. It is an affinity scorer fitted by
+imitation and then moved by manager feedback. The spec's risk table sanctions exactly this minimal
+viable path: "BC przez imitation, RL jako warstwa na feedbacku; degradacja do samego BC+forecaster"
+(§112) — M2 ships the degraded path. A Gym-shaped environment scaffold lives in :mod:`env` (with the
+weight-0 manager-acceptance reward seam), but no RL algorithm is trained against it and the serving
+path never touches it; this module is what ``/agent/*`` actually runs.
 
 How it learns
 -------------
@@ -22,8 +25,14 @@ A schedule is built greedily, demand by demand, picking the highest-scoring elig
 Cold-start (BC) accumulates affinity from the **solver's** teacher assignments (imitation of #1).
 Feedback then moves affinity toward the **manager's** corrections — which a fixed-weight solver can
 never do (spec §16). Because affinity persists and each correction reinforces the target slot, the
-proposal converges monotonically to the manager-accepted schedule as feedback accumulates: that is
-the measurable edit-distance drop of **AG2**.
+proposal converges to the manager-accepted schedule as feedback accumulates: that is the measurable
+edit-distance drop of **AG2**.
+
+Measured limits of that convergence (HON-2, see :mod:`app.demo_ag2` and ``known-limitations.md``):
+it is *monotone* only against the reference this policy's own ``propose`` built. Against a manager
+defined independently (:mod:`app.manager_profile`) it still reaches 0, but from a far larger day-1
+gap, over 17 rounds instead of 5, and with the curve rising again in places. And because
+``slot_signature`` contains the date, nothing learned transfers to the next week.
 """
 
 from __future__ import annotations
