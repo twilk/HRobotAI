@@ -36,7 +36,28 @@ const UUID_CONTRACT_TABLES: Record<string, string> = {
   recruitment_recommendation: 'POST /strategic-brain/recruitment/:id/acknowledge',
   leave_requests: 'GET /wnioski/:id  +  POST /wnioski/:id/decision  +  POST /wnioski/:id/cancel',
   shift_demands: 'GET /grafik/demands/:id',
+  access_grant: 'GET /dostepy/:id  +  POST /dostepy/:id/revoke',
 }
+
+/**
+ * [L-1] JAK POWSTAŁA POWYŻSZA MAPA — i dlaczego `access_grant` doszedł dopiero teraz.
+ *
+ * Mapa jest RĘCZNA, więc jej niekompletność to cicha dziura: tabela spoza niej może łamać kontrakt,
+ * a test i tak będzie zielony. Przy domykaniu KNOWN_ID_DEBT przejechałem więc żywego najemcę
+ * zapytaniem po WSZYSTKICH tabelach z tekstową kolumną `id` (`information_schema.columns` +
+ * `query_to_xml`) i skonfrontowałem wynik z listą tras `@Param('id', ParseUUIDPipe)`. Poza dwiema
+ * naprawianymi tabelami klucze spoza UUID miało jeszcze pięć:
+ *
+ *   access_grant (15/15)                  — TRASOWANA → 400 na `GET /dostepy/:id` i `/revoke`. Dodana.
+ *   rcp_event (95/95)                     — nietrasowana (`/dokumenty/:id` adresuje generated_document)
+ *   work_order (486), complaint (42),
+ *   employee_performance_snapshot (23)    — nietrasowane, tabele wewnętrzne strategic-brain
+ *   position_cost_rates (10),
+ *   company_settings (1)                  — nietrasowane po `:id` (ustawienia mają `units/:id`)
+ *
+ * Te pięć NIE jest tu dopisane celowo: mapa opisuje kontrakt HTTP, a nie estetykę kluczy. Gdy
+ * którakolwiek z nich zacznie być adresowana przez `:id`, trzeba dopisać JĄ i naprawić jej dane.
+ */
 
 /**
  * [L-1] LISTA UZNANEGO DŁUGU ZOSTAŁA ZLIKWIDOWANA, NIE ROZSZERZONA.

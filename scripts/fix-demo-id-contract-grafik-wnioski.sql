@@ -6,10 +6,13 @@
 -- the `ds26-*` family from seed-dataset-2026.sql and the `lr-demo-*` family from
 -- seed-demo-m2-modules.sql.
 --
--- WHY. `leave_requests.id` and `shift_demands.id` are reachable as HTTP `:id` route params, and the
--- controllers validate them with Nest's `ParseUUIDPipe`:
+-- Plus `access_grant`, which was NOT on that list — see step 6.
+--
+-- WHY. These ids are reachable as HTTP `:id` route params, and the controllers validate them with
+-- Nest's `ParseUUIDPipe`:
 --     leave_requests   GET /wnioski/:id, POST /wnioski/:id/decision, POST /wnioski/:id/cancel
 --     shift_demands    GET /grafik/demands/:id
+--     access_grant     GET /dostepy/:id, POST /dostepy/:id/revoke
 -- Measured on the live demo tenant BEFORE this repair:
 --     GET  /api/wnioski/lr-demo-p1
 --       -> 400 {"message":"Validation failed (uuid is expected)","error":"Bad Request","statusCode":400}
@@ -109,12 +112,32 @@ WHERE d.id = 'ds26-' || left(md5(d.lokalizacja_id || d.date::text || d.required_
     WHERE x.id = 'd5260000-0000-4000-8000-'
                  || left(md5(d.lokalizacja_id || d.date::text || d.required_role || d.start), 12));
 
--- 6) Verification, printed by the script itself. Anything listed here means the repair did not take:
+-- 6) DOSTĘPY — the 15 access grants from seed-demo-m2-modules.sql §4 (`ag-0001`..`ag-0015`).
+--    NOT part of the KNOWN_ID_DEBT list this script was written for: found by sweeping every
+--    text-`id` table on the live tenant against the `ParseUUIDPipe` route list, and it turned out to
+--    be the third — and last — table actually broken this way. All 15 rows answered 400 on
+--    `GET /dostepy/:id` and `POST /dostepy/:id/revoke`, i.e. the whole Dostępy detail + revoke flow.
+--    `access_grant` has no inbound FKs. The old id is not reconstructible from the row (it encoded a
+--    row_number), so the match is on the shape `ag-NNNN` and the new id is derived from the
+--    employee — which is exactly what the fixed seed now generates, and is unique because the seed
+--    issues one grant per employee.
+UPDATE access_grant g
+SET id = 'ac000000-0000-4000-8000-' || left(md5(g.employee_id), 12),
+    updated_at = now()
+WHERE g.id ~ '^ag-[0-9]{4}$'
+  AND NOT EXISTS (
+    SELECT 1 FROM access_grant x
+    WHERE x.id = 'ac000000-0000-4000-8000-' || left(md5(g.employee_id), 12));
+
+-- 7) Verification, printed by the script itself. Anything listed here means the repair did not take:
 --    a row in a UUID-contract table whose id would still make its controller answer 400.
 SELECT 'STILL BROKEN' AS status, 'leave_requests' AS "table", id FROM leave_requests
 WHERE id !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
 UNION ALL
 SELECT 'STILL BROKEN', 'shift_demands', id FROM shift_demands
+WHERE id !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+UNION ALL
+SELECT 'STILL BROKEN', 'access_grant', id FROM access_grant
 WHERE id !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$';
 
 COMMIT;

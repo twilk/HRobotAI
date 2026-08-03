@@ -55,6 +55,23 @@ ON CONFLICT (position, employment_type) DO NOTHING;
 
 -- 4) DOSTĘPY — 15 access grants, one per employee (first 15 by name) paired 1:1 with a lokalizacja.
 --    Mostly ACTIVE cards/keys; grants 13 & 14 REVOKED (rotation), grant 15 LOST. issued by admin.
+--
+--    [L-1] ID CONTRACT. Ids read `'ag-' || lpad(e.rn::text, 4, '0')`, i.e. `ag-0001`..`ag-0015`.
+--    `access_grant` is addressed by `GET /dostepy/:id` and `POST /dostepy/:id/revoke`, both guarded
+--    by `ParseUUIDPipe`, so ALL FIFTEEN grants answered 400 — the Dostępy screen's detail view and
+--    its "odbierz dostęp" button (docs/design/web-kit/lib/dostepy.ts:262,270) could not work for a
+--    single row. Found by sweeping every text-`id` table on the live tenant against the list of
+--    `ParseUUIDPipe` routes while closing the ds26/lr-demo debt; it was NOT in the guard's contract
+--    map, so nothing would have caught it.
+--
+--    Fixed the same way as the generated ids in seed-dataset-2026.sql: 15 rows are still generated
+--    (a row_number over employees), so the key is derived, not literal —
+--    `'ac000000-0000-4000-8000-' || left(md5(<employee id>), 12)`, one grant per employee, which is
+--    exactly the 1:1 this block already guarantees. Own namespace `ac000000-…` ("ac" = access), for
+--    the same reason as `d5260000-…`: never share a prefix with another family's rows. The
+--    human-readable numbering survives untouched on `identifier` (`AC-4M-0001`), which is what the
+--    UI actually shows. Idempotency is unaffected — this block clears the whole table, it never
+--    matched on an id prefix.
 DELETE FROM access_grant;
 WITH emps AS (
   SELECT id AS emp_id, row_number() OVER (ORDER BY last_name, first_name) AS rn
@@ -67,7 +84,7 @@ admin AS (SELECT id FROM users WHERE email = 'admin@staging.hrobot.local')
 INSERT INTO access_grant
   (id, employee_id, type, label, identifier, lokalizacja_id, status, issued_by_user_id, issued_at, revoked_at, notes, created_at, updated_at)
 SELECT
-  'ag-' || lpad(e.rn::text, 4, '0'),
+  'ac000000-0000-4000-8000-' || left(md5(e.emp_id), 12),
   e.emp_id,
   (CASE e.rn % 3 WHEN 0 THEN 'PERMISSION' WHEN 1 THEN 'CARD' ELSE 'KEY' END)::"AccessType",
   (CASE e.rn % 3 WHEN 0 THEN 'Uprawnienie systemowe' WHEN 1 THEN 'Karta dostępu' ELSE 'Klucz serwisowy' END),
