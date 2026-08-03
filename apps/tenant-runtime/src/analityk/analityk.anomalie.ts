@@ -25,7 +25,7 @@ export type WagaAnomalii = 'wysoka' | 'srednia'
 /** Stable machine code per rule, so a UI can key off it without parsing Polish copy. */
 export type KodAnomalii =
   | 'ABSENCJA_SKOK'
-  | 'NADGODZINY_SKOK'
+  | 'NADWYZKA_SKOK'
   | 'KOLEJKA_WNIOSKOW'
   | 'CZAS_DECYZJI'
   | 'SPADEK_ZATRUDNIENIA'
@@ -54,9 +54,12 @@ export const PROG_ABSENCJA_PP_WYSOKA = 0.03
 /** Absence: minimum relative rise, so a jump from 0.1% to 1.6% is not dressed up as a crisis. */
 export const PROG_ABSENCJA_WZGL = 0.5
 
-/** Overtime: minimum relative rise and the absolute hours that must accompany it. */
-export const PROG_NADGODZINY_WZGL = 0.25
-export const PROG_NADGODZINY_H = 20
+/**
+ * Rostered surplus over the WEEKLY norm: minimum relative rise and the absolute hours that must
+ * accompany it. NOT statutory overtime — see `CzasPracyResult.nadwyzkaPonadNorme`.
+ */
+export const PROG_NADWYZKA_WZGL = 0.25
+export const PROG_NADWYZKA_H = 20
 
 /** Approval backlog: minimum relative growth and the absolute request count accompanying it. */
 export const PROG_KOLEJKA_WZGL = 0.5
@@ -124,17 +127,18 @@ export function wykryjAnomalie(biezacy: PorownanieKpi, poprzedni: PorownanieKpi)
     }
   }
 
-  // 2. Overtime surge — a cost and a working-time-compliance signal at once.
+  // 2. Rostered-surplus surge — a cost and a roster-planning signal at once. Deliberately NOT
+  //    labelled "nadgodziny": the underlying figure is planned time against the weekly norm only.
   {
-    const current = biezacy.nadgodziny
-    const previous = poprzedni.nadgodziny
+    const current = biezacy.nadwyzkaPonadNorme
+    const previous = poprzedni.nadwyzkaPonadNorme
     const delta = current - previous
-    if (delta >= PROG_NADGODZINY_H && relativeAtLeast(current, previous, PROG_NADGODZINY_WZGL)) {
+    if (delta >= PROG_NADWYZKA_H && relativeAtLeast(current, previous, PROG_NADWYZKA_WZGL)) {
       push({
-        kod: 'NADGODZINY_SKOK',
+        kod: 'NADWYZKA_SKOK',
         waga: 'srednia',
-        tytul: 'Wzrost nadgodzin',
-        opis: `Nadgodziny wzrosły o ${round(delta, 1)} h — z ${round(previous, 1)} h do ${round(current, 1)} h.`,
+        tytul: 'Wzrost nadwyżki ponad normę',
+        opis: `Nadwyżka ponad normę tygodniową (z grafiku) wzrosła o ${round(delta, 1)} h — z ${round(previous, 1)} h do ${round(current, 1)} h.`,
         wartoscBiezaca: round(current, 1),
         wartoscPoprzednia: round(previous, 1),
         zmiana: round(delta, 1),

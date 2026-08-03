@@ -83,10 +83,19 @@ const APPROVED_LEAVES = [
   { employeeId: 'e2', startDate: d('2026-06-13'), endDate: d('2026-06-14'), type: 'URLOP_NA_ZADANIE', employee: { unitId: 'unit-A' } },
 ]
 
-/** The `URLOP*`-only subset the balance query returns (CHOROBOWE never draws down entitlement). */
-const URLOP_LEAVES = [
-  { employeeId: 'e1', startDate: d('2026-06-08'), endDate: d('2026-06-12') },
-  { employeeId: 'e2', startDate: d('2026-06-13'), endDate: d('2026-06-14') },
+/**
+ * Every APPROVED leave of the calendar year — the balance query no longer pre-filters by type in
+ * SQL, it classifies in memory via `common/leave-type.ts`. The fixture therefore deliberately
+ * contains rows that MUST NOT draw the entitlement down (sick, unpaid and maternity leave) plus a
+ * lower-cased holiday that the old case-sensitive `startsWith: 'URLOP'` filter silently dropped.
+ */
+const YEAR_LEAVES = [
+  { employeeId: 'e1', startDate: d('2026-06-08'), endDate: d('2026-06-12'), type: 'URLOP_WYPOCZYNKOWY' },
+  { employeeId: 'e2', startDate: d('2026-06-13'), endDate: d('2026-06-14'), type: 'URLOP_NA_ZADANIE' },
+  { employeeId: 'e3', startDate: d('2026-05-28'), endDate: d('2026-06-02'), type: 'CHOROBOWE' },
+  { employeeId: 'e3', startDate: d('2026-03-02'), endDate: d('2026-03-06'), type: 'URLOP_BEZPLATNY' },
+  { employeeId: 'e3', startDate: d('2026-04-06'), endDate: d('2026-04-10'), type: 'URLOP_MACIERZYNSKI' },
+  { employeeId: 'e2', startDate: d('2026-02-02'), endDate: d('2026-02-04'), type: 'urlop_wypoczynkowy' },
 ]
 
 /** Requests FILED inside the range: 2 approved, 1 rejected, 1 still pending. */
@@ -115,11 +124,17 @@ function makeClient() {
     leaveRequest: {
       findMany: jest.fn().mockImplementation((args: { where?: Record<string, unknown> }) => {
         const where = args.where ?? {}
-        // The three leaveRequest queries are told apart by their filters, exactly as the service
-        // builds them: URLOP-prefixed balances, PENDING backlog, APPROVED absences, else "filed".
-        if (where.type) return Promise.resolve(URLOP_LEAVES)
-        if (where.status === LeaveStatus.PENDING) return Promise.resolve(PENDING_REQUESTS)
-        if (where.status === LeaveStatus.APPROVED) return Promise.resolve(APPROVED_LEAVES)
+        // The four leaveRequest queries are told apart by their filters, exactly as the service
+        // builds them:
+        //   OR[...]        -> the backlog RECONSTRUCTED as of the end of the range,
+        //   APPROVED + lte -> the whole-YEAR balance window (startDate lte yearEnd),
+        //   APPROVED + lt  -> absences clipped to the range,
+        //   otherwise      -> requests filed inside the range.
+        if (where.OR) return Promise.resolve(PENDING_REQUESTS)
+        if (where.status === LeaveStatus.APPROVED) {
+          const startDate = where.startDate as { lte?: Date } | undefined
+          return Promise.resolve(startDate?.lte ? YEAR_LEAVES : APPROVED_LEAVES)
+        }
         return Promise.resolve(FILED_REQUESTS)
       }),
     },
@@ -203,10 +218,27 @@ describe('AnalitykService', () => {
   // --- 1. Stan zatrudnienia -----------------------------------------------------------------------
 
   describe('zatrudnienie', () => {
-    it('counts only employees with an active login as current headcount', async () => {
+    it('reconstructs headcount at the END of the range from the audit trail', async () => {
       const r = await service.zatrudnienie(asClient(client), null, RANGE)
-      // e1 + e2 + e3 are active; e4's login is deactivated.
+      // e1 + e2 + e3 are on the books; e4's account was switched off on 06-10, inside the range.
       expect(r.stanNaKoniec).toBe(3)
+    })
+
+    it('reconstructs headcount at the START of the range — e4 was still employed then', async () => {
+      const r = await service.zatrudnienie(asClient(client), null, RANGE)
+      // At 06-01: e1 + e3 + e4 (deactivated only on 06-10); e2 was not hired until 06-03.
+      expect(r.stanNaPoczatek).toBe(3)
+    })
+
+    it('lets headcount FALL between two windows — the drop is not structurally impossible', async () => {
+      // The window ending BEFORE e4's deactivation still counts e4; the later one does not. Reading
+      // the CURRENT `User.active` flag for both (the old behaviour) made this delta non-negative by
+      // construction, which is what left `SPADEK_ZATRUDNIENIA` unreachable in production.
+      const przed = await service.zatrudnienie(asClient(client), null, buildRange('2026-06-01', '2026-06-09'))
+      const po = await service.zatrudnienie(asClient(client), null, buildRange('2026-06-10', '2026-06-14'))
+      expect(przed.stanNaKoniec).toBe(4) // e1..e4, e4 still on
+      expect(po.stanNaKoniec).toBe(3) // e4 gone
+      expect(po.stanNaKoniec - przed.stanNaKoniec).toBeLessThan(0)
     })
 
     it('counts hires inside the range and departures from the audit log', async () => {
@@ -214,16 +246,28 @@ describe('AnalitykService', () => {
       expect(r.przyjecia).toBe(1) // only e2 (hired 2026-06-03)
       expect(r.odejscia).toBe(1) // only e4's user.deactivated audit row
       expect(r.zmiana).toBe(0)
-      // stanNaPoczatek = 3 - 1 + 1 = 3; rotacja = 1 / ((3+3)/2) = 0.3333
-      expect(r.stanNaPoczatek).toBe(3)
-      expect(r.rotacja).toBe(0.3333)
+      // rotacja W OKRESIE = 1 / ((3+3)/2) = 0.3333 — a RAW period rate, never annualized.
+      expect(r.rotacjaWOkresie).toBe(0.3333)
     })
 
-    it('queries the audit log for user.deactivated events inside the range only', async () => {
+    it('reads the WHOLE deactivation history up to the end of the range, not just rows inside it', async () => {
       await service.zatrudnienie(asClient(client), null, RANGE)
       const where = client.auditLog.findMany.mock.calls[0][0].where
       expect(where).toMatchObject({ action: 'user.deactivated', entityType: 'User' })
-      expect(where.createdAt).toEqual({ gte: RANGE.from, lt: RANGE.toExcl })
+      // No lower bound: the headcount AT `od` depends on everything that happened before it too.
+      expect(where.createdAt).toEqual({ lt: RANGE.toExcl })
+    })
+
+    it('reports odejscia/rotacja as UNKNOWN (null), never 0, when no kartoteka has a user account', async () => {
+      // Exactly the canonical seed's shape: `SeedEmployee` carries no `userId`, so the audit trail
+      // cannot be joined to anybody. A "Rotacja 0%" tile there would be falsely reassuring.
+      client.employee.findMany.mockResolvedValue(EMPLOYEES.map((e) => ({ ...e, userId: null })))
+      const r = await service.zatrudnienie(asClient(client), null, RANGE)
+      expect(r.odejscia).toBeNull()
+      expect(r.rotacjaWOkresie).toBeNull()
+      expect(r.zmiana).toBeNull()
+      expect(r.dynamika.every((m) => m.odejscia === null)).toBe(true)
+      expect(r.meta.uwagi.join(' ')).toMatch(/NIEZNANE/)
     })
 
     it('IGNORES a departure whose user is outside the caller’s scope', async () => {
@@ -323,11 +367,27 @@ describe('AnalitykService', () => {
       expect(r.normaGodzin).toBe(100)
     })
 
-    it('sums overtime and deficit SEPARATELY, never netting one against the other', async () => {
+    it('sums surplus and shortfall SEPARATELY, never netting one against the other', async () => {
       const r = await service.czasPracy(asClient(client), null, RANGE)
       // e1 week1 50h vs 40h norm = +10h; e1 week2 32h vs 40h = −8h; e3 exactly at norm.
-      expect(r.nadgodziny).toBe(10)
-      expect(r.niedobor).toBe(8)
+      expect(r.nadwyzkaPonadNorme).toBe(10)
+      expect(r.niedoborDoNormy).toBe(8)
+    })
+
+    it('does NOT call the weekly surplus "nadgodziny" — 12h x 3 days is 0 here but 12h under KP', async () => {
+      // 3 x 12h = 36h <= the 40h weekly norm, so the WEEKLY measure sees nothing. Art. 151 par. 1 KP
+      // counts 4h of DAILY overtime on each of those days. The field name and the caveat must both
+      // say so rather than letting a reader take this for a payroll or compliance figure.
+      client.shift.findMany.mockResolvedValue([
+        shift('e1', '2026-06-01', '06:00', '18:00', 'unit-A', 1.0),
+        shift('e1', '2026-06-02', '06:00', '18:00', 'unit-A', 1.0),
+        shift('e1', '2026-06-03', '06:00', '18:00', 'unit-A', 1.0),
+      ])
+      const r = await service.czasPracy(asClient(client), null, RANGE)
+      expect(r.sumaGodzin).toBe(36)
+      expect(r.nadwyzkaPonadNorme).toBe(0)
+      expect(r).not.toHaveProperty('nadgodziny')
+      expect(r.meta.uwagi.join(' ')).toMatch(/art\. 151/)
     })
 
     it('does NOT charge a deficit for an employee-week with no shifts at all', async () => {
@@ -335,20 +395,20 @@ describe('AnalitykService', () => {
       // under-worked time — so e2 must contribute nothing to norm or deficit.
       const r = await service.czasPracy(asClient(client), null, RANGE)
       expect(r.normaGodzin).toBe(100) // no e2 contribution
-      expect(r.niedobor).toBe(8) // e1's week 2 only
+      expect(r.niedoborDoNormy).toBe(8) // e1's week 2 only
     })
 
-    it('splits hours and overtime by unit', async () => {
+    it('splits hours and surplus by unit', async () => {
       const r = await service.czasPracy(asClient(client), null, RANGE)
       expect(r.wgJednostek).toEqual([
-        { unitId: 'unit-A', nazwa: 'Serwis', godziny: 82, nadgodziny: 10 },
-        { unitId: 'unit-B', nazwa: 'Biuro', godziny: 20, nadgodziny: 0 },
+        { unitId: 'unit-A', nazwa: 'Serwis', godziny: 82, nadwyzka: 10 },
+        { unitId: 'unit-B', nazwa: 'Biuro', godziny: 20, nadwyzka: 0 },
       ])
     })
 
-    it('ranks employees by overtime using IDs only (no PII in the payload)', async () => {
+    it('ranks employees by surplus using IDs only (no PII in the payload)', async () => {
       const r = await service.czasPracy(asClient(client), null, RANGE)
-      expect(r.topNadgodziny).toEqual([{ employeeId: 'e1', unitId: 'unit-A', nadgodziny: 10 }])
+      expect(r.topNadwyzka).toEqual([{ employeeId: 'e1', unitId: 'unit-A', nadwyzka: 10 }])
       expect(JSON.stringify(r)).not.toMatch(/firstName|lastName|pesel/i)
     })
 
@@ -369,11 +429,14 @@ describe('AnalitykService', () => {
   // --- 4. Wykorzystanie urlopów -------------------------------------------------------------------
 
   describe('urlopy', () => {
-    it('queries only URLOP* leave — sick leave never draws down the entitlement', async () => {
+    it('no longer classifies leave in SQL — the case-sensitive URLOP prefix filter is gone', async () => {
       await service.urlopy(asClient(client), null, RANGE)
       const where = client.leaveRequest.findMany.mock.calls[0][0].where
-      expect(where.type).toEqual({ startsWith: 'URLOP' })
       expect(where.status).toBe(LeaveStatus.APPROVED)
+      // A Prisma `startsWith: 'URLOP'` compiles to `LIKE 'URLOP%'` on Postgres — CASE-SENSITIVE, so
+      // a lower-cased row silently vanished. Classification is now in memory and shared with
+      // strategic-brain, so the same row can no longer mean two different things.
+      expect(where.type).toBeUndefined()
     })
 
     it('computes used days per employee for the calendar year of "do"', async () => {
@@ -381,15 +444,25 @@ describe('AnalitykService', () => {
       expect(r.rok).toBe(2026)
       expect(r.wymiarDni).toBe(WYMIAR_URLOPU_DNI)
       expect(r.liczbaPracownikow).toBe(3)
-      // e1 = 5 working days; e2's leave is a weekend → 0; e3 = 0.
-      expect(r.wykorzystaneDni).toBe(5)
-      expect(r.wskaznikWykorzystania).toBe(0.0641) // 5 / (26 × 3)
+      // e1 = 5 working days. e2's June leave is a weekend -> 0, but its LOWER-CASED February row
+      // (02-02..02-04) is 3 working days and MUST count. e3's rows are sick / unpaid / maternity
+      // leave: absences, but none of them consume the art. 154 pool.
+      expect(r.wykorzystaneDni).toBe(8)
+      expect(r.wskaznikWykorzystania).toBe(0.1026) // 8 / (26 x 3)
+    })
+
+    it('EXCLUDES leave that does not consume the art. 154 pool, however "URLOP" it looks', async () => {
+      const r = await service.urlopy(asClient(client), null, RANGE)
+      // e3 carries CHOROBOWE + URLOP_BEZPLATNY + URLOP_MACIERZYNSKI in the year — 15 working days
+      // the old prefix filter would have charged against a 26-day entitlement, driving the balance
+      // of anyone back from maternity leave deeply negative.
+      expect(r.srednieSaldo).toBe(23.33) // (21 + 23 + 26) / 3, e3 untouched at 26
     })
 
     it('averages the remaining balance across employees in scope', async () => {
       const r = await service.urlopy(asClient(client), null, RANGE)
-      // balances: e1 = 21, e2 = 26, e3 = 26 → 73/3 = 24.33
-      expect(r.srednieSaldo).toBe(24.33)
+      // balances: e1 = 26-5 = 21, e2 = 26-3 = 23, e3 = 26-0 = 26 -> 70/3 = 23.33
+      expect(r.srednieSaldo).toBe(23.33)
     })
 
     it('buckets the balance distribution', async () => {
@@ -412,10 +485,10 @@ describe('AnalitykService', () => {
     it('flags high balances in Q4, worst first, with IDs only', async () => {
       const q4 = buildRange('2026-11-01', '2026-11-30')
       const r = await service.urlopy(asClient(client), null, q4)
-      // Same used-days data → balances 21 / 26 / 26, all ≥ the 10-day threshold.
+      // Same used-days data → balances 21 / 23 / 26, all ≥ the 10-day threshold.
       expect(r.ryzykoPrzepadniecia).toEqual([
-        { employeeId: 'e2', unitId: 'unit-A', saldo: 26, wykorzystane: 0 },
         { employeeId: 'e3', unitId: 'unit-B', saldo: 26, wykorzystane: 0 },
+        { employeeId: 'e2', unitId: 'unit-A', saldo: 23, wykorzystane: 3 },
         { employeeId: 'e1', unitId: 'unit-A', saldo: 21, wykorzystane: 5 },
       ])
     })
@@ -494,7 +567,7 @@ describe('AnalitykService', () => {
       expect(r.zatrudnienie.stanNaKoniec).toBe(3)
       expect(r.absencje.wskaznik).toBe(0.2333)
       expect(r.czasPracy.sumaGodzin).toBe(102)
-      expect(r.urlopy.wykorzystaneDni).toBe(5)
+      expect(r.urlopy.wykorzystaneDni).toBe(8)
       expect(r.wnioski.wToku).toBe(3)
     })
 

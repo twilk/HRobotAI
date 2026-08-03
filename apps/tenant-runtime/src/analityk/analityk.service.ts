@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable } from '@nestjs/common'
 import type { TenantClient, TenantPrisma } from '@hrobot/db'
 import { LeaveStatus } from '@hrobot/shared'
 import { isGlobal, managedUnitIds } from '../tenant-runtime/rbac/unit-scope.js'
+import { drawsDownAnnualEntitlement } from '../common/leave-type.js'
 import { windowMinutes } from '../ai-grafik/week-range.util.js'
 import {
   businessDaysBetween,
@@ -43,13 +44,8 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000
  */
 export const WYMIAR_URLOPU_DNI = 26
 
-/**
- * `LeaveRequest.type` is free text (schema comment: "URLOP_WYPOCZYNKOWY, URLOP_NA_ZADANIE, …"). Only
- * types under this prefix draw down the annual entitlement — sick leave (L4/CHOROBOWE) and
- * compassionate leave do not, so they must never reduce a leave balance even though they DO count as
- * absence in {@link AnalitykService.absencje}.
- */
-const URLOP_TYPE_PREFIX = 'URLOP'
+/** The `user.deactivated` audit action departures and the historical headcount are reconstructed from. */
+const AKCJA_DEZAKTYWACJI = 'user.deactivated'
 
 /** Remaining-balance threshold (working days) above which unused leave is flagged as at-risk. */
 const PROG_RYZYKA_PRZEPADNIECIA = 10
@@ -89,18 +85,29 @@ export interface UnitBreakdown {
 
 export interface ZatrudnienieResult {
   meta: AnalitykMeta
+  /** Headcount RECONSTRUCTED as of the end of the range (see {@link AnalitykService.naStanie}). */
   stanNaKoniec: number
+  /** Headcount reconstructed as of the first day of the range — comparable with {@link stanNaKoniec}. */
   stanNaPoczatek: number
   przyjecia: number
-  odejscia: number
-  /** Net change over the range (`przyjecia - odejscia`). */
-  zmiana: number
-  /** `odejscia / średni stan` — `null` when there is nobody to rotate. */
-  rotacja: number | null
+  /**
+   * Account deactivations inside the range, re-scoped to the caller's units. `null` (UNKNOWN) when
+   * the figure is not measurable at all — see {@link AnalitykService.zatrudnienie}. Never a
+   * falsely-reassuring `0`.
+   */
+  odejscia: number | null
+  /** Net change over the range (`przyjecia - odejscia`); `null` when `odejscia` is unknown. */
+  zmiana: number | null
+  /**
+   * `odejscia / średni stan` FOR THIS RANGE — a raw period rate, deliberately NOT annualized, so
+   * 33% over 14 days is 33% over 14 days and not a yearly figure. `null` when unknown or when there
+   * is nobody to rotate.
+   */
+  rotacjaWOkresie: number | null
   wgJednostek: UnitBreakdown[]
   /** Employees with at least one shift in the range, grouped by the location they worked at. */
   wgLokalizacji: UnitBreakdown[]
-  dynamika: { miesiac: string; przyjecia: number; odejscia: number }[]
+  dynamika: { miesiac: string; przyjecia: number; odejscia: number | null }[]
 }
 
 export interface AbsencjeResult {
@@ -125,12 +132,20 @@ export interface CzasPracyResult {
   sredniaDzienna: number | null
   /** Contractual norm (`etat × 8h` per working day) for the employee-weeks that contain shifts. */
   normaGodzin: number
-  /** Hours above the weekly norm, summed per employee-week (never netted against deficits). */
-  nadgodziny: number
-  /** Hours below the weekly norm, summed per employee-week. */
-  niedobor: number
-  wgJednostek: { unitId: string; nazwa: string; godziny: number; nadgodziny: number }[]
-  topNadgodziny: { employeeId: string; unitId: string; nadgodziny: number }[]
+  /**
+   * Rostered hours ABOVE the WEEKLY norm, summed per employee-week (never netted against deficits).
+   *
+   * NOT "nadgodziny" in the Kodeks pracy sense, and deliberately not named so: this is scheduled
+   * time from `Shift`, with no punch-clock, no unpaid-break deduction (art. 141) and — decisively —
+   * no DAILY norm (art. 151 §1). Three 12h days inside one week are 36h ≤ 40h and therefore ZERO
+   * here, while KP counts 12 hours of overtime. Use it as a roster-planning signal, never as a
+   * payroll or compliance figure.
+   */
+  nadwyzkaPonadNorme: number
+  /** Rostered hours BELOW the weekly norm, summed per employee-week. Same caveats as above. */
+  niedoborDoNormy: number
+  wgJednostek: { unitId: string; nazwa: string; godziny: number; nadwyzka: number }[]
+  topNadwyzka: { employeeId: string; unitId: string; nadwyzka: number }[]
 }
 
 export interface UrlopyResult {
@@ -150,7 +165,11 @@ export interface UrlopyResult {
 export interface WnioskiResult {
   meta: AnalitykMeta
   zlozone: number
-  /** Requests still PENDING at the end of the range (regardless of when they were filed). */
+  /**
+   * Requests open AS OF THE END OF THE RANGE, reconstructed from `createdAt`/`decidedAt` rather than
+   * read off the current status — otherwise a backlog the team has since cleared would still be
+   * counted, and the figure could only ever grow between two windows.
+   */
   wToku: number
   zaakceptowane: number
   odrzucone: number
@@ -280,27 +299,64 @@ export class AnalitykService {
     return new Map(units.map((u) => [u.id, u.name]))
   }
 
-  /** An employee counts toward the CURRENT headcount unless their login was deactivated. */
+  /** An employee counts toward the CURRENT headcount unless their login is deactivated right now. */
   private static isActive(e: ScopedEmployee): boolean {
     return e.user === null || e.user.active
+  }
+
+  /**
+   * Was this employee ON THE BOOKS at instant `at`? The question every period-over-period figure
+   * actually needs, and the one the module used to answer wrongly.
+   *
+   * The previous implementation read the CURRENT `User.active` flag for both windows, which made
+   * `stanNaKoniec` monotonically non-decreasing in `at` (the only varying term was `hiredAt < at`):
+   * a tenant that lost half its staff could never show a fall, and the `SPADEK_ZATRUDNIENIA` rule —
+   * which needs a drop of ≥ 2 — was unreachable dead code in production.
+   *
+   * The state is therefore reconstructed from the append-only audit trail:
+   *  - hired before `at` (a person not yet hired is nobody's headcount);
+   *  - the account is STILL ON today → on the books throughout. A deactivation in the log was
+   *    evidently reversed, and reactivation is not audited (`users.service.ts` logs only
+   *    `user.invited` / `user.deactivated` / `user.reconciled`), so its timestamp is unknowable —
+   *    we decline to invent a departure the person demonstrably came back from;
+   *  - the account is OFF today, WITH a `user.deactivated` row → off the books from that row's
+   *    timestamp onwards, on the books before it;
+   *  - the account is OFF today with NO audit row → off for the whole history. We know it is off, we
+   *    do not know since when, and guessing "employed" would fabricate a departure later.
+   */
+  private static naStanie(e: ScopedEmployee, at: Date, dezaktywacje: Map<string, Date>): boolean {
+    if (e.hiredAt.getTime() >= at.getTime()) return false
+    if (AnalitykService.isActive(e)) return true
+    const wylaczone = e.userId ? dezaktywacje.get(e.userId) : undefined
+    return wylaczone !== undefined && wylaczone.getTime() >= at.getTime()
   }
 
   // --- 1. Stan zatrudnienia -----------------------------------------------------------------------
 
   /**
-   * Headcount, its split by unit and by worked location, and the hire/departure dynamics over the
-   * range. Departures come from `audit_log` (`user.deactivated`), then get re-scoped through
-   * `Employee.userId` so a manager's report never counts another unit's departure.
+   * Headcount at the start and at the end of the range, its split by unit and by worked location,
+   * and the hire/departure dynamics. Departures come from `audit_log` (`user.deactivated`), then get
+   * re-scoped through `Employee.userId` so a manager's report never counts another unit's departure.
+   *
+   * TWO HONESTY RULES apply here and are surfaced in `meta.uwagi`:
+   *  1. Both headcounts are RECONSTRUCTED as of their instant ({@link naStanie}), so the comparison
+   *     between two windows can genuinely go down.
+   *  2. When not a single employee in scope carries a `userId`, the audit trail cannot be joined to
+   *     anyone and departures are structurally UNMEASURABLE. That case returns `null`, not `0` — the
+   *     canonical seed produces exactly this shape (`SeedEmployee` has no `userId`), and a "Rotacja
+   *     0%" tile there would be falsely reassuring rather than merely imprecise.
    */
   async zatrudnienie(client: TenantClient, scope: UnitScope, range: AnalitykRange): Promise<ZatrudnienieResult> {
     const [employees, names, deactivations, shifts] = await Promise.all([
       this.scopedEmployees(client, scope, range),
       this.unitNames(client, scope),
+      // The WHOLE deactivation history up to the end of the range, not just the rows inside it: the
+      // headcount at `range.from` depends on everything that happened before it too.
       client.auditLog.findMany({
         where: {
-          action: 'user.deactivated',
+          action: AKCJA_DEZAKTYWACJI,
           entityType: 'User',
-          createdAt: { gte: range.from, lt: range.toExcl },
+          createdAt: { lt: range.toExcl },
         },
         select: { entityId: true, createdAt: true },
       }),
@@ -313,16 +369,28 @@ export class AnalitykService {
     // Re-scope departures: audit rows are tenant-wide, so keep only those whose User maps to an
     // employee inside the caller's scope.
     const userIdToEmployee = new Map(employees.filter((e) => e.userId).map((e) => [e.userId as string, e]))
-    const scopedDepartures = deactivations.filter((d) => userIdToEmployee.has(d.entityId))
+    const scopedDeactivations = deactivations.filter((d) => userIdToEmployee.has(d.entityId))
 
-    const active = employees.filter((e) => AnalitykService.isActive(e))
-    const stanNaKoniec = active.length
+    // Latest deactivation per user — the one that decides the state at any instant we ask about.
+    const ostatniaDezaktywacja = new Map<string, Date>()
+    for (const d of scopedDeactivations) {
+      const previous = ostatniaDezaktywacja.get(d.entityId)
+      if (!previous || previous.getTime() < d.createdAt.getTime()) ostatniaDezaktywacja.set(d.entityId, d.createdAt)
+    }
+
+    const naKoniec = employees.filter((e) => AnalitykService.naStanie(e, range.toExcl, ostatniaDezaktywacja))
+    const stanNaKoniec = naKoniec.length
+    const stanNaPoczatek = employees.filter((e) => AnalitykService.naStanie(e, range.from, ostatniaDezaktywacja)).length
     const przyjecia = employees.filter((e) => e.hiredAt.getTime() >= range.from.getTime()).length
-    const odejscia = scopedDepartures.length
-    const stanNaPoczatek = Math.max(0, stanNaKoniec - przyjecia + odejscia)
+
+    // Departures are only measurable when at least one employee record is joined to a user account.
+    // An empty scope is a different thing entirely: there is nobody to depart, so 0 is the truth.
+    const mierzalne = employees.length === 0 || employees.some((e) => e.userId !== null)
+    const wZakresie = scopedDeactivations.filter((d) => d.createdAt.getTime() >= range.from.getTime())
+    const odejscia = mierzalne ? wZakresie.length : null
 
     const wgJednostekMap = new Map<string, number>()
-    for (const e of active) wgJednostekMap.set(e.unitId, (wgJednostekMap.get(e.unitId) ?? 0) + 1)
+    for (const e of naKoniec) wgJednostekMap.set(e.unitId, (wgJednostekMap.get(e.unitId) ?? 0) + 1)
     const wgJednostek = [...wgJednostekMap.entries()]
       .map(([unitId, liczba]) => ({ unitId, nazwa: names.get(unitId) ?? unitId, liczba }))
       .sort((a, b) => b.liczba - a.liczba || a.nazwa.localeCompare(b.nazwa, 'pl'))
@@ -341,7 +409,7 @@ export class AnalitykService {
     const dynamika = monthBuckets(range).map((miesiac) => ({
       miesiac,
       przyjecia: employees.filter((e) => e.hiredAt.getTime() >= range.from.getTime() && monthKey(e.hiredAt) === miesiac).length,
-      odejscia: scopedDepartures.filter((d) => monthKey(d.createdAt) === miesiac).length,
+      odejscia: mierzalne ? wZakresie.filter((d) => monthKey(d.createdAt) === miesiac).length : null,
     }))
 
     const sredniStan = (stanNaPoczatek + stanNaKoniec) / 2
@@ -349,13 +417,18 @@ export class AnalitykService {
     return {
       meta: this.buildMeta(range, scope, [
         'Odejścia pochodzą z dziennika audytu (dezaktywacja konta) — schemat nie ma daty ustania zatrudnienia.',
+        'Stan zatrudnienia odtwarzany na dany moment z dziennika audytu, a nie z bieżącej flagi konta — dzięki temu porównanie okresów może wykazać spadek.',
+        'Rotacja podana ZA WSKAZANY OKRES (nie w ujęciu rocznym) — nie porównuj jej wprost ze wskaźnikiem rocznym.',
+        ...(odejscia === null
+          ? ['Odejścia i rotacja NIEZNANE: żadna kartoteka pracownika w tym zakresie nie ma powiązanego konta użytkownika, więc dziennika audytu nie da się do nikogo przypiąć.']
+          : []),
       ]),
       stanNaKoniec,
       stanNaPoczatek,
       przyjecia,
       odejscia,
-      zmiana: przyjecia - odejscia,
-      rotacja: ratio(odejscia, sredniStan),
+      zmiana: odejscia === null ? null : przyjecia - odejscia,
+      rotacjaWOkresie: odejscia === null ? null : ratio(odejscia, sredniStan),
       wgJednostek,
       wgLokalizacji,
       dynamika,
@@ -436,14 +509,22 @@ export class AnalitykService {
   // --- 3. Czas pracy ------------------------------------------------------------------------------
 
   /**
-   * Worked hours from the realized roster (`Shift`), with overtime/deficit measured per EMPLOYEE-WEEK
-   * against the contractual norm (`etat × 8h × working days of that week inside the range`).
+   * ROSTERED hours from `Shift`, with the surplus/shortfall measured per EMPLOYEE-WEEK against the
+   * contractual weekly norm (`etat × 8h × working days of that week inside the range`).
+   *
+   * READ THE NAMES LITERALLY. The result carries `nadwyzkaPonadNorme`, NOT `nadgodziny`, because
+   * this is not overtime in the Kodeks pracy sense and the module must not pretend otherwise:
+   *  - the figures are PLANNED time (there is no attendance table), so a no-show, a late start or a
+   *    cancelled shift cannot move them;
+   *  - no unpaid break is deducted (art. 141 allows up to 60 min), so an 8h window counts as 8h;
+   *  - only the WEEKLY norm is applied. Art. 151 §1 also knows a DAILY norm — 12h on each of three
+   *    days is 36h ≤ 40h and scores zero here, while KP counts 12 hours of overtime. The figure
+   *    therefore systematically UNDERSTATES statutory overtime for shift operations.
    *
    * Only employee-weeks that CONTAIN at least one shift are evaluated: an employee who was on leave
-   * for a whole week must not surface as a 40h "deficit" — that is an absence (see
-   * {@link absencje}), not under-worked time. Overtime and deficit are summed separately and never
-   * netted against each other, so a week of +5h and a week of −5h reports as 5h overtime AND 5h
-   * deficit, not as zero.
+   * for a whole week must not surface as a 40h shortfall — that is an absence (see {@link absencje}),
+   * not under-worked time. Surplus and shortfall are summed separately and never netted against each
+   * other, so a week of +5h and a week of −5h reports as 5h surplus AND 5h shortfall, not as zero.
    */
   async czasPracy(client: TenantClient, scope: UnitScope, range: AnalitykRange): Promise<CzasPracyResult> {
     const [shifts, names] = await Promise.all([
@@ -486,11 +567,11 @@ export class AnalitykService {
       perEmployeeWeek.set(key, bucket)
     }
 
-    const perEmployeeNadgodziny = new Map<string, { employeeId: string; unitId: string; nadgodziny: number }>()
-    const perUnitNadgodziny = new Map<string, number>()
+    const perEmployeeNadwyzka = new Map<string, { employeeId: string; unitId: string; nadwyzka: number }>()
+    const perUnitNadwyzka = new Map<string, number>()
     let normaGodzin = 0
-    let nadgodziny = 0
-    let niedobor = 0
+    let nadwyzkaPonadNorme = 0
+    let niedoborDoNormy = 0
 
     for (const bucket of perEmployeeWeek.values()) {
       const weekStart = new Date(`${bucket.weekStart}T00:00:00.000Z`)
@@ -503,14 +584,14 @@ export class AnalitykService {
 
       const nad = Math.max(0, bucket.godziny - norma)
       const nied = Math.max(0, norma - bucket.godziny)
-      nadgodziny += nad
-      niedobor += nied
+      nadwyzkaPonadNorme += nad
+      niedoborDoNormy += nied
 
       if (nad > 0) {
-        const entry = perEmployeeNadgodziny.get(bucket.employeeId) ?? { employeeId: bucket.employeeId, unitId: bucket.unitId, nadgodziny: 0 }
-        entry.nadgodziny += nad
-        perEmployeeNadgodziny.set(bucket.employeeId, entry)
-        perUnitNadgodziny.set(bucket.unitId, (perUnitNadgodziny.get(bucket.unitId) ?? 0) + nad)
+        const entry = perEmployeeNadwyzka.get(bucket.employeeId) ?? { employeeId: bucket.employeeId, unitId: bucket.unitId, nadwyzka: 0 }
+        entry.nadwyzka += nad
+        perEmployeeNadwyzka.set(bucket.employeeId, entry)
+        perUnitNadwyzka.set(bucket.unitId, (perUnitNadwyzka.get(bucket.unitId) ?? 0) + nad)
       }
     }
 
@@ -519,29 +600,30 @@ export class AnalitykService {
         unitId,
         nazwa: names.get(unitId) ?? unitId,
         godziny: round(godziny),
-        nadgodziny: round(perUnitNadgodziny.get(unitId) ?? 0),
+        nadwyzka: round(perUnitNadwyzka.get(unitId) ?? 0),
       }))
       .sort((a, b) => b.godziny - a.godziny || a.nazwa.localeCompare(b.nazwa, 'pl'))
 
-    const topNadgodziny = [...perEmployeeNadgodziny.values()]
-      .map((e) => ({ ...e, nadgodziny: round(e.nadgodziny) }))
-      .sort((a, b) => b.nadgodziny - a.nadgodziny || a.employeeId.localeCompare(b.employeeId))
+    const topNadwyzka = [...perEmployeeNadwyzka.values()]
+      .map((e) => ({ ...e, nadwyzka: round(e.nadwyzka) }))
+      .sort((a, b) => b.nadwyzka - a.nadwyzka || a.employeeId.localeCompare(b.employeeId))
       .slice(0, 10)
 
     return {
       meta: this.buildMeta(range, scope, [
         'Czas pracy liczony z grafiku (zmiany), nie z rejestracji wejść/wyjść — schemat nie ma tabeli obecności.',
         'Norma = etat × 8h × dni robocze tygodnia w zakresie; oceniane tylko tygodnie ze zmianami.',
+        'To NADWYŻKA PONAD NORMĘ TYGODNIOWĄ z grafiku, a nie nadgodziny w rozumieniu KP: bez normy dobowej (art. 151 §1) i bez odliczenia przerwy niepłatnej (art. 141). Praca 12 h przez 3 dni (36 h/tydz.) daje tu 0, a wg KP 12 h nadgodzin.',
       ]),
       sumaGodzin: round(sumaGodzin),
       liczbaZmian: shifts.length,
       osobodni: osobodni.size,
       sredniaDzienna: osobodni.size > 0 ? round(sumaGodzin / osobodni.size) : null,
       normaGodzin: round(normaGodzin),
-      nadgodziny: round(nadgodziny),
-      niedobor: round(niedobor),
+      nadwyzkaPonadNorme: round(nadwyzkaPonadNorme),
+      niedoborDoNormy: round(niedoborDoNormy),
       wgJednostek,
-      topNadgodziny,
+      topNadwyzka,
     }
   }
 
@@ -552,8 +634,13 @@ export class AnalitykService {
    * against the flat statutory {@link WYMIAR_URLOPU_DNI}, the distribution of remaining balances, and
    * the at-risk list (a high balance late in the year, when the days can still be forfeited).
    *
-   * Only `URLOP*` leave types draw the entitlement down — sick and compassionate leave are absences
-   * but not holiday, so counting them here would understate everyone's remaining balance.
+   * WHICH leave draws the entitlement down is decided by the shared `common/leave-type.ts`
+   * classifier, IN MEMORY. It used to be a Prisma `startsWith: 'URLOP'` filter, which was wrong in
+   * both directions: it swept in `URLOP_BEZPŁATNY` / `URLOP_MACIERZYŃSKI` / `URLOP_RODZICIELSKI` /
+   * `URLOP_WYCHOWAWCZY` (none of which consume the art. 154 pool — an employee back from a year of
+   * maternity leave would show a deeply negative balance), while being CASE-SENSITIVE on Postgres,
+   * so a lower-cased `urlop_wypoczynkowy` was not counted at all. Classifying in memory also keeps
+   * this module and `strategic-brain` reading the same row the same way.
    */
   async urlopy(client: TenantClient, scope: UnitScope, range: AnalitykRange): Promise<UrlopyResult> {
     const rok = range.toIncl.getUTCFullYear()
@@ -566,18 +653,18 @@ export class AnalitykService {
       client.leaveRequest.findMany({
         where: {
           status: LeaveStatus.APPROVED,
-          type: { startsWith: URLOP_TYPE_PREFIX },
           startDate: { lte: yearEnd },
           endDate: { gte: yearStart },
           employee: this.employeeScope(scope),
         },
-        select: { employeeId: true, startDate: true, endDate: true },
+        select: { employeeId: true, startDate: true, endDate: true, type: true },
       }),
     ])
 
     const active = employees.filter((e) => AnalitykService.isActive(e))
     const usedByEmployee = new Map<string, number>()
     for (const leave of leaves) {
+      if (!drawsDownAnnualEntitlement(leave.type)) continue
       const dni = businessDaysInRange(leave.startDate, leave.endDate, yearRange)
       if (dni > 0) usedByEmployee.set(leave.employeeId, (usedByEmployee.get(leave.employeeId) ?? 0) + dni)
     }
@@ -605,8 +692,9 @@ export class AnalitykService {
 
     return {
       meta: this.buildMeta(range, scope, [
-        `Wymiar urlopu przyjęty ryczałtowo (${WYMIAR_URLOPU_DNI} dni, KP art. 154) — schemat nie przechowuje indywidualnych wymiarów.`,
+        `Wymiar urlopu przyjęty ryczałtowo (${WYMIAR_URLOPU_DNI} dni, KP art. 154) — schemat nie przechowuje indywidualnych wymiarów; dla osób uprawnionych do 20 dni saldo jest zawyżone o 6 dni.`,
         `Ryzyko przepadnięcia sygnalizowane od saldo ≥ ${PROG_RYZYKA_PRZEPADNIECIA} dni w IV kwartale.`,
+        'Wymiar pomniejszają wyłącznie urlop wypoczynkowy i na żądanie; bezpłatny, macierzyński, rodzicielski i wychowawczy są nieobecnością, ale puli z art. 154 nie konsumują.',
       ]),
       rok,
       wymiarDni: WYMIAR_URLOPU_DNI,
@@ -629,6 +717,14 @@ export class AnalitykService {
    * employee and to that unit's `managerUserId` — the approver actually accountable for it. Backlog
    * age is measured against the END of the range (`do`), which keeps the figure deterministic and
    * reproducible instead of drifting with wall-clock time.
+   *
+   * THE BACKLOG IS RECONSTRUCTED, NOT READ OFF THE CURRENT STATUS. The query used to be
+   * `status = PENDING AND createdAt < do`, i.e. "filed before the end of the range and undecided
+   * RIGHT NOW" — which describes today, not the end of the window. Combined with an ever-widening
+   * `createdAt` bound that made `wToku` monotonically non-decreasing across two windows, so a queue
+   * the HR team had just cleared could only ever look flat or worse. `decidedAt` is written on every
+   * approve/reject/cancel (`leave.service.ts`), so "open at T" is exactly `createdAt < T AND
+   * (decidedAt IS NULL OR decidedAt >= T)`.
    */
   async wnioski(client: TenantClient, scope: UnitScope, range: AnalitykRange): Promise<WnioskiResult> {
     const [zlozoneRows, pendingRows, units] = await Promise.all([
@@ -637,7 +733,16 @@ export class AnalitykService {
         select: { id: true, status: true, type: true, createdAt: true, decidedAt: true, decidedByUserId: true },
       }),
       client.leaveRequest.findMany({
-        where: { status: LeaveStatus.PENDING, createdAt: { lt: range.toExcl }, employee: this.employeeScope(scope) },
+        where: {
+          createdAt: { lt: range.toExcl },
+          employee: this.employeeScope(scope),
+          OR: [
+            // Never decided at all — still open, and was open at the end of the range too.
+            { status: LeaveStatus.PENDING, decidedAt: null },
+            // Decided, but only AFTER the window closed → it was still in the queue back then.
+            { decidedAt: { gte: range.toExcl } },
+          ],
+        },
         select: { id: true, createdAt: true, employee: { select: { unitId: true } } },
       }),
       client.organizationalUnit.findMany({
@@ -702,6 +807,7 @@ export class AnalitykService {
       meta: this.buildMeta(range, scope, [
         'Wiek zaległych wniosków liczony względem końca zakresu ("do"), nie względem bieżącej daty.',
         'Kolejka akceptacji przypisana do kierownika jednostki wnioskodawcy — wniosek nie ma pola akceptującego.',
+        'Wnioski w toku odtwarzane na koniec zakresu z dat złożenia i decyzji, a nie z bieżącego statusu — rozładowana kolejka faktycznie pokazuje poprawę.',
       ]),
       zlozone: zlozoneRows.length,
       wToku: pendingRows.length,
@@ -763,7 +869,7 @@ export class AnalitykService {
         stanZatrudnienia: biezacy.stanZatrudnienia - poprzedni.stanZatrudnienia,
         wskaznikAbsencji: deltaOrNull(biezacy.wskaznikAbsencji, poprzedni.wskaznikAbsencji, 4),
         sumaGodzin: round(biezacy.sumaGodzin - poprzedni.sumaGodzin),
-        nadgodziny: round(biezacy.nadgodziny - poprzedni.nadgodziny),
+        nadwyzkaPonadNorme: round(biezacy.nadwyzkaPonadNorme - poprzedni.nadwyzkaPonadNorme),
         wnioskiWToku: biezacy.wnioskiWToku - poprzedni.wnioskiWToku,
         medianaGodzinDoDecyzji: deltaOrNull(biezacy.medianaGodzinDoDecyzji, poprzedni.medianaGodzinDoDecyzji, 1),
       },
@@ -798,7 +904,7 @@ export class AnalitykService {
       stanZatrudnienia: zatrudnienie.stanNaKoniec,
       wskaznikAbsencji: absencje.wskaznik,
       sumaGodzin: czasPracy.sumaGodzin,
-      nadgodziny: czasPracy.nadgodziny,
+      nadwyzkaPonadNorme: czasPracy.nadwyzkaPonadNorme,
       wnioskiWToku: wnioski.wToku,
       medianaGodzinDoDecyzji: wnioski.medianaGodzinDoDecyzji,
     }
@@ -812,7 +918,8 @@ export interface PorownanieKpi {
   stanZatrudnienia: number
   wskaznikAbsencji: number | null
   sumaGodzin: number
-  nadgodziny: number
+  /** Rostered hours above the WEEKLY norm — see {@link CzasPracyResult.nadwyzkaPonadNorme}. */
+  nadwyzkaPonadNorme: number
   wnioskiWToku: number
   medianaGodzinDoDecyzji: number | null
 }

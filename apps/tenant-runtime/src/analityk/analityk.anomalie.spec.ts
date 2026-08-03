@@ -4,7 +4,7 @@ import {
   PROG_ABSENCJA_PP_WYSOKA,
   PROG_DECYZJA_H,
   PROG_KOLEJKA_SZT,
-  PROG_NADGODZINY_H,
+  PROG_NADWYZKA_H,
   PROG_ZATRUDNIENIE_OS,
   type KodAnomalii,
 } from './analityk.anomalie.js'
@@ -17,7 +17,7 @@ const BASE: PorownanieKpi = {
   stanZatrudnienia: 50,
   wskaznikAbsencji: 0.05,
   sumaGodzin: 3500,
-  nadgodziny: 100,
+  nadwyzkaPonadNorme: 100,
   wnioskiWToku: 10,
   medianaGodzinDoDecyzji: 20,
 }
@@ -32,7 +32,7 @@ describe('wykryjAnomalie', () => {
   })
 
   it('reports nothing when every metric IMPROVED', () => {
-    expect(codes({ wskaznikAbsencji: 0.02, nadgodziny: 40, wnioskiWToku: 2, medianaGodzinDoDecyzji: 5 })).toEqual([])
+    expect(codes({ wskaznikAbsencji: 0.02, nadwyzkaPonadNorme: 40, wnioskiWToku: 2, medianaGodzinDoDecyzji: 5 })).toEqual([])
   })
 
   describe('ABSENCJA_SKOK', () => {
@@ -89,26 +89,26 @@ describe('wykryjAnomalie', () => {
     })
   })
 
-  describe('NADGODZINY_SKOK', () => {
+  describe('NADWYZKA_SKOK', () => {
     it('fires on a rise that is both relatively and absolutely large', () => {
       // 100h → 160h = +60h and +60%.
-      const [a] = wykryjAnomalie(kpi({ nadgodziny: 160 }), BASE)
-      expect(a?.kod).toBe('NADGODZINY_SKOK')
+      const [a] = wykryjAnomalie(kpi({ nadwyzkaPonadNorme: 160 }), BASE)
+      expect(a?.kod).toBe('NADWYZKA_SKOK')
       expect(a?.zmiana).toBe(60)
     })
 
     it('stays silent when the absolute rise is small even at a big percentage', () => {
       // 4h → 12h is +200% but only +8h.
-      expect(codes({ nadgodziny: 12 }, { nadgodziny: 4 })).not.toContain('NADGODZINY_SKOK')
+      expect(codes({ nadwyzkaPonadNorme: 12 }, { nadwyzkaPonadNorme: 4 })).not.toContain('NADWYZKA_SKOK')
     })
 
     it('stays silent when the absolute rise is large but the percentage is not', () => {
       // 1000h → 1025h is +25h but only +2.5%.
-      expect(codes({ nadgodziny: 1025 }, { nadgodziny: 1000 })).not.toContain('NADGODZINY_SKOK')
+      expect(codes({ nadwyzkaPonadNorme: 1025 }, { nadwyzkaPonadNorme: 1000 })).not.toContain('NADWYZKA_SKOK')
     })
 
     it('fires exactly at the absolute threshold when the relative bar is also cleared', () => {
-      expect(codes({ nadgodziny: 20 + PROG_NADGODZINY_H }, { nadgodziny: 20 })).toContain('NADGODZINY_SKOK')
+      expect(codes({ nadwyzkaPonadNorme: 20 + PROG_NADWYZKA_H }, { nadwyzkaPonadNorme: 20 })).toContain('NADWYZKA_SKOK')
     })
   })
 
@@ -179,13 +179,13 @@ describe('wykryjAnomalie', () => {
   describe('ordering and composition', () => {
     it('returns every rule that fired, high severity first', () => {
       const result = wykryjAnomalie(
-        kpi({ stanZatrudnienia: 40, wskaznikAbsencji: 0.12, nadgodziny: 200, wnioskiWToku: 30, medianaGodzinDoDecyzji: 60 }),
+        kpi({ stanZatrudnienia: 40, wskaznikAbsencji: 0.12, nadwyzkaPonadNorme: 200, wnioskiWToku: 30, medianaGodzinDoDecyzji: 60 }),
         BASE,
       )
       expect(result.map((a) => a.kod)).toEqual([
         'ABSENCJA_SKOK',
         'SPADEK_ZATRUDNIENIA',
-        'NADGODZINY_SKOK',
+        'NADWYZKA_SKOK',
         'KOLEJKA_WNIOSKOW',
         'CZAS_DECYZJI',
       ])
@@ -193,7 +193,7 @@ describe('wykryjAnomalie', () => {
     })
 
     it('carries both compared values on every finding so the UI can show its reasoning', () => {
-      const [a] = wykryjAnomalie(kpi({ nadgodziny: 160 }), BASE)
+      const [a] = wykryjAnomalie(kpi({ nadwyzkaPonadNorme: 160 }), BASE)
       expect(a?.wartoscBiezaca).toBe(160)
       expect(a?.wartoscPoprzednia).toBe(100)
       expect(a?.opis).toContain('100')
