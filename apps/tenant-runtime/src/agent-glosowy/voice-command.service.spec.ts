@@ -4,6 +4,7 @@ import { VoiceCommandService, type VoiceActor } from './voice-command.service.js
 import { LeaveService } from '../leave/leave.service.js'
 import { GrafikService } from '../grafik/grafik.service.js'
 import { AuditService } from '../tenant-runtime/audit/audit.service.js'
+import { ShiftSwapService } from '../shift-swap/shift-swap.service.js'
 import { INTENT_CATALOG } from './intent.util.js'
 
 const TODAY = new Date('2026-07-29T00:00:00.000Z') // Wednesday
@@ -11,6 +12,7 @@ const TODAY = new Date('2026-07-29T00:00:00.000Z') // Wednesday
 const leave = { createRequest: jest.fn(), list: jest.fn(), cancel: jest.fn() }
 const grafik = { listShifts: jest.fn() }
 const audit = { log: jest.fn() }
+const shiftSwap = { create: jest.fn(), submit: jest.fn() }
 
 // Real client methods KTO_PRACUJE reads directly (own-identity + roster lookups), mirroring how
 // GrafikService/LeaveService/EmployeesService resolve "who am I" / unit scope inline. Everything
@@ -28,6 +30,7 @@ function makeService(): VoiceCommandService {
     leave as unknown as LeaveService,
     grafik as unknown as GrafikService,
     audit as unknown as AuditService,
+    shiftSwap as unknown as ShiftSwapService,
   )
 }
 
@@ -138,6 +141,15 @@ describe('VoiceCommandService', () => {
       expect(r.fallbackToForm).toBe(false)
       expect(r.proposedAction.kind).toBe('CANCEL_LEAVE')
       expect(leave.cancel).not.toHaveBeenCalled()
+    })
+
+    it('ZAMIANA_ZMIANY (write) requires confirmation and proposes a CREATE_SHIFT_SWAP action', () => {
+      const r = svc.interpret('chcę oddać zmianę w piątek', TODAY, actor)
+      expect(r.intent).toBe('ZAMIANA_ZMIANY')
+      expect(r.requiresConfirmation).toBe(true)
+      expect(r.fallbackToForm).toBe(false)
+      expect(r.proposedAction.kind).toBe('CREATE_SHIFT_SWAP')
+      expect(shiftSwap.create).not.toHaveBeenCalled()
     })
 
     it('carries an EU AI Act transparency notice on every interpretation', () => {
@@ -389,6 +401,49 @@ describe('VoiceCommandService', () => {
         expect(res.executed).toBe(false)
         expect(leave.cancel).not.toHaveBeenCalled()
         expect(res.humanReadable).toMatch(/nie masz.{0,30}wniosk/i)
+      })
+    })
+
+    describe('ZAMIANA_ZMIANY — human-in-the-loop write gate', () => {
+      const ENTITIES = { dateFrom: '2026-07-31', dateTo: '2026-07-31' } // Friday
+
+      it('REFUSES without confirm === true and NEVER calls ShiftSwapService.create', async () => {
+        await expect(
+          svc.execute(client, actor, { intent: 'ZAMIANA_ZMIANY', entities: ENTITIES, confirm: false }, TODAY),
+        ).rejects.toBeInstanceOf(BadRequestException)
+        expect(shiftSwap.create).not.toHaveBeenCalled()
+        expect(audit.log).not.toHaveBeenCalled()
+      })
+
+      it('creates + submits a give-away swap for the caller\'s OWN shift on the day, via the REAL ShiftSwapService', async () => {
+        prismaClient.employee.findFirst.mockResolvedValue({ id: 'emp-self' })
+        grafik.listShifts.mockResolvedValue([
+          { id: 's-other-day', employeeId: 'emp-self', date: new Date('2026-08-01T00:00:00.000Z'), start: '08:00', end: '16:00' },
+          { id: 's-target', employeeId: 'emp-self', date: new Date('2026-07-31T00:00:00.000Z'), start: '08:00', end: '16:00' },
+          { id: 's-not-mine', employeeId: 'emp-OTHER', date: new Date('2026-07-31T00:00:00.000Z'), start: '08:00', end: '16:00' },
+        ])
+        shiftSwap.create.mockResolvedValue({ id: 'swap-1', state: 'DRAFT' })
+        shiftSwap.submit.mockResolvedValue({ id: 'swap-1', state: 'PENDING_PEER' })
+
+        const res = await svc.execute(client, actor, { intent: 'ZAMIANA_ZMIANY', entities: ENTITIES, confirm: true }, TODAY)
+
+        expect(shiftSwap.create).toHaveBeenCalledWith(client, { userId: actor.userId, roles: actor.roles }, { requesterShiftId: 's-target' })
+        expect(shiftSwap.submit).toHaveBeenCalledWith(client, 'swap-1')
+        expect(res.executed).toBe(true)
+        expect(res.confirmedByHuman).toBe(true)
+        expect(res.result).toEqual({ id: 'swap-1', state: 'PENDING_PEER' })
+        expect(audit.log).toHaveBeenCalledTimes(1)
+      })
+
+      it('reports gracefully when the caller has no shift that day — no exception, no swap created', async () => {
+        prismaClient.employee.findFirst.mockResolvedValue({ id: 'emp-self' })
+        grafik.listShifts.mockResolvedValue([])
+
+        const res = await svc.execute(client, actor, { intent: 'ZAMIANA_ZMIANY', entities: ENTITIES, confirm: true }, TODAY)
+
+        expect(res.executed).toBe(false)
+        expect(shiftSwap.create).not.toHaveBeenCalled()
+        expect(res.humanReadable).toMatch(/nie masz.{0,30}zmian/i)
       })
     })
 

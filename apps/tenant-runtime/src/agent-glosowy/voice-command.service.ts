@@ -3,6 +3,7 @@ import type { TenantClient } from '@hrobot/db'
 import { AuditService } from '../tenant-runtime/audit/audit.service.js'
 import { LeaveService } from '../leave/leave.service.js'
 import { GrafikService } from '../grafik/grafik.service.js'
+import { ShiftSwapService } from '../shift-swap/shift-swap.service.js'
 import type { CreateLeaveDto } from '../leave/dto/leave.dto.js'
 import { drawsDownAnnualEntitlement } from '../common/leave-type.js'
 import { isGlobal, managedUnitIds } from '../tenant-runtime/rbac/unit-scope.js'
@@ -62,6 +63,7 @@ export type ProposedActionKind =
   | 'READ_NEXT_SHIFT'
   | 'READ_TIMESHEET'
   | 'CANCEL_LEAVE'
+  | 'CREATE_SHIFT_SWAP'
   | 'NONE'
 
 /** A description of what WOULD happen — never a side effect. `interpret` returns this; nothing runs. */
@@ -113,7 +115,7 @@ const LEAVE_TYPE_BY_INTENT: Record<'URLOP' | 'L4', string> = {
   L4: 'ZWOLNIENIE_LEKARSKIE',
 }
 
-const WRITE_INTENTS: ReadonlySet<AgentIntent> = new Set<AgentIntent>(['URLOP', 'L4', 'ANULUJ_WNIOSEK'])
+const WRITE_INTENTS: ReadonlySet<AgentIntent> = new Set<AgentIntent>(['URLOP', 'L4', 'ANULUJ_WNIOSEK', 'ZAMIANA_ZMIANY'])
 
 /**
  * Renders POMOC's help text FROM {@link INTENT_CATALOG} — never a hand-copied string. Growing the
@@ -152,6 +154,7 @@ export class VoiceCommandService {
     private readonly leave: LeaveService,
     private readonly grafik: GrafikService,
     private readonly audit: AuditService,
+    private readonly shiftSwap: ShiftSwapService,
   ) {}
 
   /**
@@ -207,6 +210,16 @@ export class VoiceCommandService {
         fallbackToForm: false,
         proposedAction: { kind: 'CANCEL_LEAVE', method: 'POST', endpoint: '/api/wnioski/{id}/anuluj' },
         humanReadable: 'Czy anulować Twój najnowszy oczekujący wniosek? Wymagane potwierdzenie.',
+      }
+    }
+
+    if (intent === 'ZAMIANA_ZMIANY') {
+      return {
+        ...base,
+        requiresConfirmation: true,
+        fallbackToForm: false,
+        proposedAction: { kind: 'CREATE_SHIFT_SWAP', method: 'POST', endpoint: '/api/shift-swap', body: { date: entities.dateFrom } },
+        humanReadable: `Czy zgłosić prośbę o zamianę Twojej zmiany w dniu ${entities.dateFrom}? Wymagane potwierdzenie.`,
       }
     }
 
@@ -414,6 +427,55 @@ export class VoiceCommandService {
           confirmedByHuman: true,
           result: cancelled,
           humanReadable: `Anulowano wniosek (${cancelled.type}) od ${toISODate(cancelled.startDate)} do ${toISODate(cancelled.endDate)}.`,
+        }
+      }
+
+      // ZAMIANA_ZMIANY: a "give away" swap request (no named counterparty — the closed vocabulary
+      // has no way to name a colleague) for the caller's OWN shift on the spoken day, created via
+      // the REAL ShiftSwapService and immediately submitted (DRAFT → PENDING_PEER) so a colleague
+      // can actually act on it. The manager approval / actual reassignment stays entirely inside
+      // `ShiftSwapService` — this agent only starts the request, exactly like a keyboard user would.
+      if (intent === 'ZAMIANA_ZMIANY') {
+        if (entities.dateFrom == null) {
+          throw new BadRequestException('Brak daty — nie można zgłosić zamiany zmiany.')
+        }
+        const date = entities.dateFrom
+        const myId = await this.ownEmployeeId(client, actor)
+        const all = (await this.grafik.listShifts(client, actor)) as Array<{ id: string; employeeId: string; date: unknown }>
+        // Defense-in-depth own-filter (see KTO_PRACUJE/NASTEPNA_ZMIANA/MOJA_EWIDENCJA).
+        const mine = all.filter((s) => myId != null && s.employeeId === myId && toISODate(s.date) === date)
+        const target = mine[0]
+        if (!target) {
+          return {
+            ...base,
+            executed: false,
+            requiresConfirmation: false,
+            fallbackToForm: false,
+            humanReadable: `Nie masz zmiany w dniu ${date} — nie można zgłosić zamiany.`,
+          }
+        }
+
+        const created = (await this.shiftSwap.create(client, { userId: actor.userId, roles: actor.roles }, { requesterShiftId: target.id })) as { id: string }
+        const submitted = await this.shiftSwap.submit(client, created.id)
+
+        await this.audit.log({
+          tenantClient: client,
+          actorUserId: actor.userId,
+          action: 'agent-glosowy.execute',
+          entityType: 'ShiftSwapRequest',
+          entityId: created.id,
+          payload: { intent, shiftSwapRequestId: created.id, shiftId: target.id },
+          ipAddress: actor.ipAddress,
+        })
+
+        return {
+          ...base,
+          executed: true,
+          requiresConfirmation: false,
+          fallbackToForm: false,
+          confirmedByHuman: true,
+          result: submitted,
+          humanReadable: `Zgłoszono prośbę o zamianę zmiany z dnia ${date} — czeka na przyjęcie przez innego pracownika.`,
         }
       }
     }

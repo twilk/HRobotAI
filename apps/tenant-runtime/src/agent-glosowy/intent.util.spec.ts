@@ -103,7 +103,7 @@ describe('parseIntent — closed PL command set (K1 urlop / K2 L4 / K3 mój graf
       expect(cataloged).toEqual(
         [
           'L4', 'MOJ_GRAFIK', 'POMOC', 'SALDO_URLOPU', 'STATUS_WNIOSKU', 'URLOP',
-          'KTO_PRACUJE', 'NASTEPNA_ZMIANA', 'MOJA_EWIDENCJA', 'ANULUJ_WNIOSEK',
+          'KTO_PRACUJE', 'NASTEPNA_ZMIANA', 'MOJA_EWIDENCJA', 'ANULUJ_WNIOSEK', 'ZAMIANA_ZMIANY',
         ].sort(),
       )
     })
@@ -196,6 +196,32 @@ describe('parseIntent — closed PL command set (K1 urlop / K2 L4 / K3 mój graf
     it('does not affect an ordinary URLOP/L4 request', () => {
       expect(parseIntent('chcę wziąć urlop od piątku do poniedziałku', TODAY).intent).toBe('URLOP')
       expect(parseIntent('zgłoś L4 na dziś', TODAY).intent).toBe('L4')
+    })
+  })
+
+  describe('ZAMIANA_ZMIANY (offer my shift, write)', () => {
+    it('parses "chcę oddać zmianę w piątek" with a date and HIGH confidence', () => {
+      const r = parseIntent('chcę oddać zmianę w piątek', TODAY)
+      expect(r.intent).toBe('ZAMIANA_ZMIANY')
+      expect(r.entities.dateFrom).toBe('2026-07-31')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+
+    it('parses "zamiana zmiany na wtorek"', () => {
+      const r = parseIntent('zamiana zmiany na wtorek', TODAY)
+      expect(r.intent).toBe('ZAMIANA_ZMIANY')
+      expect(r.entities.dateFrom).toBe('2026-08-04')
+    })
+
+    it('lowers confidence below threshold with no parseable date (falls back to a manual form)', () => {
+      const r = parseIntent('chcę zamienić zmianę', TODAY)
+      expect(r.intent).toBe('ZAMIANA_ZMIANY')
+      expect(r.confidence).toBeLessThan(CONFIDENCE_THRESHOLD)
+    })
+
+    it('does not affect an ordinary MOJ_GRAFIK/KTO_PRACUJE utterance', () => {
+      expect(parseIntent('jaki mam grafik jutro', TODAY).intent).toBe('MOJ_GRAFIK')
+      expect(parseIntent('kto ma zmianę w piątek', TODAY).intent).toBe('KTO_PRACUJE')
     })
   })
 

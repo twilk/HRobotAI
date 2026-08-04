@@ -28,6 +28,7 @@ export type AgentIntent =
   | 'NASTEPNA_ZMIANA'
   | 'MOJA_EWIDENCJA'
   | 'ANULUJ_WNIOSEK'
+  | 'ZAMIANA_ZMIANY'
   | 'NIEZNANE'
 
 /** One catalog row per registered (non-`NIEZNANE`) intent — the SINGLE source of truth for POMOC's
@@ -67,6 +68,11 @@ export const INTENT_CATALOG: readonly IntentCatalogEntry[] = [
     intent: 'ANULUJ_WNIOSEK',
     opis: 'anulowanie Twojego najnowszego oczekującego wniosku (wymaga potwierdzenia)',
     przyklad: 'anuluj mój wniosek urlopowy',
+  },
+  {
+    intent: 'ZAMIANA_ZMIANY',
+    opis: 'zgłoszenie prośby o zamianę Twojej zmiany w danym dniu (wymaga potwierdzenia)',
+    przyklad: 'chcę oddać zmianę w piątek',
   },
 ]
 
@@ -235,6 +241,9 @@ const NASTEPNA_ZMIANA_RE = /nast[eę]pn.{0,10}zmian|kiedy.{0,15}(pracuj|zmian)/
  * accepted as a TRIGGER word only — a user naturally says it — but the response NEVER labels the
  * computed metric that way; see `VoiceCommandService` / `nadwyzkaPonadNorme` for why. */
 const MOJA_EWIDENCJA_RE = /ewidencj|przepracowa[nł]|nadgodzin|godziny.{0,10}pracy/
+/** Shift-swap ("give away my shift") markers. Checked BEFORE `GRAFIK_RE` — "zamienić zmianę" /
+ * "oddać zmianę" would otherwise be swallowed by `GRAFIK_RE`'s `zmian[ayę]\b`. */
+const ZAMIANA_ZMIANY_RE = /zamie[nń].{0,10}zmian|zamian[ae].{0,10}zmian|odda[jć].{0,10}zmian|wymie[nń].{0,10}zmian/
 /** Schedule (grafik) markers. NOTE: `kiedy pracuj` intentionally lives in `NASTEPNA_ZMIANA_RE` now,
  * not here — checked earlier in `parseIntent`, so this branch never sees it. */
 const GRAFIK_RE = /grafik|zmian[ayę]\b|moje zmiany/
@@ -326,6 +335,16 @@ export function parseIntent(text: string, today: Date): ParsedIntent {
       intent: 'MOJA_EWIDENCJA',
       entities: { dateFrom: toISO(weekStart), dateTo: toISO(addDays(weekEndExcl, -1)) },
       confidence: HIGH_CONFIDENCE,
+    }
+  }
+
+  if (ZAMIANA_ZMIANY_RE.test(normalized)) {
+    return {
+      intent: 'ZAMIANA_ZMIANY',
+      entities: { ...dates },
+      // A write intent needs a specific day to identify WHICH shift to offer — no date parsed →
+      // low confidence → the caller falls back to a manual form (same policy as URLOP/L4).
+      confidence: dates.dateFrom != null ? HIGH_CONFIDENCE : LOW_CONFIDENCE,
     }
   }
 
