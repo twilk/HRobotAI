@@ -120,9 +120,13 @@ provisioning: `psql … < scripts/seed-dataset-2026.sql` (demands + leave) then
 `node scripts/seed-dataset-2026.mjs` (runs the solver per week). Both are idempotent and leave the
 demo fortnight (Jul 13–26) untouched.
 
-Logins (real gate on :5601 → `/login`): `demo` / `demo-staging-2026` (ADMIN, full grafik),
+Logins (real gate on :5601 → `/login`): `demo` / `<hasło z .env.local>` (ADMIN, full grafik),
 `manager.demo` / `Manager!2026` (MANAGER, unit-scoped + swap approval),
 `pracownik.demo` / `Pracownik!2026` (PRACOWNIK — Anna Kowalska, read-only "my schedule").
+
+Hasło konta `demo` nie jest tu wypisane wprost — patrz `docs/design/web-kit/.env.local`
+(gitignored) albo zmienna środowiskowa `KEYCLOAK_PASSWORD`. Poprzednie hasło (`demo-staging-2026`)
+należy zrotować po stronie Keycloaka, bo pozostaje w historii gita.
 
 ## Notes
 

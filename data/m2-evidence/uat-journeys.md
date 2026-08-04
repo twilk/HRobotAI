@@ -1,7 +1,7 @@
 # UAT — 5 krytycznych user-journey (J1–J5) + skrypt sesji
 
 > Produktowy definition-of-done odbioru. Każdy journey: kroki + kryterium pass/fail + gdzie uchwycić dowód `[CAPTURE]`.
-> Środowisko: front web-kit `http://localhost:5601` (lub URL tunelu środowiska testowego — generowany na czas sesji i przekazywany uczestnikom przed jej rozpoczęciem), backend stack `hrobot`. Konto testowe: `demo` / `demo-staging-2026` (rola ADMIN_KLIENTA), realm `hrobot-staging`.
+> Środowisko: front web-kit `http://localhost:5601` (lub URL tunelu środowiska testowego — generowany na czas sesji i przekazywany uczestnikom przed jej rozpoczęciem), backend stack `hrobot`. Konto testowe: `demo` / `<hasło z .env.local>` (rola ADMIN_KLIENTA), realm `hrobot-staging`. Hasło: `docs/design/web-kit/.env.local` (gitignored) albo zmienna `KEYCLOAK_PASSWORD`; poprzednie hasło (`demo-staging-2026`) trzeba zrotować w Keycloaku, bo zostało w historii gita.
 
 ## J1 — Menadżer tworzy/edytuje zapotrzebowanie
 - Kroki: zaloguj → Grafik → wybierz jednostkę → dodaj/edytuj zapotrzebowanie (szablon → korekta).

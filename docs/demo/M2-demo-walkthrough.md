@@ -10,9 +10,13 @@
 - **Trzy konta demo** (realm `hrobot-staging`, klient `hrobot-web`):
   | Konto | Hasło | Rola | Zakres |
   |---|---|---|---|
-  | `demo` | `demo-staging-2026` | ADMIN_KLIENTA | globalny |
+  | `demo` | `<hasło z .env.local>` | ADMIN_KLIENTA | globalny |
   | `manager.demo` | `Manager!2026` | MANAGER | Region Centrum |
   | `pracownik.demo` | `Pracownik!2026` | PRACOWNIK | własne dane |
+
+  Hasło konta `demo`: patrz `docs/design/web-kit/.env.local` (gitignored) albo zmienna
+  środowiskowa `KEYCLOAK_PASSWORD`. Poprzednie hasło (`demo-staging-2026`) trzeba zrotować
+  w Keycloaku, bo zostało w historii gita.
 - **Dane demo** zaseedowane skryptem [`scripts/seed-demo-m2-modules.sql`](../../scripts/seed-demo-m2-modules.sql): firma 4Mobility, 10 stawek kosztowych (pełne pokrycie stanowisk×umów), 15 dostępów, wnioski (26 zatwierdzonych + 6 oczekujących + 1 odrzucony), 3 konta użytkowników. Kotwice AI-Grafik (26 zatwierdzonych urlopów) nienaruszone.
 
 ---
