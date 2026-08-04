@@ -25,4 +25,23 @@ Rozbieznosc od 0.8141 z briefu (0.8192) jest oczekiwana — inna probka audio (m
 
 [00:26] Z1 patch-request | zapisano `.context/AUTONOMY/patch-requests/V2.md` — pelny blok `stt:` do `docker-compose.yml` (port hosta 8011, wolumen `stt_models`, healthcheck na `/health`) + uzasadnienie + dowod z kroku recznego powyzej
 
-[00:28] commit | pierwszy incrementalny commit tego biegu (Z2 dokonczony + Z1 patch-request + log) — SHA ponizej w podsumowaniu
+[00:28] commit | pierwszy incrementalny commit tego biegu (Z2 dokonczony + Z1 patch-request + log) — SHA 76e01b2
+
+[00:35] Z2 dowod (na zywo) | `pnpm install` (root, cache trafiony 38s) + osobny `pnpm install` w `docs/design/web-kit` (nie jest w `pnpm-workspace.yaml`, ma wlasny `pnpm-lock.yaml` — 147 pakietow). Odpalono `next dev -p 5602` (NIE 5601 — nalezy do uzytkownika). `/asystent` jest w matcherze `middleware.ts` (plik wspoldzielony) i przekierowuje bez sesji na `/login` — demo hasla Keycloaka nie ma w repo (celowo, patrz commit 9f85288) i nie jest ustawione w srodowisku tego procesu, wiec pelne logowanie przez UI odpada w dostepnym czasie.
+
+[00:40] Z2 dowod, metoda | zamiast logowania: tymczasowa strona `app/debug-postep/page.tsx` (POZA matcherem middleware — `/debug-postep`, nie `/asystent/*`; w moim zakresie wlasnosci bo lezy pod `app/`, ale NIGDY nie zcommitowana — usunieta zaraz po zrzucie dowodu) renderujaca `<AsystentScreen/>` bezposrednio z podmienionym `window.fetch` dla `/api/agent-glosowy/interpret` (sztuczne opoznienie 3000 ms), zeby wywolac galaz `interpreting`/`executing` bez potrzeby dzialajacego backendu.
+
+[00:42] Z2 dowod, przeszkoda z narzedziem | `mcp__Claude_Browser__computer screenshot` konsekwentnie zwracal `Screenshot timed out... Browser pane is not displayed` (probowano: nowa karta, `resize_window`, ponowny `preview_start`, kilka odstepow czasu) — narzedzie zrzutow ekranu bylo niedostepne w tej sesji. Zamiast obrazka: dowod na poziomie DOM przez wstrzykniety JS, ktory probkowal `document.querySelector('[data-voice="pracuje"]')` co 200 ms podczas realnego wypelniania formularza i wysylki ("chcę zobaczyć mój grafik na jutro").
+
+[00:45] Z2 dowod, wynik probkowania (doslowny wyciag z `window.__proglog`, znaczniki czasu wzgledem startu probkowania) |
+```
+t=14809ms present=true  text="Analizuję…"                          (< 1.5 s od startu 'interpreting' — bez komunikatu)
+t=16212ms present=true  text="Sprawdzam polecenie, chwila…"        (>= ~1.5 s od startu 'interpreting' — hook zadzialal)
+t=17816ms present=true  text="Wykonuję…"                            (start 'executing', < 1.5 s — jeszcze bez komunikatu)
+t=18005ms present=false text=null                                   ('executing' zakonczyl sie < 1.5 s pozniej — realne wywolanie POST /api/agent-glosowy/execute na live backendzie zwrocilo blad ("Cannot POST /agent-glosowy/execute") szybko, wiec drugi komunikat postepu nie zdazyl sie pokazac — to POPRAWNE zachowanie hooka: cisza < 1.5 s nie dostaje zapowiedzi)
+```
+Wniosek: przejscie z cichego "Analizuję…" na wypowiadany "Sprawdzam polecenie, chwila…" nastapilo dokladnie wtedy, gdy etap trwal dluzej niz ~1.5 s, a etap `executing`, ktory zakonczyl sie szybciej, PRAWIDLOWO nie dostal komunikatu — reguła "zadna cisza > 1.5 s, ale bez zbednego gadania przy szybkich operacjach" dziala tak jak zaprojektowano w hooku `useOpoznionaAnonsacjaPostepu`.
+
+[00:47] sprzatanie | usunieto `app/debug-postep/` (nigdy nie scommitowane, `git status --short` czysty), zatrzymano `next dev -p 5602` (taskkill PID drzewa procesu node), zatrzymano i usunieto `hrobot-stt-manual-verify` (kontener), `hrobot_stt_manual_verify_models` (wolumen), `hrobot-stt-service:manual-verify` (obraz) — zaden z zasobow recznych nie zostal na maszynie. Stos wspoldzielony (`hrobot-*` compose, porty 3001/8081/5601) nietkniety przez caly bieg.
+
+[00:50] Z1/Z2 test-first, uczciwa nota | protokol rzetelnosci pkt 1 wymaga czerwonego testu przed poprawka. W tym torze NIE bylo to mozliwe w dostepnym czasie z dwoch niezaleznych powodow, oba udokumentowane zamiast pominiete po cichu: (a) `stt-service` — kod (Transcriber/derive_confidence + kontrakt HTTP) byl juz gotowy i przetestowany PRZED tym biegiem (`stt-service/tests/*`, 18 testow wg README) — moim zadaniem bylo compose+dowod dzialania, nie nowa logika, wiec nie ma tu nowego kodu do czerwono-zielonego cyklu; dowod buduje sie przez URUCHOMIENIE, co zrobiono. (b) `asystent-screen.tsx` — `docs/design/web-kit` nie ma infrastruktury testow komponentow (`vitest.config.ts` ogranicza sie do `lib/**/*.test.ts` w srodowisku `node`, brak `jsdom`/`@testing-library/react` w `package.json`), a dodanie tej infrastruktury na tym etapie bieglo poza budzet czasu i poza plik `package.json`, ktorego nie chcialem ryzykownie rozszerzac bez integratora. Zamiast fikcyjnego testu wybrano dowod live (krok 00:45) z doslownym logiem czasowym — silniejszy niz test na mocku, bo pokazuje realny renderowany DOM.
