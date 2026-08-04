@@ -2,8 +2,8 @@ import { Type } from 'class-transformer'
 import { IsBoolean, IsIn, IsNotEmpty, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator'
 import type { AgentIntent } from '../intent.util.js'
 
-/** The four intents of the CLOSED command set (K1/K2/K3 + the out-of-set sentinel). */
-const AGENT_INTENTS: readonly AgentIntent[] = ['URLOP', 'L4', 'MOJ_GRAFIK', 'NIEZNANE']
+/** The intents of the CLOSED command set (K1/K2/K3 + the out-of-set sentinel), grown incrementally. */
+const AGENT_INTENTS: readonly AgentIntent[] = ['URLOP', 'L4', 'MOJ_GRAFIK', 'SALDO_URLOPU', 'STATUS_WNIOSKU', 'NIEZNANE']
 
 /**
  * `POST /agent-glosowy/interpret` body. Text-only — audio→text (STT) is an out-of-process concern

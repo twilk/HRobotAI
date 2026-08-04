@@ -55,6 +55,37 @@ describe('parseIntent — closed PL command set (K1 urlop / K2 L4 / K3 mój graf
     })
   })
 
+  describe('SALDO_URLOPU (leave balance, read)', () => {
+    it('parses "ile mam dni urlopu" with HIGH confidence and no date needed', () => {
+      const r = parseIntent('ile mam dni urlopu', TODAY)
+      expect(r.intent).toBe('SALDO_URLOPU')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+
+    it('parses "jakie mam saldo urlopowe"', () => {
+      const r = parseIntent('jakie mam saldo urlopowe', TODAY)
+      expect(r.intent).toBe('SALDO_URLOPU')
+    })
+
+    it('does not mistake "chcę wziąć urlop" (no saldo/ile marker) for SALDO_URLOPU', () => {
+      const r = parseIntent('chcę wziąć urlop', TODAY)
+      expect(r.intent).toBe('URLOP')
+    })
+  })
+
+  describe('STATUS_WNIOSKU (leave request status, read)', () => {
+    it('parses "co z moim wnioskiem" with HIGH confidence', () => {
+      const r = parseIntent('co z moim wnioskiem', TODAY)
+      expect(r.intent).toBe('STATUS_WNIOSKU')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+
+    it('parses "jaki jest status mojego wniosku"', () => {
+      const r = parseIntent('jaki jest status mojego wniosku', TODAY)
+      expect(r.intent).toBe('STATUS_WNIOSKU')
+    })
+  })
+
   describe('ambiguous / out-of-set → NIEZNANE or low confidence (never guess-execute)', () => {
     it('returns NIEZNANE with sub-threshold confidence for an utterance outside the set', () => {
       const r = parseIntent('jaka jest dzisiaj pogoda w Warszawie', TODAY)
