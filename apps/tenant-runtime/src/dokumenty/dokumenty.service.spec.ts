@@ -5,6 +5,18 @@ import { AuditService } from '../tenant-runtime/audit/audit.service.js'
 import { DokumentyService, type DokumentyActor, type GenerujInput } from './dokumenty.service.js'
 import { DocScopeType, DocumentFormat, DocumentStatus, DocumentType } from './dokumenty.enums.js'
 
+// This spec exercises DokumentyService orchestration (RBAC, decrypt boundary, audit trail) — NOT
+// PDF rendering. `renderReportPdf` (tor DOK rewrite) spawns a real Chromium process via CDP, which
+// is correct behavior for production but would make every test in this file depend on a browser
+// being installed and add seconds per render — breaking the "hermetic unit lane" this file lives in
+// (see apps/tenant-runtime/jest.config.cjs's own comment on that boundary). Only `renderReportPdf`
+// is stubbed; the pure `buildXPdfContent` builders stay real (their correctness is covered by
+// pdf.renderer.spec.ts, and the real Chrome round-trip by pdf.renderer.chrome.integration.spec.ts).
+jest.mock('./render/pdf.renderer.js', () => ({
+  ...jest.requireActual('./render/pdf.renderer.js'),
+  renderReportPdf: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.4 (mocked in DokumentyService unit spec)')),
+}))
+
 /** The synthetic PESEL our decrypt mock returns — asserted to NEVER leak into facts/audit. */
 const FAKE_PESEL = '44051401359'
 
