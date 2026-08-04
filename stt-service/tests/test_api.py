@@ -9,6 +9,10 @@ unauthenticated call is refused, and that a authenticated one returns `{text, co
 
 from __future__ import annotations
 
+import tempfile
+import threading
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -91,3 +95,117 @@ def test_missing_engine_is_a_503(client, monkeypatch):
 
 def test_missing_file_field_is_a_422(client):
     assert client.post("/voice/transcribe").status_code == 422
+
+
+# --- W12: a slow transcription must not block the event loop (and /health with it) ------------
+
+
+def test_health_responds_while_a_transcription_is_in_flight(monkeypatch):
+    """`async def transcribe` calling synchronous, CPU-bound work directly runs it ON the single
+    event loop thread that also serves `/health` — one transcription in flight makes the WHOLE
+    process (including the compose healthcheck) unresponsive for its duration. This must not
+    happen: `/health` must answer promptly while a transcription is still running.
+
+    Uses `with TestClient(app) as client:` deliberately — that is what makes ALL requests through
+    this client share ONE portal (one background event loop thread), matching a real uvicorn
+    worker. The plain `client` fixture used elsewhere opens a FRESH portal per call, so two
+    concurrent requests through it run on genuinely separate event loops and would pass this test
+    even with the bug present — that would be a false negative for exactly what W12 is about.
+    """
+    app.dependency_overrides[require_tenant] = lambda: "4mobility"
+    release = threading.Event()
+    entered = threading.Event()
+
+    def slow_transcribe(data):
+        entered.set()
+        # Blocks the CALLING thread synchronously — exactly what a CPU-bound faster-whisper run
+        # does. If the event loop thread itself runs this, /health cannot be served until it wakes.
+        release.wait(timeout=5)
+        return SttResult(text="ok", confidence=0.9)
+
+    monkeypatch.setattr("app.main._transcriber.transcribe", slow_transcribe)
+
+    try:
+        with TestClient(app) as client:
+            result: dict[str, object] = {}
+
+            def do_transcribe():
+                result["response"] = client.post(
+                    "/voice/transcribe", files={"audio": ("a.webm", b"\x00\x01\x02", "audio/webm")}
+                )
+
+            t = threading.Thread(target=do_transcribe)
+            t.start()
+            assert entered.wait(timeout=5), "transcribe() was never called"
+
+            start = time.monotonic()
+            health_response = client.get("/health")
+            elapsed = time.monotonic() - start
+
+            release.set()
+            t.join(timeout=5)
+    finally:
+        app.dependency_overrides.clear()
+
+    assert health_response.status_code == 200
+    assert elapsed < 1.0, (
+        f"/health took {elapsed:.2f}s while a transcription was in flight — "
+        "the event loop was blocked by synchronous transcription work"
+    )
+    assert result["response"].status_code == 200
+
+
+# --- W13: an oversized upload must be refused from Content-Length, before any disk buffering ---
+
+
+def test_oversized_audio_never_spools_to_disk(client, monkeypatch):
+    """`await audio.read()` before the size check meant the whole upload was already received —
+    and, above Starlette's 1 MB in-memory threshold, already written to a `SpooledTemporaryFile`
+    on disk — before the 413 was ever raised. `SpooledTemporaryFile.rollover` is the exact method
+    that performs that disk write, so asserting it is never called is a direct proof that an
+    oversized, rejected upload never touches disk (not just that the response code is right).
+    """
+    rollover_calls: list[int] = []
+    original_rollover = tempfile.SpooledTemporaryFile.rollover
+
+    def spy_rollover(self, *args, **kwargs):
+        rollover_calls.append(1)
+        return original_rollover(self, *args, **kwargs)
+
+    monkeypatch.setattr(tempfile.SpooledTemporaryFile, "rollover", spy_rollover)
+
+    payload = b"\x00" * (MAX_AUDIO_BYTES + 1)
+    r = client.post("/voice/transcribe", files={"audio": ("a.webm", payload, "audio/webm")})
+
+    assert r.status_code == 413
+    assert rollover_calls == [], (
+        "oversized upload caused SpooledTemporaryFile.rollover — audio was buffered to disk "
+        "before the size limit was enforced"
+    )
+
+
+def test_content_length_missing_is_refused_without_reading_body(client, monkeypatch):
+    """A body with no declared Content-Length (e.g. chunked transfer) must be refused outright
+    rather than trusted — every real caller in this system (the web-kit proxy, which builds the
+    request from a fully-buffered `ArrayBuffer`, and TestClient) always sends one, so requiring it
+    closes the gap without breaking any real traffic.
+    """
+    parse_calls: list[int] = []
+
+    async def spy_parse(self, *args, **kwargs):
+        parse_calls.append(1)
+        raise AssertionError("must not parse the multipart body without a Content-Length")
+
+    monkeypatch.setattr("starlette.formparsers.MultiPartParser.parse", spy_parse)
+
+    req = client.build_request(
+        "POST",
+        "/voice/transcribe",
+        content=b"--x\r\nirrelevant\r\n--x--\r\n",
+        headers={"content-type": "multipart/form-data; boundary=x"},
+    )
+    del req.headers["content-length"]
+    r = client.send(req)
+
+    assert r.status_code == 411
+    assert parse_calls == []
