@@ -23,8 +23,16 @@ const REALM = 'hrobot-staging'
 const ROLES = ['PRACOWNIK', 'MANAGER', 'HR', 'ADMIN_KLIENTA']
 
 // Fixed ids come from `SELECT id, email, keycloak_sub FROM users` in hrobot_t_900d948b.
+// DEMO_ADMIN_PASSWORD is a credential and must not live in the repo (same rule as
+// scripts/demo-up.mjs / docs/design/web-kit/start-live.mjs). Rotate the old value
+// (demo-staging-2026) in Keycloak — it is already in git history.
+const DEMO_ADMIN_PASSWORD = process.env.DEMO_ADMIN_PASSWORD
+if (!DEMO_ADMIN_PASSWORD) {
+  console.error('\n✗ Brak hasła konta demo. Ustaw zmienną środowiskową DEMO_ADMIN_PASSWORD przed uruchomieniem.\n')
+  process.exit(1)
+}
 const USERS = [
-  { username: 'demo', email: 'admin@staging.hrobot.local', password: 'demo-staging-2026', role: 'ADMIN_KLIENTA', firstName: 'Demo', lastName: 'Admin' },
+  { username: 'demo', email: 'admin@staging.hrobot.local', password: DEMO_ADMIN_PASSWORD, role: 'ADMIN_KLIENTA', firstName: 'Demo', lastName: 'Admin' },
   { expectSub: 'a1912c35-776b-419b-b992-fe7ef1a45edb', username: 'pracownik.demo', email: 'pracownik.demo@demo.hrobot.local', password: 'Pracownik!2026', role: 'PRACOWNIK', firstName: 'Anna', lastName: 'Kowalska' },
   { expectSub: '8f5c2877-2e1c-4675-9118-a108e96558b5', username: 'manager.demo', email: 'manager.demo@demo.hrobot.local', password: 'Manager!2026', role: 'MANAGER', firstName: 'Marek', lastName: 'Manager' },
   // Cross-unit travel demo candidate (2026-07-14 spec §7/§12): reachable KOORDYNATOR in Region
@@ -132,7 +140,7 @@ async function main() {
     if (u.expectSub && u.expectSub !== userId) syncPairs.push({ email: u.email, from: u.expectSub, to: userId })
   }
 
-  console.log('\nDONE — realm hrobot-staging rebuilt. Logins: demo/demo-staging-2026, pracownik.demo/Pracownik!2026, manager.demo/Manager!2026, pracownica.demo/Pracownica!2026')
+  console.log('\nDONE — realm hrobot-staging rebuilt. Logins: demo/<DEMO_ADMIN_PASSWORD>, pracownik.demo/Pracownik!2026, manager.demo/Manager!2026, pracownica.demo/Pracownica!2026')
   if (syncPairs.length) {
     console.log('\n-- SYNC tenant DB users.keycloak_sub to the real Keycloak ids:')
     for (const p of syncPairs) {
