@@ -469,7 +469,7 @@ describe('VoiceCommandService', () => {
         expect(zastepstwa.rozpocznij).not.toHaveBeenCalled()
       })
 
-      it('[RBAC] a plain PRACOWNIK is REJECTED even with confirm === true — ZastepstwaService has NO internal role check of its own, so this agent must replicate the controller\'s KADROWY_ROLES gate itself', async () => {
+      it('[RBAC] a plain PRACOWNIK is REJECTED even with confirm === true — a fail-fast precheck here (imported from ZastepstwaService\'s own KADROWY_ROLES, single source of truth) stops it before any candidate roster is built or the service is even called', async () => {
         await expect(
           svc.execute(client, actor, { intent: 'ZNAJDZ_ZASTEPSTWO', entities: ENTITIES, confirm: true }, TODAY),
         ).rejects.toBeInstanceOf(ForbiddenException)
@@ -496,7 +496,8 @@ describe('VoiceCommandService', () => {
         const res = await svc.execute(client, managerActor, { intent: 'ZNAJDZ_ZASTEPSTWO', entities: ENTITIES, confirm: true }, TODAY)
 
         expect(zastepstwa.rozpocznij).toHaveBeenCalledTimes(1)
-        const dto = zastepstwa.rozpocznij.mock.calls[0][0]
+        expect(zastepstwa.rozpocznij.mock.calls[0][0]).toEqual({ userId: managerActor.userId, roles: managerActor.roles })
+        const dto = zastepstwa.rozpocznij.mock.calls[0][1]
         expect(dto.shiftId).toBe('shift-target')
         expect(dto.nieobecnyId).toBe('emp-mgr')
         expect(dto.kandydaci).toHaveLength(3) // manager excluded from their own candidate pool
