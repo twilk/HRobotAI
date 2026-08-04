@@ -29,6 +29,7 @@ export type AgentIntent =
   | 'MOJA_EWIDENCJA'
   | 'ANULUJ_WNIOSEK'
   | 'ZAMIANA_ZMIANY'
+  | 'ZNAJDZ_ZASTEPSTWO'
   | 'NIEZNANE'
 
 /** One catalog row per registered (non-`NIEZNANE`) intent — the SINGLE source of truth for POMOC's
@@ -73,6 +74,11 @@ export const INTENT_CATALOG: readonly IntentCatalogEntry[] = [
     intent: 'ZAMIANA_ZMIANY',
     opis: 'zgłoszenie prośby o zamianę Twojej zmiany w danym dniu (wymaga potwierdzenia)',
     przyklad: 'chcę oddać zmianę w piątek',
+  },
+  {
+    intent: 'ZNAJDZ_ZASTEPSTWO',
+    opis: 'rozpoczęcie poszukiwania zastępstwa na zmianę w danym dniu (rola kadrowa; wymaga potwierdzenia)',
+    przyklad: 'potrzebuję zastępstwa na moją zmianę w piątek',
   },
 ]
 
@@ -244,6 +250,10 @@ const MOJA_EWIDENCJA_RE = /ewidencj|przepracowa[nł]|nadgodzin|godziny.{0,10}pra
 /** Shift-swap ("give away my shift") markers. Checked BEFORE `GRAFIK_RE` — "zamienić zmianę" /
  * "oddać zmianę" would otherwise be swallowed by `GRAFIK_RE`'s `zmian[ayę]\b`. */
 const ZAMIANA_ZMIANY_RE = /zamie[nń].{0,10}zmian|zamian[ae].{0,10}zmian|odda[jć].{0,10}zmian|wymie[nń].{0,10}zmian/
+/** Find-a-replacement markers ("znajdź kogoś na wtorek" / "potrzebuję zastępstwa na zmianę w
+ * piątek"). Checked BEFORE `GRAFIK_RE` — "zastępstwa na moją zmianę" would otherwise be swallowed by
+ * `GRAFIK_RE`'s `zmian[ayę]\b`. */
+const ZNAJDZ_ZASTEPSTWO_RE = /zast[eę]pst|znajd[zź].{0,15}(kogo[sś]|zast[eę]p)/
 /** Schedule (grafik) markers. NOTE: `kiedy pracuj` intentionally lives in `NASTEPNA_ZMIANA_RE` now,
  * not here — checked earlier in `parseIntent`, so this branch never sees it. */
 const GRAFIK_RE = /grafik|zmian[ayę]\b|moje zmiany/
@@ -344,6 +354,16 @@ export function parseIntent(text: string, today: Date): ParsedIntent {
       entities: { ...dates },
       // A write intent needs a specific day to identify WHICH shift to offer — no date parsed →
       // low confidence → the caller falls back to a manual form (same policy as URLOP/L4).
+      confidence: dates.dateFrom != null ? HIGH_CONFIDENCE : LOW_CONFIDENCE,
+    }
+  }
+
+  if (ZNAJDZ_ZASTEPSTWO_RE.test(normalized)) {
+    return {
+      intent: 'ZNAJDZ_ZASTEPSTWO',
+      entities: { ...dates },
+      // A write intent needs a specific day to identify WHICH shift needs covering — no date →
+      // low confidence → manual form (same policy as URLOP/L4/ZAMIANA_ZMIANY).
       confidence: dates.dateFrom != null ? HIGH_CONFIDENCE : LOW_CONFIDENCE,
     }
   }

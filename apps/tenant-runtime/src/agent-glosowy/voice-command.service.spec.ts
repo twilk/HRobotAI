@@ -1,10 +1,11 @@
-import { BadRequestException } from '@nestjs/common'
+import { BadRequestException, ForbiddenException } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
 import { VoiceCommandService, type VoiceActor } from './voice-command.service.js'
 import { LeaveService } from '../leave/leave.service.js'
 import { GrafikService } from '../grafik/grafik.service.js'
 import { AuditService } from '../tenant-runtime/audit/audit.service.js'
 import { ShiftSwapService } from '../shift-swap/shift-swap.service.js'
+import { ZastepstwaService } from '../zastepstwa/zastepstwa.service.js'
 import { INTENT_CATALOG } from './intent.util.js'
 
 const TODAY = new Date('2026-07-29T00:00:00.000Z') // Wednesday
@@ -13,6 +14,7 @@ const leave = { createRequest: jest.fn(), list: jest.fn(), cancel: jest.fn() }
 const grafik = { listShifts: jest.fn() }
 const audit = { log: jest.fn() }
 const shiftSwap = { create: jest.fn(), submit: jest.fn() }
+const zastepstwa = { rozpocznij: jest.fn(), potwierdz: jest.fn() }
 
 // Real client methods KTO_PRACUJE reads directly (own-identity + roster lookups), mirroring how
 // GrafikService/LeaveService/EmployeesService resolve "who am I" / unit scope inline. Everything
@@ -31,6 +33,7 @@ function makeService(): VoiceCommandService {
     grafik as unknown as GrafikService,
     audit as unknown as AuditService,
     shiftSwap as unknown as ShiftSwapService,
+    zastepstwa as unknown as ZastepstwaService,
   )
 }
 
@@ -150,6 +153,15 @@ describe('VoiceCommandService', () => {
       expect(r.fallbackToForm).toBe(false)
       expect(r.proposedAction.kind).toBe('CREATE_SHIFT_SWAP')
       expect(shiftSwap.create).not.toHaveBeenCalled()
+    })
+
+    it('ZNAJDZ_ZASTEPSTWO (write) requires confirmation and proposes a START_REPLACEMENT_SEARCH action', () => {
+      const r = svc.interpret('potrzebuję zastępstwa na moją zmianę w piątek', TODAY, actor)
+      expect(r.intent).toBe('ZNAJDZ_ZASTEPSTWO')
+      expect(r.requiresConfirmation).toBe(true)
+      expect(r.fallbackToForm).toBe(false)
+      expect(r.proposedAction.kind).toBe('START_REPLACEMENT_SEARCH')
+      expect(zastepstwa.rozpocznij).not.toHaveBeenCalled()
     })
 
     it('carries an EU AI Act transparency notice on every interpretation', () => {
@@ -443,6 +455,77 @@ describe('VoiceCommandService', () => {
 
         expect(res.executed).toBe(false)
         expect(shiftSwap.create).not.toHaveBeenCalled()
+        expect(res.humanReadable).toMatch(/nie masz.{0,30}zmian/i)
+      })
+    })
+
+    describe('ZNAJDZ_ZASTEPSTWO — human-in-the-loop write gate + kadrowy-only RBAC', () => {
+      const ENTITIES = { dateFrom: '2026-07-31', dateTo: '2026-07-31' } // Friday, week Mon 07-27..Sun 08-02
+
+      it('REFUSES without confirm === true and NEVER calls ZastepstwaService.rozpocznij', async () => {
+        await expect(
+          svc.execute(client, managerActor, { intent: 'ZNAJDZ_ZASTEPSTWO', entities: ENTITIES, confirm: false }, TODAY),
+        ).rejects.toBeInstanceOf(BadRequestException)
+        expect(zastepstwa.rozpocznij).not.toHaveBeenCalled()
+      })
+
+      it('[RBAC] a plain PRACOWNIK is REJECTED even with confirm === true — ZastepstwaService has NO internal role check of its own, so this agent must replicate the controller\'s KADROWY_ROLES gate itself', async () => {
+        await expect(
+          svc.execute(client, actor, { intent: 'ZNAJDZ_ZASTEPSTWO', entities: ENTITIES, confirm: true }, TODAY),
+        ).rejects.toBeInstanceOf(ForbiddenException)
+        expect(zastepstwa.rozpocznij).not.toHaveBeenCalled()
+      })
+
+      it('a MANAGER starts a search over their managed-unit roster, and NEVER itself grants anything (never calls potwierdz)', async () => {
+        prismaClient.userRole.findMany.mockResolvedValue([{ unitId: 'unit-1' }])
+        prismaClient.employee.findFirst.mockResolvedValue({ id: 'emp-mgr' })
+        prismaClient.employee.findMany.mockResolvedValue([
+          { id: 'emp-mgr', firstName: 'Maria', lastName: 'Manager', etat: 1, qualifications: ['NURSE'] },
+          { id: 'emp-cand1', firstName: 'Anna', lastName: 'Nowak', etat: 1, qualifications: ['NURSE'] }, // busy that day
+          { id: 'emp-cand2', firstName: 'Bartek', lastName: 'Kowal', etat: 1, qualifications: [] }, // free, wrong qualification
+          { id: 'emp-cand3', firstName: 'Celina', lastName: 'Wolf', etat: 1, qualifications: ['NURSE'] }, // free, qualified
+        ])
+        grafik.listShifts.mockResolvedValue([
+          { id: 'shift-target', employeeId: 'emp-mgr', date: new Date('2026-07-31T00:00:00.000Z'), start: '08:00', end: '16:00', role: 'NURSE' },
+          { id: 'shift-cand1', employeeId: 'emp-cand1', date: new Date('2026-07-31T00:00:00.000Z'), start: '08:00', end: '16:00', role: 'NURSE' },
+          { id: 'shift-cand3', employeeId: 'emp-cand3', date: new Date('2026-07-28T00:00:00.000Z'), start: '08:00', end: '16:00', role: 'NURSE' },
+        ])
+        leave.list.mockResolvedValue([])
+        zastepstwa.rozpocznij.mockResolvedValue({ id: 'proces-1', stan: 'OCZEKIWANIE' })
+
+        const res = await svc.execute(client, managerActor, { intent: 'ZNAJDZ_ZASTEPSTWO', entities: ENTITIES, confirm: true }, TODAY)
+
+        expect(zastepstwa.rozpocznij).toHaveBeenCalledTimes(1)
+        const dto = zastepstwa.rozpocznij.mock.calls[0][0]
+        expect(dto.shiftId).toBe('shift-target')
+        expect(dto.nieobecnyId).toBe('emp-mgr')
+        expect(dto.kandydaci).toHaveLength(3) // manager excluded from their own candidate pool
+        expect(dto.kandydaci).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ pracownikId: 'emp-cand1', dostepny: false, wykonalnaZamiana: false, obciazenieTygodnioweGodz: 8 }),
+            expect.objectContaining({ pracownikId: 'emp-cand2', dostepny: true, wykonalnaZamiana: false, obciazenieTygodnioweGodz: 0 }),
+            expect.objectContaining({ pracownikId: 'emp-cand3', dostepny: true, wykonalnaZamiana: true, obciazenieTygodnioweGodz: 8 }),
+          ]),
+        )
+        expect(res.executed).toBe(true)
+        expect(res.confirmedByHuman).toBe(true)
+        expect(res.result).toEqual({ id: 'proces-1', stan: 'OCZEKIWANIE' })
+        // [GRANICA ZGODNOŚCI] the agent STARTS the search and asks candidates — it never itself
+        // grants the leave or reassigns the shift; only an explicit manager action on the REAL
+        // ZastepstwaController (`POST /zastepstwa/:id/potwierdz`) can do that.
+        expect(zastepstwa.potwierdz).not.toHaveBeenCalled()
+        expect(audit.log).toHaveBeenCalledTimes(1)
+      })
+
+      it('reports gracefully when the manager has no shift that day — no exception, no search started', async () => {
+        prismaClient.userRole.findMany.mockResolvedValue([{ unitId: 'unit-1' }])
+        prismaClient.employee.findFirst.mockResolvedValue({ id: 'emp-mgr' })
+        grafik.listShifts.mockResolvedValue([])
+
+        const res = await svc.execute(client, managerActor, { intent: 'ZNAJDZ_ZASTEPSTWO', entities: ENTITIES, confirm: true }, TODAY)
+
+        expect(res.executed).toBe(false)
+        expect(zastepstwa.rozpocznij).not.toHaveBeenCalled()
         expect(res.humanReadable).toMatch(/nie masz.{0,30}zmian/i)
       })
     })

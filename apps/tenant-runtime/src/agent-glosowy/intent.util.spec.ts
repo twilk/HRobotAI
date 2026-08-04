@@ -103,7 +103,7 @@ describe('parseIntent — closed PL command set (K1 urlop / K2 L4 / K3 mój graf
       expect(cataloged).toEqual(
         [
           'L4', 'MOJ_GRAFIK', 'POMOC', 'SALDO_URLOPU', 'STATUS_WNIOSKU', 'URLOP',
-          'KTO_PRACUJE', 'NASTEPNA_ZMIANA', 'MOJA_EWIDENCJA', 'ANULUJ_WNIOSEK', 'ZAMIANA_ZMIANY',
+          'KTO_PRACUJE', 'NASTEPNA_ZMIANA', 'MOJA_EWIDENCJA', 'ANULUJ_WNIOSEK', 'ZAMIANA_ZMIANY', 'ZNAJDZ_ZASTEPSTWO',
         ].sort(),
       )
     })
@@ -222,6 +222,32 @@ describe('parseIntent — closed PL command set (K1 urlop / K2 L4 / K3 mój graf
     it('does not affect an ordinary MOJ_GRAFIK/KTO_PRACUJE utterance', () => {
       expect(parseIntent('jaki mam grafik jutro', TODAY).intent).toBe('MOJ_GRAFIK')
       expect(parseIntent('kto ma zmianę w piątek', TODAY).intent).toBe('KTO_PRACUJE')
+    })
+  })
+
+  describe('ZNAJDZ_ZASTEPSTWO (start a replacement search, write)', () => {
+    it('parses "znajdź kogoś na wtorek" with a date and HIGH confidence', () => {
+      const r = parseIntent('znajdź kogoś na wtorek', TODAY)
+      expect(r.intent).toBe('ZNAJDZ_ZASTEPSTWO')
+      expect(r.entities.dateFrom).toBe('2026-08-04')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+
+    it('parses "potrzebuję zastępstwa na moją zmianę w piątek" (must not be swallowed by GRAFIK\'s "zmian" marker)', () => {
+      const r = parseIntent('potrzebuję zastępstwa na moją zmianę w piątek', TODAY)
+      expect(r.intent).toBe('ZNAJDZ_ZASTEPSTWO')
+      expect(r.entities.dateFrom).toBe('2026-07-31')
+    })
+
+    it('lowers confidence below threshold with no parseable date', () => {
+      const r = parseIntent('potrzebuję zastępstwa', TODAY)
+      expect(r.intent).toBe('ZNAJDZ_ZASTEPSTWO')
+      expect(r.confidence).toBeLessThan(CONFIDENCE_THRESHOLD)
+    })
+
+    it('does not affect an ordinary MOJ_GRAFIK/ZAMIANA_ZMIANY utterance', () => {
+      expect(parseIntent('jaki mam grafik jutro', TODAY).intent).toBe('MOJ_GRAFIK')
+      expect(parseIntent('chcę oddać zmianę w piątek', TODAY).intent).toBe('ZAMIANA_ZMIANY')
     })
   })
 

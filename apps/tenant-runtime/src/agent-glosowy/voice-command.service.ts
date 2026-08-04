@@ -1,13 +1,16 @@
-import { BadRequestException, Injectable } from '@nestjs/common'
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
+import { Role } from '@hrobot/shared'
 import { AuditService } from '../tenant-runtime/audit/audit.service.js'
 import { LeaveService } from '../leave/leave.service.js'
 import { GrafikService } from '../grafik/grafik.service.js'
 import { ShiftSwapService } from '../shift-swap/shift-swap.service.js'
+import { ZastepstwaService } from '../zastepstwa/zastepstwa.service.js'
+import type { KandydatZapytaniaDto } from '../zastepstwa/dto/rozpocznij-poszukiwanie.dto.js'
 import type { CreateLeaveDto } from '../leave/dto/leave.dto.js'
 import { drawsDownAnnualEntitlement } from '../common/leave-type.js'
 import { isGlobal, managedUnitIds } from '../tenant-runtime/rbac/unit-scope.js'
-import { windowMinutes } from '../ai-grafik/week-range.util.js'
+import { windowMinutes, isoWeekRange } from '../ai-grafik/week-range.util.js'
 import { parseIntent, CONFIDENCE_THRESHOLD, INTENT_CATALOG, type AgentIntent, type ParsedEntities } from './intent.util.js'
 
 /** Flat statutory annual entitlement (KP art. 154 §1) — mirrors `analityk/analityk.service.ts`
@@ -64,6 +67,7 @@ export type ProposedActionKind =
   | 'READ_TIMESHEET'
   | 'CANCEL_LEAVE'
   | 'CREATE_SHIFT_SWAP'
+  | 'START_REPLACEMENT_SEARCH'
   | 'NONE'
 
 /** A description of what WOULD happen — never a side effect. `interpret` returns this; nothing runs. */
@@ -115,7 +119,24 @@ const LEAVE_TYPE_BY_INTENT: Record<'URLOP' | 'L4', string> = {
   L4: 'ZWOLNIENIE_LEKARSKIE',
 }
 
-const WRITE_INTENTS: ReadonlySet<AgentIntent> = new Set<AgentIntent>(['URLOP', 'L4', 'ANULUJ_WNIOSEK', 'ZAMIANA_ZMIANY'])
+const WRITE_INTENTS: ReadonlySet<AgentIntent> = new Set<AgentIntent>([
+  'URLOP',
+  'L4',
+  'ANULUJ_WNIOSEK',
+  'ZAMIANA_ZMIANY',
+  'ZNAJDZ_ZASTEPSTWO',
+])
+
+/**
+ * [RBAC GAP GUARD] `ZastepstwaController` gates `POST /zastepstwa` to MANAGER/HR/ADMIN_KLIENTA
+ * (`KADROWY_ROLES` in `zastepstwa.controller.ts`) — but `ZastepstwaService.rozpocznij` itself has NO
+ * internal role check; the guard lives ONLY on the HTTP route. Calling the service directly via DI
+ * (as this agent does) bypasses that route entirely, so WITHOUT this explicit check a PRACOWNIK could
+ * use the voice agent to trigger `zastepstwa` outreach — a capability a keyboard PRACOWNIK does not
+ * have. Mirrors `KADROWY_ROLES` exactly; see the dedicated RBAC test in
+ * `voice-command.service.spec.ts`.
+ */
+const KADROWY_ROLES: ReadonlySet<string> = new Set([Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA])
 
 /**
  * Renders POMOC's help text FROM {@link INTENT_CATALOG} — never a hand-copied string. Growing the
@@ -155,6 +176,7 @@ export class VoiceCommandService {
     private readonly grafik: GrafikService,
     private readonly audit: AuditService,
     private readonly shiftSwap: ShiftSwapService,
+    private readonly zastepstwa: ZastepstwaService,
   ) {}
 
   /**
@@ -220,6 +242,16 @@ export class VoiceCommandService {
         fallbackToForm: false,
         proposedAction: { kind: 'CREATE_SHIFT_SWAP', method: 'POST', endpoint: '/api/shift-swap', body: { date: entities.dateFrom } },
         humanReadable: `Czy zgłosić prośbę o zamianę Twojej zmiany w dniu ${entities.dateFrom}? Wymagane potwierdzenie.`,
+      }
+    }
+
+    if (intent === 'ZNAJDZ_ZASTEPSTWO') {
+      return {
+        ...base,
+        requiresConfirmation: true,
+        fallbackToForm: false,
+        proposedAction: { kind: 'START_REPLACEMENT_SEARCH', method: 'POST', endpoint: '/api/zastepstwa', body: { date: entities.dateFrom } },
+        humanReadable: `Czy rozpocząć poszukiwanie zastępstwa na zmianę w dniu ${entities.dateFrom}? Wyślemy zapytania do dostępnych pracowników. Wymagane potwierdzenie.`,
       }
     }
 
@@ -476,6 +508,123 @@ export class VoiceCommandService {
           confirmedByHuman: true,
           result: submitted,
           humanReadable: `Zgłoszono prośbę o zamianę zmiany z dnia ${date} — czeka na przyjęcie przez innego pracownika.`,
+        }
+      }
+
+      // ZNAJDZ_ZASTEPSTWO: START a replacement search for the caller's OWN shift on the spoken day.
+      // [GRANICA ZGODNOŚCI — art. 22 RODO] this call can only ever reach ZastepstwaService.rozpocznij,
+      // which sends outreach and can land the process in SUKCES/WYCZERPANO — it can NEVER itself
+      // produce POTWIERDZONE_PRZEZ_CZLOWIEKA (only `ZastepstwaService.potwierdz`, called from an
+      // explicit manager action on the real controller, can do that — this agent never calls it).
+      // Granting leave / reassigning the shift remains a separate, human, downstream decision.
+      if (intent === 'ZNAJDZ_ZASTEPSTWO') {
+        if (!actor.roles.some((r) => KADROWY_ROLES.has(r))) {
+          throw new ForbiddenException(
+            'Rozpoczęcie poszukiwania zastępstwa wymaga roli managera, HR lub administratora.',
+          )
+        }
+        if (entities.dateFrom == null) {
+          throw new BadRequestException('Brak daty — nie można rozpocząć poszukiwania zastępstwa.')
+        }
+        const date = entities.dateFrom
+        const myId = await this.ownEmployeeId(client, actor)
+        const all = (await this.grafik.listShifts(client, actor)) as Array<{
+          id: string
+          employeeId: string
+          date: unknown
+          start: string
+          end: string
+          role?: string
+        }>
+        const mine = all.filter((s) => myId != null && s.employeeId === myId && toISODate(s.date) === date)
+        const target = mine[0]
+        if (!target) {
+          return {
+            ...base,
+            executed: false,
+            requiresConfirmation: false,
+            fallbackToForm: false,
+            humanReadable: `Nie masz zmiany w dniu ${date} — nie można rozpocząć poszukiwania zastępstwa.`,
+          }
+        }
+
+        // Candidate roster: the SAME global/managed-unit scope `EmployeesService.list` and
+        // `GrafikService.listShifts` already use for MANAGER/HR/ADMIN (see KTO_PRACUJE above) — the
+        // caller passed the KADROWY_ROLES gate above, so this scope is exactly what they may see.
+        const managed = await managedUnitIds(client, actor.userId)
+        const scopeUnits = isGlobal(actor.roles) ? null : managed
+        const roster = (await client.employee.findMany({
+          where: scopeUnits ? { unitId: { in: scopeUnits } } : {},
+          select: { id: true, qualifications: true },
+        })) as Array<{ id: string; qualifications: string[] }>
+
+        const { weekStart, weekEndExcl } = isoWeekRange(new Date(`${date}T00:00:00.000Z`))
+        const weekStartIso = toISODate(weekStart)!
+        const weekEndIso = toISODate(new Date(weekEndExcl.getTime() - 86400000))!
+        const approvedLeave = (await this.leave.list(client, actor, { state: 'APPROVED' })) as Array<{
+          employeeId: string
+          startDate: Date
+          endDate: Date
+        }>
+
+        const kandydaci: KandydatZapytaniaDto[] = roster
+          .filter((e) => e.id !== myId)
+          .map((e) => {
+            const busyToday = all.some((s) => s.employeeId === e.id && toISODate(s.date) === date)
+            const onLeaveToday = approvedLeave.some(
+              (l) => l.employeeId === e.id && toISODate(l.startDate)! <= date && date <= toISODate(l.endDate)!,
+            )
+            const dostepny = !busyToday && !onLeaveToday
+            const qualified = target.role == null || e.qualifications.includes(target.role)
+            const wykonalnaZamiana = dostepny && qualified
+            const obciazenieTygodnioweGodz = round2(
+              all
+                .filter((s) => s.employeeId === e.id && (toISODate(s.date) ?? '') >= weekStartIso && (toISODate(s.date) ?? '') <= weekEndIso)
+                .reduce((sum, s) => sum + windowMinutes(s.start, s.end) / 60, 0),
+            )
+            return {
+              pracownikId: e.id,
+              dostepny,
+              wykonalnaZamiana,
+              ...(wykonalnaZamiana ? {} : { powodNiewykonalnosci: !dostepny ? 'zajęty lub nieobecny w tym dniu' : 'brak wymaganych kwalifikacji' }),
+              obciazenieTygodnioweGodz,
+            }
+          })
+
+        if (kandydaci.length === 0) {
+          return {
+            ...base,
+            executed: false,
+            requiresConfirmation: false,
+            fallbackToForm: false,
+            humanReadable: 'Brak innych pracowników w Twoim zakresie — nie można rozpocząć poszukiwania zastępstwa.',
+          }
+        }
+
+        // The REAL ZastepstwaService decides who to contact and in what order (ranking.py) — we only
+        // supply the candidate facts, never a decision. `kwalifikujacySie` filtering — including the
+        // possibility that NO candidate is dostepny/wykonalnaZamiana — is entirely its concern (it
+        // lands the process in WYCZERPANO rather than KOLEJKA); we don't second-guess that here.
+        const proces = await this.zastepstwa.rozpocznij({ shiftId: target.id, nieobecnyId: myId!, kandydaci })
+
+        await this.audit.log({
+          tenantClient: client,
+          actorUserId: actor.userId,
+          action: 'agent-glosowy.execute',
+          entityType: 'ZastepstwoProces',
+          entityId: (proces as { id: string }).id,
+          payload: { intent, procesId: (proces as { id: string }).id, shiftId: target.id, kandydatCount: kandydaci.length },
+          ipAddress: actor.ipAddress,
+        })
+
+        return {
+          ...base,
+          executed: true,
+          requiresConfirmation: false,
+          fallbackToForm: false,
+          confirmedByHuman: true,
+          result: proces,
+          humanReadable: `Rozpoczęto poszukiwanie zastępstwa na zmianę z dnia ${date} (status: ${(proces as { stan: string }).stan}).`,
         }
       }
     }
