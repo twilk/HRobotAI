@@ -14,6 +14,7 @@ const mockPrisma = {
 
 const mockTenantClient = {
   organizationalUnit: { create: jest.fn(), findFirst: jest.fn() },
+  $queryRawUnsafe: jest.fn(),
   $disconnect: jest.fn(),
 }
 
@@ -36,6 +37,7 @@ describe('SeedStep', () => {
     mockPrisma.provisioningJob.update.mockResolvedValue({})
     mockTenantClient.organizationalUnit.create.mockResolvedValue({ id: 'unit-1' })
     mockTenantClient.organizationalUnit.findFirst.mockResolvedValue(null)
+    mockTenantClient.$queryRawUnsafe.mockResolvedValue([])
     mockTenantClient.$disconnect.mockResolvedValue(undefined)
     mockPrisma.tenant.findUniqueOrThrow.mockResolvedValue({
       dbUrl: encryption.encrypt('postgresql://u:p@localhost:5433/db'),
@@ -86,6 +88,82 @@ describe('SeedStep', () => {
 
     await step.execute(job)
     await step.execute(job)
+
+    expect(units).toHaveLength(1)
+  })
+
+  /**
+   * W4 — the check-then-act guard above ("a root already exists" ⇒ skip) is safe against a
+   * SEQUENTIAL re-run, but NOT against a CONCURRENT one: both runs can read "absent" before
+   * either writes. This models that race directly (not via ProvisioningService's step claim,
+   * which W2 shows does not actually forbid two consumers from both being mid-execution of the
+   * SAME step at once) with a tenant-DB client whose $queryRawUnsafe implements a REAL mutex
+   * for `pg_advisory_lock`/`pg_advisory_unlock`, and a `findFirst` that mirrors the codebase's
+   * own convention (competing-consumers.spec.ts) of inserting a real I/O window between the
+   * check and the decision, so two concurrent calls are actually racing.
+   *
+   * THE PROPERTY: however many callers race to execute() the SAME job concurrently, at most one
+   * root organizational unit is ever created.
+   */
+  it('creates only ONE root unit when two concurrent runs race for the same tenant (W4)', async () => {
+    let locked = false
+    const waiters: Array<() => void> = []
+    const acquire = (): Promise<void> =>
+      new Promise((resolve) => {
+        if (!locked) {
+          locked = true
+          resolve()
+          return
+        }
+        waiters.push(() => {
+          locked = true
+          resolve()
+        })
+      })
+    const release = (): void => {
+      const next = waiters.shift()
+      if (next) next()
+      else locked = false
+    }
+
+    const units: Array<{ id: string }> = []
+    const raceyClient = {
+      organizationalUnit: {
+        findFirst: jest.fn(async () => {
+          const current = units[0] ?? null
+          // The real step's I/O window (mirrors competing-consumers.spec.ts) — without it, two
+          // mock-backed calls can happen to fully serialize by coincidence and never race at all.
+          await new Promise((resolve) => setTimeout(resolve, 10))
+          return current
+        }),
+        create: jest.fn(async () => {
+          const unit = { id: `unit-${units.length + 1}` }
+          units.push(unit)
+          return unit
+        }),
+      },
+      $queryRawUnsafe: jest.fn(async (sql: string) => {
+        if (/pg_advisory_lock/.test(sql)) {
+          await acquire()
+        } else if (/pg_advisory_unlock/.test(sql)) {
+          release()
+        }
+        return []
+      }),
+      $disconnect: jest.fn(async () => undefined),
+    }
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        SeedStep,
+        { provide: ControlPlanePrismaService, useValue: mockPrisma },
+        { provide: EncryptionService, useValue: encryption },
+        { provide: 'TENANT_CLIENT_FACTORY', useValue: () => raceyClient },
+      ],
+    }).compile()
+    const raceyStep = module.get<SeedStep>(SeedStep)
+
+    await Promise.all([raceyStep.execute(job), raceyStep.execute(job), raceyStep.execute(job)])
 
     expect(units).toHaveLength(1)
   })

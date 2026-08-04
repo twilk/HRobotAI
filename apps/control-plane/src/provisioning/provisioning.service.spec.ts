@@ -49,7 +49,11 @@ function makeJobStore(initial: JobRow) {
 
   type ClaimWhere = {
     id: string
-    step: string
+    step?: string
+    // W2: the release/failure/retry paths fence on the EXACT claimedAt token this consumer
+    // wrote, not on the OR-lease predicate claimStep uses. Model both compare-and-set shapes
+    // with the same in-memory "row lock" semantics real Postgres gives a single UPDATE.
+    claimedAt?: Date | null
     OR?: Array<{ claimedAt: null | { lt: Date } }>
   }
 
@@ -67,14 +71,25 @@ function makeJobStore(initial: JobRow) {
         }),
         updateMany: jest.fn(
           async ({ where, data }: { where: ClaimWhere; data: Partial<JobRow> }) => {
-            const leaseFree =
-              where.OR === undefined ||
-              where.OR.some((clause) =>
+            if (row.id !== where.id) return { count: 0 }
+            if (where.step !== undefined && row.step !== where.step) return { count: 0 }
+            if (where.OR !== undefined) {
+              const leaseFree = where.OR.some((clause) =>
                 clause.claimedAt === null
                   ? row.claimedAt === null
                   : row.claimedAt !== null && row.claimedAt < clause.claimedAt.lt,
               )
-            if (row.id !== where.id || row.step !== where.step || !leaseFree) return { count: 0 }
+              if (!leaseFree) return { count: 0 }
+            }
+            if ('claimedAt' in where) {
+              const want = where.claimedAt
+              const have = row.claimedAt
+              const eq =
+                want === null
+                  ? have === null
+                  : want !== undefined && have !== null && have.getTime() === want.getTime()
+              if (!eq) return { count: 0 }
+            }
             row = { ...row, ...data }
             return { count: 1 }
           },
@@ -82,6 +97,14 @@ function makeJobStore(initial: JobRow) {
       },
     },
   }
+}
+
+const deferred = <T = void>(): { promise: Promise<T>; resolve: (v: T) => void } => {
+  let resolve!: (v: T) => void
+  const promise = new Promise<T>((res) => {
+    resolve = res
+  })
+  return { promise, resolve }
 }
 
 async function buildService(prisma: unknown): Promise<ProvisioningService> {
@@ -142,8 +165,10 @@ describe('ProvisioningService', () => {
 
       // Durable retry: persist attemptCount + a future nextAttemptAt; RetryRelay re-enqueues it.
       // claimedAt is released so the retry can take the step immediately, not after the lease.
-      expect(mockPrisma.provisioningJob.update).toHaveBeenCalledWith({
-        where: { id: 'job-1' },
+      // W2: the release is fenced via updateMany on the exact claim token this call wrote —
+      // never a plain unconditional `update`.
+      expect(mockPrisma.provisioningJob.updateMany).toHaveBeenCalledWith({
+        where: { id: 'job-1', claimedAt: expect.any(Date) as Date },
         data: {
           attemptCount: 1,
           lastError: 'DB error',
@@ -160,8 +185,9 @@ describe('ProvisioningService', () => {
 
       await service.process(msg)
 
-      expect(mockPrisma.provisioningJob.update).toHaveBeenCalledWith({
-        where: { id: 'job-1' },
+      // W2: fenced via updateMany, same as the retry path above.
+      expect(mockPrisma.provisioningJob.updateMany).toHaveBeenCalledWith({
+        where: { id: 'job-1', claimedAt: expect.any(Date) as Date },
         data: {
           step: ProvisioningStep.FAILED,
           lastError: 'still broken',
@@ -252,6 +278,80 @@ describe('ProvisioningService', () => {
       expect(mockSteps.runMigrations.execute).toHaveBeenCalledTimes(1)
       expect(store.current().step).toBe(ProvisioningStep.SEED)
       expect(store.current().nextAttemptAt).toBeNull()
+    })
+  })
+
+  /**
+   * W2 — the root cause that makes duplicate step execution reachable even with claimStep's CAS
+   * in place: releasing a claim was an UNCONDITIONAL write (`update`, not a fenced `updateMany`).
+   * Scenario, exactly as in the triage: consumer A claims a step, is genuinely alive but slow, and
+   * its lease expires while it is still working. Consumer B legitimately retakes the SAME step
+   * (claimStep's CAS is fine with this — that's what an expired lease means) and starts executing.
+   * A eventually finishes its own (stale) work and reaches its release write. The release must
+   * NOT touch B's now-live claim — if it does, a third consumer C can claim and execute the same
+   * step while B is still mid-execution, which is the double-execution damage W4 depends on.
+   */
+  describe('W2: fenced claim release', () => {
+    it('does not let a stale release from A clobber a live claim B legitimately retook after lease expiry', async () => {
+      const store = makeJobStore(makeJob(ProvisioningStep.SEED, { claimedAt: null }))
+
+      const aGate = deferred<void>()
+      const bGate = deferred<void>()
+      const executedBy: string[] = []
+
+      mockSteps.seed.execute
+        // A: claims, starts executing, then hangs — models a genuinely slow (not crashed) step.
+        .mockImplementationOnce(async () => {
+          executedBy.push('A')
+          await aGate.promise
+        })
+        // B: legitimately retakes the expired lease, starts executing, and ALSO hangs — it must
+        // still be mid-execution when A's belated release fires.
+        .mockImplementationOnce(async () => {
+          executedBy.push('B')
+          await bGate.promise
+        })
+        // C must never legitimately reach this while B's claim is live.
+        .mockImplementationOnce(async () => {
+          executedBy.push('C')
+        })
+
+      const serviceA = await buildService(store.prisma)
+      const processA = serviceA.process(msg) // claims (tA), enters execute, hangs on aGate
+
+      await new Promise((resolve) => setImmediate(resolve))
+      const tA = store.current().claimedAt
+      expect(tA).not.toBeNull() // A holds the claim
+
+      // Simulate A's lease expiring while A (still alive) is stuck mid-step — backdate claimedAt
+      // the same way the DB would read it after CLAIM_LEASE_MS of real time.
+      await store.prisma.provisioningJob.update({
+        where: { id: 'job-1' },
+        data: { claimedAt: new Date(Date.now() - CLAIM_LEASE_MS - 1_000) },
+      })
+
+      const serviceB = await buildService(store.prisma)
+      const processB = serviceB.process(msg) // legitimately retakes the expired lease
+
+      await new Promise((resolve) => setImmediate(resolve))
+      const tB = store.current().claimedAt
+      expect(tB).not.toBeNull() // B now holds a claim…
+      expect(tB).not.toEqual(tA) // …and it is a DIFFERENT, live one — not A's stale token.
+
+      // A (still alive, just slow) finally finishes and reaches its release write.
+      aGate.resolve()
+      await processA
+
+      // THE PROPERTY: A's release must not clobber B's still-live claim.
+      expect(store.current().claimedAt).toEqual(tB)
+
+      // …and a third consumer must still be refused the step while B legitimately holds it.
+      const serviceC = await buildService(store.prisma)
+      await serviceC.process(msg)
+      expect(executedBy).not.toContain('C')
+
+      bGate.resolve()
+      await processB
     })
   })
 })

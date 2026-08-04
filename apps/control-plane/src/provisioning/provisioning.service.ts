@@ -66,7 +66,12 @@ export class ProvisioningService {
     // two consumers run the same step concurrently: SeedStep would create a second "Cała firma"
     // root, CreateDbStep would interleave two password rotations and leave the stored db_url out
     // of sync with the role. Claim the step FIRST; only the winner executes anything.
-    if (!(await this.claimStep(job))) return
+    //
+    // W2: claimStep returns the exact `claimedAt` token THIS call wrote (not a boolean), so every
+    // later write this consumer makes can be fenced on "the row still carries MY token" — see
+    // releaseClaim below.
+    const claim = await this.claimStep(job)
+    if (!claim) return
 
     try {
       await handler.execute(job)
@@ -83,14 +88,35 @@ export class ProvisioningService {
       // a still-held lease would make the winner block its own successor for CLAIM_LEASE_MS.
       // nextAttemptAt is cleared too: this attempt succeeded, so any retry armed by a contended
       // duplicate delivery (see claimStep) is now stale and must not fire.
-      const after = await this.prisma.provisioningJob.update({
-        where: { id: job.id },
-        data: { claimedAt: null, nextAttemptAt: null },
-      })
+      //
+      // W2: fenced on `claim` — if this consumer's lease already expired and another consumer
+      // legitimately retook the step while `handler.execute` was still running, `claimedAt` has
+      // moved on. An unconditional write here would clear (or otherwise stomp) a claim that is no
+      // longer this consumer's to touch, and hand the step to a THIRD consumer while the second is
+      // still mid-execution. If we lost the race, the retaking consumer owns driving the pipeline
+      // forward — do nothing further.
+      const released = await this.releaseClaim(job.id, claim, { claimedAt: null, nextAttemptAt: null })
+      if (!released) return
+      const after = await this.prisma.provisioningJob.findUnique({ where: { id: job.id } })
       const next = after?.step
       if (this.client && next && next !== job.step && next !== ProvisioningStep.FAILED) {
-        await firstValueFrom(this.client.emit('tenant.provision', { jobId: job.id, tenantId: job.tenantId }))
-        this.logger.log({ jobId: job.id, step: next }, 'Advancing provisioning to next step')
+        // W3: a failed re-emit is deliberately NOT rethrown into the catch below. The step itself
+        // already succeeded and is durably committed — this is a delivery problem, not a step
+        // failure — and by this point releaseClaim has already cleared claimedAt, so a "retry"
+        // write in the catch block would try to fence a write against a claim token that is no
+        // longer live (see releaseClaim) and would silently no-op instead of arming anything. Log
+        // loudly instead: this job is now the exact case W3 describes (job.step already advanced,
+        // e.g. to DONE, but the consumer that would act on it was never notified) and needs an
+        // operator/sweep to notice, not a misleading "handler failed" retry record.
+        try {
+          await firstValueFrom(this.client.emit('tenant.provision', { jobId: job.id, tenantId: job.tenantId }))
+          this.logger.log({ jobId: job.id, step: next }, 'Advancing provisioning to next step')
+        } catch (emitErr: unknown) {
+          this.logger.error(
+            { jobId: job.id, step: next, err: emitErr },
+            'Step succeeded but re-emitting the follow-up message failed — job will not progress until an operator intervenes or a sweep picks it up',
+          )
+        }
       }
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : String(err)
@@ -103,14 +129,11 @@ export class ProvisioningService {
 
       if (nextAttempt >= 3) {
         this.logger.error({ jobId: job.id, err }, 'Provisioning permanently failed after 3 attempts')
-        await this.prisma.provisioningJob.update({
-          where: { id: job.id },
-          data: {
-            step: ProvisioningStep.FAILED,
-            lastError: message,
-            attemptCount: nextAttempt,
-            claimedAt: null,
-          },
+        await this.releaseClaim(job.id, claim, {
+          step: ProvisioningStep.FAILED,
+          lastError: message,
+          attemptCount: nextAttempt,
+          claimedAt: null,
         })
         this.logger.error({ tenantId: job.tenantId }, 'ALERT: tenant provisioning failed permanently')
         return
@@ -119,19 +142,54 @@ export class ProvisioningService {
       // C1: persist a DURABLE next-attempt time instead of an in-process setTimeout (which is
       // lost on pod restart, stranding the job mid-pipeline). RetryRelay re-enqueues due jobs.
       const delayMs = RETRY_DELAYS_MS[job.attemptCount] ?? 600_000
-      await this.prisma.provisioningJob.update({
-        where: { id: job.id },
-        data: {
-          attemptCount: nextAttempt,
-          lastError: message,
-          nextAttemptAt: new Date(Date.now() + delayMs),
-          // G-1: release the claim so the scheduled retry can take it immediately instead of
-          // waiting out the lease.
-          claimedAt: null,
-        },
+      await this.releaseClaim(job.id, claim, {
+        attemptCount: nextAttempt,
+        lastError: message,
+        nextAttemptAt: new Date(Date.now() + delayMs),
+        // G-1: release the claim so the scheduled retry can take it immediately instead of
+        // waiting out the lease.
+        claimedAt: null,
       })
       this.logger.warn({ jobId: job.id, delayMs }, 'Scheduled durable retry')
     }
+  }
+
+  /**
+   * W2 (root cause fix): every write that "releases" or otherwise concludes a claim MUST be
+   * fenced on the exact `claimedAt` token this consumer wrote in `claimStep`, the same way
+   * `claimStep` itself is a compare-and-set. Before this fix all three release sites did a plain
+   * `update(...)` — unconditional, regardless of what `claimedAt` currently held. A consumer whose
+   * lease had already expired (but which was still alive, just slow) would then clobber a LIVE
+   * claim a second consumer had legitimately taken over in the meantime, reopening the step to a
+   * third consumer while the second was still mid-execution — exactly the interleaving `claimStep`
+   * exists to prevent.
+   *
+   * Returns whether this consumer still owned the claim at the moment of the write. `false` means
+   * someone else already holds this job — the caller must not treat the write as having happened
+   * (no re-emit, no "I set FAILED" semantics) because it didn't.
+   */
+  private async releaseClaim(
+    jobId: string,
+    claim: Date,
+    data: {
+      claimedAt: null
+      nextAttemptAt?: Date | null
+      step?: ProvisioningStep
+      lastError?: string
+      attemptCount?: number
+    },
+  ): Promise<boolean> {
+    const result = await this.prisma.provisioningJob.updateMany({
+      where: { id: jobId, claimedAt: claim },
+      data,
+    })
+    if (result.count !== 1) {
+      this.logger.warn(
+        { jobId },
+        'Skipped releasing/updating a claim this consumer no longer holds — retaken by another consumer',
+      )
+    }
+    return result.count === 1
   }
 
   /**
@@ -144,8 +202,12 @@ export class ProvisioningService {
    * because a single central invariant also covers steps added later. Per-step idempotency is
    * still kept as defence in depth for SeedStep/DoneStep, whose re-run is destructive even when
    * strictly sequential (after a lease expiry or a crash).
+   *
+   * W2: returns the exact `claimedAt` Date token this call wrote on success (not a boolean), so
+   * the caller can fence every subsequent write on "the row still carries MY token" — see
+   * `releaseClaim`. Returns `null` on any failure to claim.
    */
-  private async claimStep(job: { id: string; step: string; claimedAt: Date | null }): Promise<boolean> {
+  private async claimStep(job: { id: string; step: string; claimedAt: Date | null }): Promise<Date | null> {
     const now = new Date()
     const staleBefore = new Date(now.getTime() - CLAIM_LEASE_MS)
 
@@ -159,7 +221,7 @@ export class ProvisioningService {
       },
       data: { claimedAt: now },
     })
-    if (claimed.count === 1) return true
+    if (claimed.count === 1) return now
 
     // Lost the race. Two distinguishable causes, and they need different handling:
     const fresh = await this.prisma.provisioningJob.findUnique({ where: { id: job.id } })
@@ -184,7 +246,7 @@ export class ProvisioningService {
         { jobId: job.id, step: job.step },
         'Provisioning step already claimed by another consumer — skipping duplicate delivery, retry armed',
       )
-      return false
+      return null
     }
 
     // (b) the step already advanced (or reached DONE/FAILED): the other consumer finished and
@@ -193,6 +255,6 @@ export class ProvisioningService {
       { jobId: job.id, step: job.step, currentStep: fresh?.step },
       'Provisioning step already completed by another consumer — dropping duplicate delivery',
     )
-    return false
+    return null
   }
 }
