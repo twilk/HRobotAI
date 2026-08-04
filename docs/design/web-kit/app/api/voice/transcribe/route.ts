@@ -11,6 +11,14 @@
 // infrastructure (faster-whisper `small`, CPU) precisely so a voice recording — personal data — never
 // leaves EU infra; see docs/superpowers/specs/2026-07-21-agent-glosowy-poc.md §3.
 //
+// "Processes it in memory" on the STT side holds because that service (a) requires this proxy's
+// Content-Length and rejects anything over STT_MAX_AUDIO_BYTES BEFORE parsing the upload, and
+// (b) raises its multipart parser's in-memory ceiling to match that same limit — otherwise
+// Starlette's default 1 MB per-part threshold would spool any larger, still-accepted upload to
+// disk regardless of this check. See stt-service/app/main.py (`_InMemoryMultiPartParser`,
+// the Content-Length guard ahead of `_parse_multipart_bounded`) — that is where the guarantee
+// this comment states is actually enforced; keep the two in sync if either changes.
+//
 // The transcript then goes BACK to the browser and into the existing POST /api/agent-glosowy/interpret
 // path. There is deliberately no intent parsing here: intent.util.ts is the single source of truth.
 
