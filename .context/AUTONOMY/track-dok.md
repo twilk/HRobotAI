@@ -251,3 +251,72 @@ tego zadania. Zweryfikowane: `npx tsc --noEmit` (czysto) + pełen `npx vitest ru
 (**525 testów, 23 pliki, wszystkie zielone** — dowód, że zmiana nie zepsuła niczego innego). Portu
 `:5601` (własność użytkownika) nie zajęto ani nie nawigowano — brak weryfikacji na żywym podglądzie
 przeglądarki dla tej konkretnej zmiany, tylko typecheck + testy.
+
+## [15:15] regresja pełna | `pnpm turbo run test` + `build` (nie tylko mój moduł)
+
+```
+pnpm turbo run test --filter=@hrobot/tenant-runtime --force --concurrency=1
+-> Test Suites: 74 passed, 74 total / Tests: 1131 passed, 1131 total
+
+pnpm turbo run build --filter=@hrobot/tenant-runtime --force
+-> 7 successful, 7 total (nest build OK, pdfkit-free)
+
+node -e "require('./dist/dokumenty/render/fonts/fonts.js').HAS_EMBEDDED_FONTS" -> true
+  (potwierdza, że nest-cli.json's `assets:["**/*.ttf"]` kopiuje WSZYSTKIE 4 nowe fonty do dist —
+  nie trzeba było dotykać nest-cli.json)
+
+docs/design/web-kit: npx tsc --noEmit -> czysto; npx vitest run -> 23 pliki, 525 testów, zielono
+```
+Posprzątano tymczasowe katalogi `%TEMP%\hrobot-dok-pdf-*` sprzed naprawy wyścigu czyszczenia
+(EBUSY) — po naprawie (`maxRetries`/`retryDelay` + czekanie na `exit`) świeży przebieg integration
+suite nie zostawia już ŻADNEGO takiego katalogu (sprawdzone bezpośrednio po przebiegu).
+
+---
+
+# PODSUMOWANIE KOŃCOWE
+
+**Ukończone (SHA per element), gałąź `track/dok-forma-dokumentow` @ `feat/autonomy-20260803` (793b3b5):**
+1. `4bad087` — decyzja licencyjna fontów (Archivo/Public Sans OFL zamiast Cabinet Grotesk/General
+   Sans), `data/m2-evidence/licenses/forma-dokumentow-fonts.md`.
+2. `e46a295` — rdzeń: `pdf.renderer.ts` przepisany z pdfkit/`|`-tekstu na HTML/CSS + Chrome CDP,
+   dla WSZYSTKICH TRZECH typów dokumentów naraz (ewidencja/nadgodziny/KEDU) — kontrakt
+   model→bajty zachowany, `dokumenty.service.ts` nietknięty. **Odstępstwo od brief-u:** brief
+   prosił o commit PO KAŻDYM typie dokumentu; te trzy dzielą jeden plik/jeden model treści
+   (`PdfContent`)/jeden test — sztuczne rozbicie na 3 commity teraz byłoby retroaktywnym
+   dzieleniem już gotowej, spójnej zmiany, więc zostało w jednym. Zgłaszam to jawnie jako
+   odstępstwo, nie ukrywam.
+3. `bd3952c` — Chromium w obrazie `apps/tenant-runtime/Dockerfile` (runner stage), zweryfikowane
+   REALNYM kontenerem (build + `Page.printToPDF` roundtrip wewnątrz), nie tylko czytaniem pliku.
+4. `42c6782` — eksport CSV Analityk HR: blok nagłówkowy Najemca/Wygenerowano (nowe), Zastrzeżenia
+   (już istniały — patrz "obalone" niżej).
+
+**Zgłoszone jako patch-request:** ŻADEN. Nie było potrzeby zmiany żadnego pliku współdzielonego —
+`docker-compose.yml`'s `tenant-runtime.environment` nie ustawia `HROBOT_CHROMIUM_PATH`, więc `ENV`
+z Dockerfile przechodzi bez kolizji (sprawdzone czytaniem, nie zgadywaniem).
+
+**Obalone (dowód w logu wyżej, nie ukryte):**
+- Diagnoza brief-u "eksport CSV gubi zastrzeżenia z `meta.uwagi`" — **częściowo obalona**:
+  `podsumowanieToCsv()` już dołączał "Zastrzeżenia" z dedykowanym testem PRZED moim dotknięciem
+  pliku. Prawdziwym brakiem był wyłącznie brak nazwy najemcy/daty w nagłówku — to jedyne, co
+  naprawiono.
+
+**Bloker wejściowy zgłoszony integratorowi:** `docs/superpowers/specs/2026-08-04-forma-dokumentow-
+design.md` nie istnieje w tym worktree (sprawdzone `git log --all` w całym repo — zero trafień).
+Zastąpione: `DESIGN.md` (repo-root, istnieje, zatwierdzony) dla języka wizualnego + kryteria
+akceptacji §6 zacytowane dosłownie w treści zadania. Jeśli prawdziwy plik spec istnieje w innym
+torze tego biegu, integrator powinien go zestawić z tym, co tu powstało, i zgłosić rozbieżności.
+
+**Wyniki testów przed/po (dosłowne liczby):**
+- `pdf.renderer.spec.ts`: PRZED zmianą nie było testu do porównania 1:1 (kontrakt treści całkowicie
+  się zmienił — STARY test przeciw NOWEJ implementacji: **5× TS2339 (czerwono)**, dowód że zmiana
+  jest realna). PO: **16/16 zielono** (nowy plik).
+- `pdf.renderer.chrome.integration.spec.ts` (nowy plik): **5/5 zielono**, potwierdzone 3× pod rząd
+  po naprawie wyścigu nawigacji.
+- `src/dokumenty` (unit lane) PRZED (bez mocka `renderReportPdf`): **2 testy padają timeoutem
+  5000ms** w `dokumenty.service.spec.ts`. PO (z mockiem): **95/95 zielono w 8 plikach**.
+- `pnpm turbo run test --filter=@hrobot/tenant-runtime`: **1131/1131 zielono, 74 pliki** (cały
+  moduł tenant-runtime, nie tylko `dokumenty`).
+- `lib/analityk.test.ts`: PRZED nowymi testami **51/51 zielono** (baseline). Nowe testy przed
+  implementacją: **3/56 czerwono**. PO: **56/56 zielono**.
+- `docs/design/web-kit` pełny `vitest run`: **525/525 zielono, 23 pliki**.
+- `npx tsc --noEmit` (web-kit): czysto, zero błędów.
