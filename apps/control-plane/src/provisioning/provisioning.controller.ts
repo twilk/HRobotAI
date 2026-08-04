@@ -1,7 +1,7 @@
 import { Controller, Get, NotFoundException, Param, UseGuards } from '@nestjs/common'
 import { Throttle } from '@nestjs/throttler'
 import type { ControlPlanePrisma } from '@hrobot/db'
-import { EncryptionService } from '@hrobot/shared'
+import { EncryptionService, TenantStatus } from '@hrobot/shared'
 import { GlobalAdminGuard } from '../auth/global-admin.guard.js'
 import { ControlPlanePrismaService } from '../common/prisma/control-plane-prisma.service.js'
 import {
@@ -32,10 +32,22 @@ export class ProvisioningController {
     // Never return raw lastError here: this endpoint is unauthenticated and lastError can
     // contain the tenant DATABASE_URL + password (e.g. prisma migrate stderr). Coarse shape only.
     const failed = job.step === 'FAILED' // matches ProvisioningStep.FAILED
+
+    // W3: `job.step` reaches 'DONE' as KeycloakSetupStep's OWN last write, BEFORE DoneStep — the
+    // handler that actually flips tenant.status to ACTIVE — has run at all (DoneStep only runs
+    // once ProvisioningService re-emits and a consumer picks the message back up). Reporting
+    // `done` from `job.step === 'DONE'` therefore has a window, normally one message round-trip
+    // but UNBOUNDED if that re-emit fails, where this endpoint tells the caller the tenant is
+    // ready while it is still mid-provisioning. Ground truth is tenant.status, not the job's
+    // internal step name — check that instead. FAILED stays terminal on the job row alone: a
+    // failed job never gets a tenant to check.
+    const tenant = failed ? null : await this.prisma.tenant.findUnique({ where: { id: job.tenantId } })
+    const done = failed || tenant?.status === TenantStatus.ACTIVE
+
     return {
       step: job.step,
       attemptCount: job.attemptCount,
-      done: failed || job.step === 'DONE',
+      done,
       failed,
       errorCode: failed ? 'PROVISIONING_FAILED' : null,
     }

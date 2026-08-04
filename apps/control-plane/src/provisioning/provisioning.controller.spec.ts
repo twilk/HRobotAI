@@ -51,6 +51,43 @@ describe('ProvisioningController', () => {
         errorCode: 'PROVISIONING_FAILED',
       })
     })
+
+    /**
+     * W3 — KeycloakSetupStep writes `job.step = DONE` as ITS OWN last write (see
+     * keycloak-setup.step.ts), before DoneStep — the handler that actually flips tenant.status to
+     * ACTIVE — has run at all. DoneStep only runs once ProvisioningService re-emits the follow-up
+     * message and a consumer picks it back up. In that window (normally one message round-trip,
+     * unbounded if the re-emit fails) `job.step` already reads 'DONE' while the tenant is still
+     * mid-provisioning. THE PROPERTY: this endpoint must reflect tenant.status (ground truth), not
+     * merely the job's internal step name.
+     */
+    it('does not report done:true while job.step=DONE but the tenant is not yet ACTIVE (W3)', async () => {
+      mockPrisma.provisioningJob.findUnique.mockResolvedValue({
+        step: 'DONE',
+        attemptCount: 0,
+        lastError: null,
+        tenantId: 'tenant-1',
+      })
+      mockPrisma.tenant.findUnique.mockResolvedValue({ id: 'tenant-1', status: 'PROVISIONING' })
+
+      const result = await controller.status('job-1')
+
+      expect(result.done).toBe(false)
+    })
+
+    it('reports done:true once the tenant is actually ACTIVE', async () => {
+      mockPrisma.provisioningJob.findUnique.mockResolvedValue({
+        step: 'DONE',
+        attemptCount: 0,
+        lastError: null,
+        tenantId: 'tenant-1',
+      })
+      mockPrisma.tenant.findUnique.mockResolvedValue({ id: 'tenant-1', status: 'ACTIVE' })
+
+      const result = await controller.status('job-1')
+
+      expect(result.done).toBe(true)
+    })
   })
 
   /**
