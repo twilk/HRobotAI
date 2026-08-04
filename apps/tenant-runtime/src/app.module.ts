@@ -27,6 +27,7 @@ import { StrategicBrainModule } from './strategic-brain/strategic-brain.module.j
 import { DokumentyModule } from './dokumenty/dokumenty.module.js'
 import { AgentGlosowyModule } from './agent-glosowy/agent-glosowy.module.js'
 import { AnalitykModule } from './analityk/analityk.module.js'
+import { ZastepstwaModule } from './zastepstwa/zastepstwa.module.js'
 import { RedisService } from './common/redis/redis.service.js'
 
 @Module({
@@ -66,6 +67,10 @@ import { RedisService } from './common/redis/redis.service.js'
     DokumentyModule,
     AgentGlosowyModule,
     AnalitykModule,
+    // Tor F: silnik zastępstw. Moduł jest kompletny i przetestowany, ale plik app.module.ts ma
+    // jednego właściciela (integratora) wg protokołu plików współdzielonych — bez tej linii
+    // POST /api/zastepstwa nie jest osiągalne, mimo że kod istnieje.
+    ZastepstwaModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
