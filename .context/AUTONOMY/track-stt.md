@@ -71,4 +71,43 @@ pliku nie mogła po cichu uczynić drugiego kłamliwym. | diff jw. | -
 
 [krok 6] zielony | `python -m pytest -q` → `28 passed in 4.56s` (25 bazowych + 3 nowe: W12 health-
 during-transcribe, W13 rollover-spy, W13 content-length-required). Zero regresji. | `python -m
-pytest -q` → `28 passed in 4.56s` | (do uzupełnienia po commicie)
+pytest -q` → `28 passed in 4.56s` | commit `d8dc4a3`
+
+## Podsumowanie końcowe
+
+**Ukończone (jeden commit, oba znaleziska razem — dotyczą tego samego handlera i tego samego
+protokołu czerwony→zielony):**
+- W12 (event loop zablokowany przez synchroniczną transkrypcję) — NAPRAWIONE, `run_in_threadpool`.
+- W13 (bufor na dysk przed sprawdzeniem limitu; deklaracja RODO w `route.ts` doprecyzowana) —
+  NAPRAWIONE, bramka Content-Length + `_InMemoryMultiPartParser`.
+- commit: `d8dc4a3` na gałęzi `track-stt/w12-w13-resilience` (baza: `feat/autonomy-20260803` @
+  `793b3b5`), lokalny, brak pusha.
+
+**Zgłoszone jako patch-request:** brak — obie poprawki mieściły się w `stt-service/` i
+`docs/design/web-kit/app/api/voice/transcribe/route.ts`, żaden z nich nie jest na liście plików
+współdzielonych z zakazem dotykania.
+
+**Obalone:** brak — oba znaleziska (W12, W13) potwierdziły się dokładnie tak jak w triażu, testem
+czerwonym przed poprawką. Jedno doprecyzowanie WŁASNEGO ustalenia w trakcie pracy (krok 2): sam
+fix "przesuń check przed read()" zasugerowany w triażu jako "najmniejsza zmiana" **nie
+wystarczał** — parsowanie multipart (i ewentualny zapis na dysk) dzieje się podczas rozwiązywania
+parametru `File(...)` przez FastAPI, przed uruchomieniem ciała handlera, więc żadna zmiana kolejności
+linii W ŚRODKU funkcji nie mogła tego powstrzymać; wymagało to wyjęcia `audio` z sygnatury funkcji
+i ręcznego parsowania po własnej bramce. To nie jest obalenie triażu (diagnoza W13 była trafna),
+tylko korekta PROPOZYCJI naprawy z niego.
+
+**Wyniki testów przed/po:**
+- Przed (baseline, niezmieniony kod): `25 passed in 34.73s`.
+- Nowe testy na niezmienionym kodzie (czerwone): `test_health_responds_while_a_transcription_is_in_flight`
+  → `/health took 5.02s ... assert 5.02 < 1.0` (FAIL); `test_oversized_audio_never_spools_to_disk`
+  → `assert [1] == []` (FAIL, rollover wywołany); `test_content_length_missing_is_refused_without_reading_body`
+  → `assert 400 == 411` (FAIL).
+- Po poprawce: `28 passed in 4.56s`.
+
+**Ograniczenie metodologiczne warte odnotowania integratorowi:** pierwsza wersja testu W12 na
+współdzielonej fixturze `TestClient(app)` (bez `with`) przechodziła FAŁSZYWIE — `starlette.
+testclient` otwiera nowy portal (nową pętlę zdarzeń) per wywołanie, gdy klient nie jest użyty jako
+context manager, więc dwa "równoległe" wywołania i tak trafiają na różne pętle i nic nie
+udowadniają. Każdy przyszły test współbieżności na TestClient w tym repo powinien pamiętać o `with
+TestClient(app) as client:` — inaczej test blokady event loopu jest bezwartościowy niezależnie od
+tego, czy bug istnieje.
