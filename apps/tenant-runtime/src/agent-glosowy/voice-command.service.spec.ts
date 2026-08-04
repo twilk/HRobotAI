@@ -7,7 +7,7 @@ import { AuditService } from '../tenant-runtime/audit/audit.service.js'
 
 const TODAY = new Date('2026-07-29T00:00:00.000Z') // Wednesday
 
-const leave = { createRequest: jest.fn() }
+const leave = { createRequest: jest.fn(), list: jest.fn() }
 const grafik = { listShifts: jest.fn() }
 const audit = { log: jest.fn() }
 
@@ -59,6 +59,22 @@ describe('VoiceCommandService', () => {
       const r = svc.interpret('chcę wziąć urlop', TODAY, actor)
       expect(r.fallbackToForm).toBe(true)
       expect(r.requiresConfirmation).toBe(false)
+    })
+
+    it('SALDO_URLOPU (read) does NOT require confirmation', () => {
+      const r = svc.interpret('ile mam dni urlopu', TODAY, actor)
+      expect(r.intent).toBe('SALDO_URLOPU')
+      expect(r.requiresConfirmation).toBe(false)
+      expect(r.fallbackToForm).toBe(false)
+      expect(r.proposedAction.kind).toBe('READ_LEAVE_BALANCE')
+    })
+
+    it('STATUS_WNIOSKU (read) does NOT require confirmation', () => {
+      const r = svc.interpret('co z moim wnioskiem', TODAY, actor)
+      expect(r.intent).toBe('STATUS_WNIOSKU')
+      expect(r.requiresConfirmation).toBe(false)
+      expect(r.fallbackToForm).toBe(false)
+      expect(r.proposedAction.kind).toBe('READ_LEAVE_STATUS')
     })
 
     it('carries an EU AI Act transparency notice on every interpretation', () => {
@@ -133,6 +149,37 @@ describe('VoiceCommandService', () => {
       // a read must never fall through to a write
       expect(leave.createRequest).not.toHaveBeenCalled()
       expect(audit.log).toHaveBeenCalledTimes(1)
+    })
+
+    it('computes the leave balance via the REAL LeaveService (mine + APPROVED), no confirm needed', async () => {
+      leave.list.mockResolvedValue([
+        { employeeId: 'emp-1', startDate: new Date('2026-01-05T00:00:00.000Z'), endDate: new Date('2026-01-09T00:00:00.000Z'), type: 'URLOP_WYPOCZYNKOWY', status: 'APPROVED' },
+      ])
+      const res = await svc.execute(client, actor, { intent: 'SALDO_URLOPU', entities: {}, confirm: false }, TODAY)
+      expect(leave.list).toHaveBeenCalledWith(client, actor, { mine: true, state: 'APPROVED' })
+      expect(res.executed).toBe(true)
+      expect(res.result).toEqual({ wymiarDni: 20, wykorzystaneDni: 5, pozostaleDni: 15 })
+      expect(leave.createRequest).not.toHaveBeenCalled()
+      expect(audit.log).toHaveBeenCalledTimes(1)
+    })
+
+    it('returns the most recent own leave request via the REAL LeaveService (mine), no confirm needed', async () => {
+      leave.list.mockResolvedValue([
+        { id: 'lr-9', status: 'PENDING', type: 'URLOP_WYPOCZYNKOWY', startDate: new Date('2026-08-10T00:00:00.000Z'), endDate: new Date('2026-08-12T00:00:00.000Z'), createdAt: new Date('2026-07-20T00:00:00.000Z') },
+      ])
+      const res = await svc.execute(client, actor, { intent: 'STATUS_WNIOSKU', entities: {}, confirm: false }, TODAY)
+      expect(leave.list).toHaveBeenCalledWith(client, actor, { mine: true })
+      expect(res.executed).toBe(true)
+      expect(res.result).toEqual({ id: 'lr-9', status: 'PENDING', type: 'URLOP_WYPOCZYNKOWY', startDate: '2026-08-10', endDate: '2026-08-12' })
+      expect(audit.log).toHaveBeenCalledTimes(1)
+    })
+
+    it('reports no requests when the caller has filed none', async () => {
+      leave.list.mockResolvedValue([])
+      const res = await svc.execute(client, actor, { intent: 'STATUS_WNIOSKU', entities: {}, confirm: false }, TODAY)
+      expect(res.executed).toBe(true)
+      expect(res.result).toBeNull()
+      expect(res.humanReadable).toMatch(/nie złożyłeś|brak wniosk/i)
     })
 
     it('NIEZNANE never executes — returns a fallback-to-form result', async () => {

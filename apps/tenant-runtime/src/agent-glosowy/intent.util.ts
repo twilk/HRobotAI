@@ -15,7 +15,7 @@
  * reads the wall clock — so a given (text, today) pair always yields the identical ParsedIntent.
  */
 
-export type AgentIntent = 'URLOP' | 'L4' | 'MOJ_GRAFIK' | 'NIEZNANE'
+export type AgentIntent = 'URLOP' | 'L4' | 'MOJ_GRAFIK' | 'SALDO_URLOPU' | 'STATUS_WNIOSKU' | 'NIEZNANE'
 
 /** Slots extracted from an utterance. Dates are ISO `YYYY-MM-DD`; `type` is the leave kind. */
 export interface ParsedEntities {
@@ -166,8 +166,13 @@ function extractDates(text: string, today: Date): { dateFrom?: string; dateTo?: 
 const L4_RE = /\bl4\b|zwolnieni|chorob|choruj|jestem chor/
 /** Leave (urlop) markers. */
 const URLOP_RE = /urlop|wolne\b|wolnego\b/
+/** Leave-balance (saldo urlopu) markers — checked BEFORE plain URLOP so "ile ... urlopu" / "saldo
+ * urlopowe" never reads as a request to file a new leave. */
+const SALDO_URLOPU_RE = /ile.{0,20}(dni )?urlopu|saldo urlop|urlop.{0,10}saldo|ile.{0,10}urlopu.{0,10}zostało|pozostał.{0,10}urlop/
 /** Schedule (grafik) markers. */
 const GRAFIK_RE = /grafik|zmian[ayę]\b|kiedy pracuj|moje zmiany/
+/** Leave-request status markers ("co z moim wnioskiem" / "status wniosku"). */
+const STATUS_WNIOSKU_RE = /status.{0,15}wniosk|co z (moim )?wniosk|wniosek.{0,15}status/
 
 /**
  * Parse a Polish utterance into `{intent, entities, confidence}` against the CLOSED command set.
@@ -192,12 +197,21 @@ export function parseIntent(text: string, today: Date): ParsedIntent {
     }
   }
 
+  // SALDO_URLOPU (read) before plain URLOP — "ile mam dni urlopu" must not file a request.
+  if (SALDO_URLOPU_RE.test(normalized)) {
+    return { intent: 'SALDO_URLOPU', entities: {}, confidence: HIGH_CONFIDENCE }
+  }
+
   if (URLOP_RE.test(normalized)) {
     return {
       intent: 'URLOP',
       entities: { ...dates, type: LEAVE_TYPE.URLOP },
       confidence: dates.dateFrom != null ? HIGH_CONFIDENCE : LOW_CONFIDENCE,
     }
+  }
+
+  if (STATUS_WNIOSKU_RE.test(normalized)) {
+    return { intent: 'STATUS_WNIOSKU', entities: {}, confidence: HIGH_CONFIDENCE }
   }
 
   if (GRAFIK_RE.test(normalized)) {
