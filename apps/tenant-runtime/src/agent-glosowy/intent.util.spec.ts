@@ -101,7 +101,10 @@ describe('parseIntent — closed PL command set (K1 urlop / K2 L4 / K3 mój graf
     it('every non-NIEZNANE intent has exactly one INTENT_CATALOG entry (POMOC source of truth)', () => {
       const cataloged = INTENT_CATALOG.map((e) => e.intent).sort()
       expect(cataloged).toEqual(
-        ['L4', 'MOJ_GRAFIK', 'POMOC', 'SALDO_URLOPU', 'STATUS_WNIOSKU', 'URLOP', 'KTO_PRACUJE', 'NASTEPNA_ZMIANA'].sort(),
+        [
+          'L4', 'MOJ_GRAFIK', 'POMOC', 'SALDO_URLOPU', 'STATUS_WNIOSKU', 'URLOP',
+          'KTO_PRACUJE', 'NASTEPNA_ZMIANA', 'MOJA_EWIDENCJA',
+        ].sort(),
       )
     })
   })
@@ -146,6 +149,28 @@ describe('parseIntent — closed PL command set (K1 urlop / K2 L4 / K3 mój graf
     it('does not affect an ordinary MOJ_GRAFIK / KTO_PRACUJE utterance', () => {
       expect(parseIntent('jaki mam grafik jutro', TODAY).intent).toBe('MOJ_GRAFIK')
       expect(parseIntent('kto dzisiaj pracuje', TODAY).intent).toBe('KTO_PRACUJE')
+    })
+  })
+
+  describe('MOJA_EWIDENCJA (timesheet, read)', () => {
+    it('parses "ile przepracowałem godzin w tym tygodniu" and defaults to the ISO week containing today', () => {
+      const r = parseIntent('ile przepracowałem godzin w tym tygodniu', TODAY)
+      expect(r.intent).toBe('MOJA_EWIDENCJA')
+      // 2026-07-29 is a Wednesday → its ISO week is Mon 2026-07-27 .. Sun 2026-08-02.
+      expect(r.entities.dateFrom).toBe('2026-07-27')
+      expect(r.entities.dateTo).toBe('2026-08-02')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+
+    it('parses an explicit range "moja ewidencja od 1 do 5 sierpnia"', () => {
+      const r = parseIntent('moja ewidencja od 1 do 5 sierpnia', TODAY)
+      expect(r.intent).toBe('MOJA_EWIDENCJA')
+      expect(r.entities.dateFrom).toBe('2026-08-01')
+      expect(r.entities.dateTo).toBe('2026-08-05')
+    })
+
+    it('parses "moje nadgodziny" (trigger word only — the response must not label the metric that way)', () => {
+      expect(parseIntent('jakie mam nadgodziny', TODAY).intent).toBe('MOJA_EWIDENCJA')
     })
   })
 

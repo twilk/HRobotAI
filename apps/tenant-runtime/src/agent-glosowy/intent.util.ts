@@ -15,6 +15,8 @@
  * reads the wall clock — so a given (text, today) pair always yields the identical ParsedIntent.
  */
 
+import { isoWeekRange } from '../ai-grafik/week-range.util.js'
+
 export type AgentIntent =
   | 'URLOP'
   | 'L4'
@@ -24,6 +26,7 @@ export type AgentIntent =
   | 'POMOC'
   | 'KTO_PRACUJE'
   | 'NASTEPNA_ZMIANA'
+  | 'MOJA_EWIDENCJA'
   | 'NIEZNANE'
 
 /** One catalog row per registered (non-`NIEZNANE`) intent — the SINGLE source of truth for POMOC's
@@ -53,6 +56,11 @@ export const INTENT_CATALOG: readonly IntentCatalogEntry[] = [
     intent: 'NASTEPNA_ZMIANA',
     opis: 'sprawdzenie, kiedy jest moja najbliższa zmiana',
     przyklad: 'kiedy mam następną zmianę',
+  },
+  {
+    intent: 'MOJA_EWIDENCJA',
+    opis: 'sprawdzenie przepracowanych godzin i nadwyżki ponad normę za okres',
+    przyklad: 'ile przepracowałem godzin w tym tygodniu',
   },
 ]
 
@@ -217,6 +225,10 @@ const KTO_PRACUJE_RE = /\bkto\b.{0,20}(pracuj|nieobecn|zmian)/
  * `zmian[ayę]\b`/`kiedy pracuj` markers. "kiedy pracuję" moved HERE (out of `GRAFIK_RE`, see below):
  * "when do I next work" is a next-shift question, not a request for the whole schedule. */
 const NASTEPNA_ZMIANA_RE = /nast[eę]pn.{0,10}zmian|kiedy.{0,15}(pracuj|zmian)/
+/** Timesheet markers ("moja ewidencja" / "ile przepracowałem" / "moje nadgodziny"). `nadgodzin` is
+ * accepted as a TRIGGER word only — a user naturally says it — but the response NEVER labels the
+ * computed metric that way; see `VoiceCommandService` / `nadwyzkaPonadNorme` for why. */
+const MOJA_EWIDENCJA_RE = /ewidencj|przepracowa[nł]|nadgodzin|godziny.{0,10}pracy/
 /** Schedule (grafik) markers. NOTE: `kiedy pracuj` intentionally lives in `NASTEPNA_ZMIANA_RE` now,
  * not here — checked earlier in `parseIntent`, so this branch never sees it. */
 const GRAFIK_RE = /grafik|zmian[ayę]\b|moje zmiany/
@@ -286,6 +298,19 @@ export function parseIntent(text: string, today: Date): ParsedIntent {
     // "Next shift" is always relative to "now" — any date word is deliberately not surfaced as a
     // slot here (the caller resolves "next" against today, not against a spoken date).
     return { intent: 'NASTEPNA_ZMIANA', entities: {}, confidence: HIGH_CONFIDENCE }
+  }
+
+  if (MOJA_EWIDENCJA_RE.test(normalized)) {
+    // No parseable period → default to the ISO week (Mon..Sun) containing `today`, deterministically.
+    if (dates.dateFrom != null) {
+      return { intent: 'MOJA_EWIDENCJA', entities: { dateFrom: dates.dateFrom, dateTo: dates.dateTo ?? dates.dateFrom }, confidence: HIGH_CONFIDENCE }
+    }
+    const { weekStart, weekEndExcl } = isoWeekRange(today)
+    return {
+      intent: 'MOJA_EWIDENCJA',
+      entities: { dateFrom: toISO(weekStart), dateTo: toISO(addDays(weekEndExcl, -1)) },
+      confidence: HIGH_CONFIDENCE,
+    }
   }
 
   if (GRAFIK_RE.test(normalized)) {

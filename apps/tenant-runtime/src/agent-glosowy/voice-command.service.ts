@@ -6,6 +6,7 @@ import { GrafikService } from '../grafik/grafik.service.js'
 import type { CreateLeaveDto } from '../leave/dto/leave.dto.js'
 import { drawsDownAnnualEntitlement } from '../common/leave-type.js'
 import { isGlobal, managedUnitIds } from '../tenant-runtime/rbac/unit-scope.js'
+import { windowMinutes } from '../ai-grafik/week-range.util.js'
 import { parseIntent, CONFIDENCE_THRESHOLD, INTENT_CATALOG, type AgentIntent, type ParsedEntities } from './intent.util.js'
 
 /** Flat statutory annual entitlement (KP art. 154 §1) — mirrors `analityk/analityk.service.ts`
@@ -18,6 +19,26 @@ const WYMIAR_URLOPU_DNI = 20
  * not a compliance report. */
 function inclusiveDaySpan(start: Date, end: Date): number {
   return Math.round((end.getTime() - start.getTime()) / 86400000) + 1
+}
+
+/** Round to 2 decimals (avoids float noise like 23.999999999999996 in a spoken/displayed figure). */
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
+/** Count of Mon–Fri calendar days in the INCLUSIVE `[fromISO, toISO]` range — the denominator for
+ * MOJA_EWIDENCJA's weekly-norm figure (`etat × 8h × business days`), mirroring `analityk`'s norm
+ * formula (see `analityk.service.ts` `czasPracy`) at the scale of a single agent-glosowy answer. */
+function businessDaysCount(fromISO: string, toISO: string): number {
+  let count = 0
+  let cursor = new Date(`${fromISO}T00:00:00.000Z`)
+  const end = new Date(`${toISO}T00:00:00.000Z`)
+  while (cursor.getTime() <= end.getTime()) {
+    const dow = cursor.getUTCDay()
+    if (dow !== 0 && dow !== 6) count++
+    cursor = new Date(cursor.getTime() + 86400000)
+  }
+  return count
 }
 
 /**
@@ -39,6 +60,7 @@ export type ProposedActionKind =
   | 'READ_HELP'
   | 'READ_WHO_WORKS'
   | 'READ_NEXT_SHIFT'
+  | 'READ_TIMESHEET'
   | 'NONE'
 
 /** A description of what WOULD happen — never a side effect. `interpret` returns this; nothing runs. */
@@ -219,6 +241,21 @@ export class VoiceCommandService {
         fallbackToForm: false,
         proposedAction: { kind: 'READ_NEXT_SHIFT', method: 'GET', endpoint: '/api/grafik/shifts' },
         humanReadable: 'Twoja najbliższa zaplanowana zmiana.',
+      }
+    }
+
+    if (intent === 'MOJA_EWIDENCJA') {
+      return {
+        ...base,
+        requiresConfirmation: false,
+        fallbackToForm: false,
+        proposedAction: {
+          kind: 'READ_TIMESHEET',
+          method: 'GET',
+          endpoint: '/api/grafik/shifts',
+          body: { dateFrom: entities.dateFrom, dateTo: entities.dateTo },
+        },
+        humanReadable: `Twoja ewidencja czasu pracy od ${entities.dateFrom} do ${entities.dateTo}.`,
       }
     }
 
@@ -455,6 +492,49 @@ export class VoiceCommandService {
         humanReadable: next
           ? `Twoja najbliższa zmiana: ${toISODate(next.date)} (${next.start}–${(next as { end?: string }).end ?? ''}).`
           : 'Nie masz żadnych zaplanowanych zmian.',
+      }
+    }
+
+    if (intent === 'MOJA_EWIDENCJA') {
+      const dateFrom = entities.dateFrom!
+      const dateTo = entities.dateTo ?? dateFrom
+      const me = await client.employee.findFirst({ where: { user: { keycloakSub: actor.userId } }, select: { id: true, etat: true } })
+      const all = (await this.grafik.listShifts(client, actor)) as Array<{ employeeId: string; date: unknown; start: string; end: string }>
+      // Defense-in-depth own-filter (see KTO_PRACUJE / NASTEPNA_ZMIANA): never trust `listShifts`
+      // alone to already be "just me" for a MANAGER/HR actor.
+      const own = all.filter((s) => me != null && s.employeeId === me.id && (toISODate(s.date) ?? '') >= dateFrom && (toISODate(s.date) ?? '') <= dateTo)
+
+      const sumaGodzin = round2(own.reduce((sum, s) => sum + windowMinutes(s.start, s.end) / 60, 0))
+      const etat = Number(me?.etat ?? 1)
+      const normaGodzin = round2(etat * 8 * businessDaysCount(dateFrom, dateTo))
+      const nadwyzkaPonadNorme = round2(Math.max(0, sumaGodzin - normaGodzin))
+      const niedoborDoNormy = round2(Math.max(0, normaGodzin - sumaGodzin))
+      const result = { dateFrom, dateTo, sumaGodzin, normaGodzin, nadwyzkaPonadNorme, niedoborDoNormy, liczbaZmian: own.length }
+
+      await this.audit.log({
+        tenantClient: client,
+        actorUserId: actor.userId,
+        action: 'agent-glosowy.execute',
+        entityType: 'Ewidencja',
+        entityId: `${dateFrom}..${dateTo}`,
+        payload: { intent, ...result },
+        ipAddress: actor.ipAddress,
+      })
+
+      return {
+        ...base,
+        executed: true,
+        requiresConfirmation: false,
+        fallbackToForm: false,
+        result,
+        // READ THE NAME LITERALLY (mirrors `analityk`'s identical `nadwyzkaPonadNorme` disclaimer):
+        // this is planned/rostered time vs the WEEKLY norm only — no daily norm (art. 151 §1), no
+        // unpaid-break deduction (art. 141) — so it systematically UNDERSTATES statutory overtime
+        // and must never be presented to the user as "nadgodziny" in the KP sense.
+        humanReadable:
+          `Ewidencja ${dateFrom}–${dateTo}: przepracowano ${sumaGodzin}h przy normie ${normaGodzin}h. ` +
+          `Nadwyżka ponad normę tygodniową: ${nadwyzkaPonadNorme}h (niedobór: ${niedoborDoNormy}h). ` +
+          'UWAGA: to nie są nadgodziny w rozumieniu Kodeksu pracy (bez normy dobowej i bez odliczenia przerwy) — to nadwyżka ponad normę tygodniową z grafiku.',
       }
     }
 

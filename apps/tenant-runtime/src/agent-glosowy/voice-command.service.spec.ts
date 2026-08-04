@@ -123,6 +123,14 @@ describe('VoiceCommandService', () => {
       expect(r.proposedAction.kind).toBe('READ_NEXT_SHIFT')
     })
 
+    it('MOJA_EWIDENCJA (read) does NOT require confirmation', () => {
+      const r = svc.interpret('ile przepracowałem godzin w tym tygodniu', TODAY, actor)
+      expect(r.intent).toBe('MOJA_EWIDENCJA')
+      expect(r.requiresConfirmation).toBe(false)
+      expect(r.fallbackToForm).toBe(false)
+      expect(r.proposedAction.kind).toBe('READ_TIMESHEET')
+    })
+
     it('carries an EU AI Act transparency notice on every interpretation', () => {
       const r = svc.interpret('jaki mam grafik jutro', TODAY, actor)
       expect(r.aiNotice).toMatch(/AI/)
@@ -307,6 +315,38 @@ describe('VoiceCommandService', () => {
         expect(res.executed).toBe(true)
         expect(res.result).toBeNull()
         expect(res.humanReadable).toMatch(/nie masz.{0,40}zmian/i)
+      })
+    })
+
+    describe('MOJA_EWIDENCJA — worked hours vs weekly norm, own shifts only', () => {
+      const PERIOD = { dateFrom: '2026-07-27', dateTo: '2026-08-02' } // Mon..Sun, 5 business days
+
+      it('sums own shift hours in the period against the weekly norm, and never labels the excess "nadgodziny"', async () => {
+        prismaClient.employee.findFirst.mockResolvedValue({ id: 'emp-self', etat: 1 })
+        grafik.listShifts.mockResolvedValue([
+          { employeeId: 'emp-self', date: new Date('2026-07-27T00:00:00.000Z'), start: '08:00', end: '16:00' }, // 8h, Mon
+          { employeeId: 'emp-self', date: new Date('2026-07-28T00:00:00.000Z'), start: '08:00', end: '16:00' }, // 8h, Tue
+          { employeeId: 'emp-self', date: new Date('2026-07-29T00:00:00.000Z'), start: '08:00', end: '16:00' }, // 8h, Wed
+          { employeeId: 'emp-self', date: new Date('2026-07-30T00:00:00.000Z'), start: '08:00', end: '16:00' }, // 8h, Thu
+          { employeeId: 'emp-self', date: new Date('2026-07-31T00:00:00.000Z'), start: '08:00', end: '16:00' }, // 8h, Fri
+          { employeeId: 'emp-self', date: new Date('2026-08-01T00:00:00.000Z'), start: '08:00', end: '16:00' }, // 8h, Sat (outside 5 biz days)
+          { employeeId: 'emp-OTHER', date: new Date('2026-07-27T00:00:00.000Z'), start: '08:00', end: '16:00' }, // must be excluded (not mine)
+          { employeeId: 'emp-self', date: new Date('2026-08-10T00:00:00.000Z'), start: '08:00', end: '16:00' }, // must be excluded (outside period)
+        ])
+
+        const res = await svc.execute(client, actor, { intent: 'MOJA_EWIDENCJA', entities: PERIOD, confirm: false }, TODAY)
+
+        expect(grafik.listShifts).toHaveBeenCalledWith(client, actor)
+        const result = res.result as { sumaGodzin: number; normaGodzin: number; nadwyzkaPonadNorme: number; niedoborDoNormy: number }
+        expect(result.sumaGodzin).toBe(48)
+        expect(result.normaGodzin).toBe(40) // etat 1 × 8h × 5 business days
+        expect(result.nadwyzkaPonadNorme).toBe(8)
+        expect(result.niedoborDoNormy).toBe(0)
+        // naming discipline: must not brand the excess "nadgodziny" (KP overtime) — see analityk's
+        // identical disclaimer for `nadwyzkaPonadNorme`.
+        expect(res.humanReadable).not.toMatch(/twoje nadgodziny/i)
+        expect(res.humanReadable).toMatch(/nadwyżk[ae]/i)
+        expect(res.humanReadable).toMatch(/nie są nadgodzin/i)
       })
     })
 
