@@ -63,8 +63,14 @@ describe('dokumenty — no external send (DOK-10)', () => {
     const files = collectSourceFiles(MODULE_DIR)
     expect(files.length).toBeGreaterThan(0)
     // Genuine outbound-network indicators only — NOT domain vocabulary like "płatnik"/"ZUS", which
-    // are legitimate KEDU data labels, not a send.
-    const OUTBOUND = [/\bfetch\s*\(/, /\baxios\b/, /XMLHttpRequest/, /https?:\/\/[a-z0-9]/i]
+    // are legitimate KEDU data labels, not a send. `fetch`/`axios`/`XMLHttpRequest` stay banned
+    // UNCONDITIONALLY (render/pdf.renderer.ts deliberately uses `node:http` instead, precisely so it
+    // never needs an exception here). The URL-literal check exempts ONLY loopback
+    // (127.0.0.1/localhost): render/pdf.renderer.ts's Chrome-DevTools-Protocol print pipeline talks
+    // to a Chrome process it spawns itself, on the same machine — data never crosses the network
+    // boundary DOK-10 exists to police (see that file's own module doc comment). Any OTHER host —
+    // including a real ZUS/Płatnik endpoint — still fails this test.
+    const OUTBOUND = [/\bfetch\s*\(/, /\baxios\b/, /XMLHttpRequest/, /https?:\/\/(?!127\.0\.0\.1|localhost\b)[a-z0-9]/i]
     for (const file of files) {
       const text = readFileSync(file, 'utf8')
       for (const rx of OUTBOUND) {

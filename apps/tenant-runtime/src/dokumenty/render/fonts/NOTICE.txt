@@ -1,7 +1,28 @@
-NotoSans-Regular.ttf — Noto Sans
-Licencja: SIL Open Font License, Version 1.1 (OFL-1.1) — wolna redystrybucja i osadzanie.
-Copyright: The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic).
+Fonty osadzane w Module Dokumenty (render/pdf.renderer.ts + render/fonts/fonts.ts) — od torU DOK
+(naprawa formy generowanych dokumentów PDF, 2026-08).
 
-Osadzony w Module Dokumenty (render/pdf.renderer.ts), aby polskie znaki diakrytyczne
-(ł ą ę ś ż ó ć ń ź) renderowały się poprawnie w generowanych PDF — wbudowane fonty pdfkit
-(Helvetica/Courier) używają kodowania WinAnsi i zniekształcają glify PL.
+Poprzednio: NotoSans-Regular.ttf (OFL-1.1) — usunięty, zastąpiony poniższymi (renderer nie używa
+już pdfkit/NotoSans; produkuje HTML/CSS drukowany do PDF przez Chrome DevTools Protocol).
+
+src/Archivo.ttf
+  Font: Archivo (wariabilny, osie wght/wdth)
+  Licencja: SIL Open Font License, Version 1.1 (OFL-1.1) — src/Archivo-OFL.txt
+  Copyright: 2020 The Archivo Project Authors (https://github.com/Omnibus-Type/Archivo)
+  Rola: display / nagłówki (zamiennik Cabinet Grotesk z DESIGN.md — patrz uzasadnienie w
+  data/m2-evidence/licenses/forma-dokumentow-fonts.md)
+
+src/PublicSans.ttf
+  Font: Public Sans (wariabilny, oś wght)
+  Licencja: SIL Open Font License, Version 1.1 (OFL-1.1) — src/PublicSans-OFL.txt
+  Copyright: 2015 The Public Sans Project Authors (https://github.com/uswds/public-sans)
+  Rola: treść / UI (zamiennik General Sans z DESIGN.md)
+
+src/IBMPlexMono-Regular.ttf, src/IBMPlexMono-Medium.ttf
+  Font: IBM Plex Mono
+  Licencja: SIL Open Font License, Version 1.1 (OFL-1.1) — src/IBMPlexMono-OFL.txt
+  Copyright: © 2017 IBM Corp. z zastrzeżoną nazwą "Plex"
+  Rola: warstwa maszynowa (ID, PESEL zamaskowany, nagłówki tabel) — zgodny z DESIGN.md, bez zmian.
+
+Wszystkie trzy fonty osadzone jako base64 `data:` URI bezpośrednio w generowanym HTML (zero
+zapytań sieciowych przy renderowaniu). Pełne uzasadnienie wyboru (dlaczego nie Cabinet
+Grotesk/General Sans z DESIGN.md) w data/m2-evidence/licenses/forma-dokumentow-fonts.md.

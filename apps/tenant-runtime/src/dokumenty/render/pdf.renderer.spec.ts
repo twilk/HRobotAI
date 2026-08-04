@@ -1,10 +1,9 @@
 import {
-  renderEwidencjaPdf,
-  renderNadgodzinyPdf,
-  renderKeduPdf,
   buildEwidencjaPdfContent,
   buildNadgodzinyPdfContent,
   buildKeduPdfContent,
+  renderContentsToHtml,
+  normalizePdfDeterminism,
   WATERMARK_TEXT,
 } from './pdf.renderer'
 import type { EwidencjaRow, Period } from '../rcp.util'
@@ -41,6 +40,11 @@ const summary: OvertimeSummary = {
   daysWithoutRcp: 1,
 }
 
+const summaryWithWarning: OvertimeSummary = {
+  ...summary,
+  annualLimitWarning: { projectedMin: 20000, limitMin: 15000 },
+}
+
 const keduModel: KeduModel = {
   demo: true,
   wersjaSchematu: 'KEDU 5.4 (WERSJA POGLĄDOWA DEMO — NIE DO WYSYŁKI ZUS)',
@@ -66,33 +70,38 @@ const keduModel: KeduModel = {
   rsa: [],
 }
 
-describe('pdf.renderer — pure content builders (testable without parsing PDF binary)', () => {
-  it('buildEwidencjaPdfContent: zawiera nagłówek 4Mobility/HRobot, tabelę dni/godzin i znak wodny DEMO', () => {
+describe('pdf.renderer — pure content builders (structured, testable without a browser)', () => {
+  it('buildEwidencjaPdfContent: nagłówek meta + tabela dni/godzin, BEZ pre-formatowanych `|`-stringów', () => {
     const content = buildEwidencjaPdfContent(employee, period, rows)
-    const joined = content.lines.join('\n')
-    expect(joined).toMatch(/4Mobility/)
-    expect(joined).toMatch(/HRobot/)
-    expect(joined).toContain('Kowalska')
-    expect(joined).toContain('2026-06-08')
-    expect(content.lines.some((l) => l.includes('480'))).toBe(true)
+    expect(content.meta.some((m) => m.value.includes('Kowalska'))).toBe(true)
+    expect(content.meta.some((m) => m.value.includes('2026-06-08'))).toBe(true)
+    expect(content.tables?.[0]?.table.rows.some((r) => r.worked?.includes('480'))).toBe(true)
+    expect(content.tables?.[0]?.table.columns.map((c) => c.header)).toEqual(['Data', 'Przepracowano', 'Przerwy', 'Absencja', 'Uwagi'])
+    expect(content.watermark).toBe(WATERMARK_TEXT)
+    // DOK-3 null-policy: brak danych != 0h
+    expect(content.tables?.[0]?.table.rows[1]?.worked).toBe('brak danych')
+  })
+
+  it('buildNadgodzinyPdfContent: tabela metryk + ostrzeżenie roczne jako note tone=warn', () => {
+    const content = buildNadgodzinyPdfContent(employee, period, summaryWithWarning)
+    const table = content.tables?.[0]?.table
+    expect(table?.rows.some((r) => (r.metric ?? '').includes('50%') && r.value === '120 min')).toBe(true)
+    expect(content.notes?.[0]?.tone).toBe('warn')
+    expect(content.notes?.[0]?.text).toMatch(/OSTRZEŻENIE/)
     expect(content.watermark).toBe(WATERMARK_TEXT)
   })
 
-  it('buildNadgodzinyPdfContent: zawiera podsumowanie nadgodzin i znak wodny DEMO', () => {
+  it('buildNadgodzinyPdfContent: brak ostrzeżenia => notes puste', () => {
     const content = buildNadgodzinyPdfContent(employee, period, summary)
-    const joined = content.lines.join('\n')
-    expect(joined).toMatch(/4Mobility/)
-    expect(joined).toContain('120')
-    expect(joined).toContain('60')
-    expect(content.watermark).toBe(WATERMARK_TEXT)
+    expect(content.notes).toEqual([])
   })
 
-  it('buildKeduPdfContent: zawiera bloki DRA/RCA i znak wodny DEMO', () => {
+  it('buildKeduPdfContent: dwie tabele (RCA/RSA) + meta DRA', () => {
     const content = buildKeduPdfContent(keduModel)
-    const joined = content.lines.join('\n')
-    expect(joined).toMatch(/DRA/)
-    expect(joined).toMatch(/RCA/)
-    expect(joined).toContain('90010112345')
+    expect(content.tables?.[0]?.heading).toMatch(/RCA/)
+    expect(content.tables?.[0]?.table.rows[0]?.pesel).toBe('90010112345')
+    expect(content.tables?.[1]?.heading).toMatch(/RSA/)
+    expect(content.notes?.[0]?.text).toMatch(/brak absencji/)
     expect(content.watermark).toBe(WATERMARK_TEXT)
   })
 
@@ -101,25 +110,83 @@ describe('pdf.renderer — pure content builders (testable without parsing PDF b
   })
 })
 
-describe('pdf.renderer — Buffer output (pdfkit)', () => {
-  it('renderEwidencjaPdf zwraca niepusty Buffer zaczynający się od nagłówka %PDF', async () => {
-    const buf = await renderEwidencjaPdf(employee, period, rows)
-    expect(Buffer.isBuffer(buf)).toBe(true)
-    expect(buf.length).toBeGreaterThan(0)
-    expect(buf.subarray(0, 5).toString('latin1')).toBe('%PDF-')
+describe('pdf.renderer — renderContentsToHtml (pure HTML string builder, no browser needed)', () => {
+  it('zero znaków `|` użytych jako układ tabeli (kryterium akceptacji)', () => {
+    const html = renderContentsToHtml([buildEwidencjaPdfContent(employee, period, rows)])
+    // The only `|` that could legitimately appear is inside actual data values, none of which do here.
+    expect(html).not.toContain('|')
   })
 
-  it('renderNadgodzinyPdf zwraca niepusty Buffer zaczynający się od nagłówka %PDF', async () => {
-    const buf = await renderNadgodzinyPdf(employee, period, summary)
-    expect(Buffer.isBuffer(buf)).toBe(true)
-    expect(buf.length).toBeGreaterThan(0)
-    expect(buf.subarray(0, 5).toString('latin1')).toBe('%PDF-')
+  it('nagłówek tabeli w prawdziwym <thead> (powtarzalny na łamaniu stron przez przeglądarkę)', () => {
+    const html = renderContentsToHtml([buildEwidencjaPdfContent(employee, period, rows)])
+    expect(html).toContain('<thead>')
+    expect(html).toContain('<th class="mono">Data</th>')
   })
 
-  it('renderKeduPdf zwraca niepusty Buffer zaczynający się od nagłówka %PDF', async () => {
-    const buf = await renderKeduPdf(keduModel)
-    expect(Buffer.isBuffer(buf)).toBe(true)
-    expect(buf.length).toBeGreaterThan(0)
-    expect(buf.subarray(0, 5).toString('latin1')).toBe('%PDF-')
+  it('wiersze tabeli mają break-inside:avoid (żaden wiersz nie jest przecinany przez granicę stron)', () => {
+    const html = renderContentsToHtml([buildEwidencjaPdfContent(employee, period, rows)])
+    expect(html).toMatch(/tr\s*\{[^}]*break-inside:\s*avoid/)
+  })
+
+  it('DOKŁADNIE JEDEN element znaku wodnego w źródle HTML (Chrome powiela position:fixed na każdej fizycznej stronie)', () => {
+    const html = renderContentsToHtml([
+      buildEwidencjaPdfContent(employee, period, rows),
+      buildNadgodzinyPdfContent(employee, period, summary),
+    ])
+    const matches = html.match(/class="watermark"/g) ?? []
+    expect(matches.length).toBe(1)
+    expect(html).toMatch(/\.watermark\s*\{[^}]*position:\s*fixed/)
+  })
+
+  it('wiele sekcji => break-before:page na drugiej i kolejnych (jedna sekcja PDF-a per pracownik)', () => {
+    const html = renderContentsToHtml([
+      buildEwidencjaPdfContent(employee, period, rows),
+      buildNadgodzinyPdfContent(employee, period, summary),
+    ])
+    expect((html.match(/class="doc-section page-break"/g) ?? []).length).toBe(1)
+    expect((html.match(/class="doc-section"/g) ?? []).length).toBe(1) // first section has no page-break class
+  })
+
+  it('zero zadań sieciowych: brak referencji http(s):// w wygenerowanym dokumencie (fonty jako data: URI)', () => {
+    const html = renderContentsToHtml([buildEwidencjaPdfContent(employee, period, rows)])
+    expect(html).not.toMatch(/https?:\/\//)
+  })
+
+  it('pusta lista sekcji nadal generuje poprawny dokument z jednym znakiem wodnym', () => {
+    const html = renderContentsToHtml([])
+    expect(html).toContain(WATERMARK_TEXT)
+    expect((html.match(/class="watermark"/g) ?? []).length).toBe(1)
+  })
+
+  it('treść jest poprawnie escape’owana (brak wstrzyknięcia znaczników z danych pracownika)', () => {
+    const html = renderContentsToHtml([
+      buildEwidencjaPdfContent({ employeeId: 'e2', imie: '<script>', nazwisko: 'X' }, period, []),
+    ])
+    expect(html).not.toContain('<script>')
+    expect(html).toContain('&lt;script&gt;')
+  })
+})
+
+describe('pdf.renderer — normalizePdfDeterminism (byte-length-preserving CreationDate/ModDate fix)', () => {
+  it('zamienia D:<14 cyfr><strefa> na stały placeholder tej samej długości', () => {
+    const fake = Buffer.from(
+      "1 0 obj<</CreationDate (D:20260804095431+00'00')/ModDate (D:20260804095435+01'30')>>endobj",
+      'latin1',
+    )
+    const normalized = normalizePdfDeterminism(fake)
+    expect(normalized.length).toBe(fake.length)
+    expect(normalized.toString('latin1')).toContain("D:20000101000000+00'00'")
+    expect(normalized.toString('latin1')).toContain("D:20000101000000+01'30'")
+  })
+
+  it('dwa bufory różniące się TYLKO datą stają się identyczne po normalizacji', () => {
+    const a = Buffer.from("(D:20260804095431+00'00')", 'latin1')
+    const b = Buffer.from("(D:20270101000000+00'00')", 'latin1')
+    expect(normalizePdfDeterminism(a).equals(normalizePdfDeterminism(b))).toBe(true)
+  })
+
+  it('bufor bez znacznika daty przechodzi bez zmian', () => {
+    const buf = Buffer.from('%PDF-1.4 no dates here', 'latin1')
+    expect(normalizePdfDeterminism(buf).equals(buf)).toBe(true)
   })
 })
