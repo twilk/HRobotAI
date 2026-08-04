@@ -82,6 +82,54 @@ function SpeakerIcon({ className, muted }: { className?: string; muted?: boolean
 
 type TurnStatus = 'interpreting' | 'awaiting-confirm' | 'executing' | 'done' | 'fallback' | 'error'
 
+/** Ceiling on silence during any in-flight operation (product requirement — see ADR/track V2). */
+const PROG_DELAY_MS = 1500
+
+/**
+ * Speak (and flag) a progress message if — and only if — `aktywny` stays true past
+ * {@link PROG_DELAY_MS}. A fast interpret/execute/transcribe never triggers this (no spoken
+ * "chwila" for something that finished instantly); anything slower gets BOTH a spoken Polish
+ * status line and a visible working indicator, so the assistant is never silent for longer than
+ * the product's ~1.5 s ceiling regardless of input mode (voice or text share this hook).
+ */
+function useOpoznionaAnonsacjaPostepu(
+  aktywny: boolean,
+  komunikat: string,
+  mow: (tekst: string) => void,
+): boolean {
+  const [trwaDlugo, setTrwaDlugo] = useState(false)
+  const mowRef = useRef(mow)
+  mowRef.current = mow
+
+  useEffect(() => {
+    if (!aktywny) {
+      setTrwaDlugo(false)
+      return
+    }
+    const timer = setTimeout(() => {
+      setTrwaDlugo(true)
+      mowRef.current(komunikat)
+    }, PROG_DELAY_MS)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aktywny, komunikat])
+
+  return trwaDlugo
+}
+
+/** Polish progress line per execute-stage intent — spoken only past {@link PROG_DELAY_MS}. */
+function komunikatWykonania(intent: AgentIntent | undefined): string {
+  switch (intent) {
+    case 'MOJ_GRAFIK':
+      return 'Sprawdzam grafik, chwila…'
+    case 'URLOP':
+    case 'L4':
+      return 'Zapisuję wniosek, chwila…'
+    default:
+      return 'Pracuję nad tym, chwila…'
+  }
+}
+
 interface Turn {
   id: string
   text: string
@@ -165,6 +213,15 @@ export function AsystentScreen() {
   const wypowiedz = useCallback((tekst: string) => {
     powiedz(tekst, { wyciszony: wyciszonyRef.current })
   }, [])
+
+  // Product requirement: no silence longer than ~1.5 s during any in-flight operation. STT
+  // transcription runs both for a voice AND a fallback text turn (the latter has no transcription
+  // stage at all — text just skips straight to `interpreting`), so this only ever fires for voice.
+  const transkrypcjaTrwaDlugo = useOpoznionaAnonsacjaPostepu(
+    transkrybuje,
+    'Rozpoznaję mowę, chwila…',
+    wypowiedz,
+  )
 
   const updateTurn = useCallback((id: string, patch: Partial<Turn>) => {
     if (cancelledRef.current) return
@@ -352,8 +409,17 @@ export function AsystentScreen() {
           ) : null}
 
           {transkrybuje ? (
-            <p role="status" className="text-[13px] text-muted">
-              Rozpoznaję mowę lokalnie — nagranie nie opuszcza naszej infrastruktury…
+            <p
+              role="status"
+              data-voice="pracuje"
+              className="flex items-center gap-2 text-[13px] text-muted"
+            >
+              {transkrypcjaTrwaDlugo ? (
+                <span className="inline-block h-2 w-2 shrink-0 animate-node-pulse rounded-full bg-accent" aria-hidden="true" />
+              ) : null}
+              {transkrypcjaTrwaDlugo
+                ? 'Rozpoznaję mowę, chwila… — nagranie nie opuszcza naszej infrastruktury.'
+                : 'Rozpoznaję mowę lokalnie — nagranie nie opuszcza naszej infrastruktury…'}
             </p>
           ) : null}
 
@@ -388,6 +454,7 @@ export function AsystentScreen() {
             <TurnCard
               key={turn.id}
               turn={turn}
+              wypowiedz={wypowiedz}
               onConfirm={() => {
                 if (!turn.interpretResult) return
                 void runExecute(turn.id, turn.interpretResult.intent, turn.interpretResult.entities, true)
@@ -400,10 +467,33 @@ export function AsystentScreen() {
   )
 }
 
-function TurnCard({ turn, onConfirm }: { turn: Turn; onConfirm: () => void }) {
+function TurnCard({
+  turn,
+  onConfirm,
+  wypowiedz,
+}: {
+  turn: Turn
+  onConfirm: () => void
+  wypowiedz: (tekst: string) => void
+}) {
   const ir = turn.interpretResult
   const er = turn.executeResult
   const zGlosu = turn.sttConfidence !== undefined
+
+  // Same "no silence past 1.5 s" rule as transcription, for the two other stages that can run
+  // long: interpreting (backend NLU call) and executing (write to grafik/wnioski). Text and voice
+  // turns share this exact code path — the only difference upstream is how `turn.text` was
+  // produced.
+  const interpretujeDlugo = useOpoznionaAnonsacjaPostepu(
+    turn.status === 'interpreting',
+    'Sprawdzam polecenie, chwila…',
+    wypowiedz,
+  )
+  const wykonujeDlugo = useOpoznionaAnonsacjaPostepu(
+    turn.status === 'executing',
+    komunikatWykonania(ir?.intent),
+    wypowiedz,
+  )
 
   return (
     <Card className="p-4">
@@ -419,7 +509,14 @@ function TurnCard({ turn, onConfirm }: { turn: Turn; onConfirm: () => void }) {
         </p>
       ) : null}
 
-      {turn.status === 'interpreting' && <p className="text-sm text-muted">Analizuję…</p>}
+      {turn.status === 'interpreting' && (
+        <p role="status" data-voice="pracuje" className="flex items-center gap-2 text-sm text-muted">
+          {interpretujeDlugo ? (
+            <span className="inline-block h-2 w-2 shrink-0 animate-node-pulse rounded-full bg-accent" aria-hidden="true" />
+          ) : null}
+          {interpretujeDlugo ? 'Sprawdzam polecenie, chwila…' : 'Analizuję…'}
+        </p>
+      )}
 
       {turn.status === 'error' && (
         <div role="alert" className="rounded-lg border border-warn/30 bg-warn/[0.08] px-3.5 py-2.5 text-sm text-warn">
@@ -453,7 +550,12 @@ function TurnCard({ turn, onConfirm }: { turn: Turn; onConfirm: () => void }) {
               Potwierdź i wykonaj
             </Button>
           ) : (
-            <p className="text-sm text-muted">Wykonuję…</p>
+            <p role="status" data-voice="pracuje" className="flex items-center gap-2 text-sm text-muted">
+              {wykonujeDlugo ? (
+                <span className="inline-block h-2 w-2 shrink-0 animate-node-pulse rounded-full bg-accent" aria-hidden="true" />
+              ) : null}
+              {wykonujeDlugo ? komunikatWykonania(ir?.intent) : 'Wykonuję…'}
+            </p>
           )}
         </div>
       )}
