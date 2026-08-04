@@ -29,6 +29,7 @@ import {
   type PorownanieResult,
   type UnitBreakdown,
 } from '@/lib/analityk'
+import { ustawieniaApi } from '@/lib/ustawienia'
 
 /**
  * The Analityk HR dashboard (M3). A CLIENT component: it loads the summary + the period-over-period
@@ -105,8 +106,28 @@ export function AnalitykDashboard() {
   const [units, setUnits] = useState<UnitBreakdown[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  // Best-effort, fetched once (not per query change — company settings don't depend on the
+  // analytics range): the export's "Najemca" line, so a CSV that lands in a deck or a grant annex
+  // still says WHOSE numbers these are. A failure here must not blank the dashboard the user came
+  // for — the export just falls back to no tenant line (podsumowanieToCsv treats it as optional).
+  const [companyName, setCompanyName] = useState<string | null>(null)
 
   const cancelledRef = useRef(false)
+
+  useEffect(() => {
+    let cancelled = false
+    void ustawieniaApi
+      .getCompany()
+      .then((c) => {
+        if (!cancelled) setCompanyName(c.companyName)
+      })
+      .catch(() => {
+        /* export still works without the tenant name — see podsumowanieToCsv's optional opts */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     cancelledRef.current = false
@@ -150,15 +171,16 @@ export function AnalitykDashboard() {
 
   const exportCsv = useCallback(() => {
     if (!data) return
+    const csv = podsumowanieToCsv(data, { companyName: companyName ?? undefined, generatedAt: new Date() })
     // A BOM keeps Polish diacritics intact when the file is opened in Excel.
-    const blob = new Blob([`﻿${podsumowanieToCsv(data)}`], { type: 'text/csv;charset=utf-8' })
+    const blob = new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
     a.download = `analityk-hr_${data.meta.od}_${data.meta.do}.csv`
     a.click()
     URL.revokeObjectURL(url)
-  }, [data])
+  }, [data, companyName])
 
   // The SAME list the CSV export appends as its "Zastrzeżenia" section — one source, two renderings.
   const uwagi = useMemo(() => (data ? zebraneUwagi(data) : []), [data])

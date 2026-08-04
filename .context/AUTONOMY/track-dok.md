@@ -212,3 +212,42 @@ sesji D-Bus w minimalnym kontenerze — potwierdzone przez sam fakt sukcesu `--d
 `Page.printToPDF` mimo ich obecności. Probe-obraz i tymczasowe pliki posprzątane
 (`docker rmi hrobot-chromium-probe:tmp`, scratch pliki usunięte) — stos współdzielony (`hrobot-*`
 compose) nietknięty przez cały ten krok.
+
+## [15:00] eksport CSV | Analityk HR — OBALONA połowa diagnozy + naprawiona druga połowa
+
+**Diagnoza z brief-u:** "eksport CSV ... ma dostać blok nagłówkowy z najemcą, okresem, datą i
+zastrzeżeniami z `meta.uwagi` — dziś eksport je gubi".
+
+**Sprawdzone czytaniem `docs/design/web-kit/lib/analityk.ts` PRZED jakąkolwiek zmianą + istniejącym
+`lib/analityk.test.ts`:** `podsumowanieToCsv()` JUŻ dołącza `meta.uwagi` (przez `zebraneUwagi()`) na
+KOŃCU pliku jako sekcję "Zastrzeżenia" — z DEDYKOWANYM testem `'APPENDS the caveats — the export is
+the path to a deck...'` (linia 298 przed moją zmianą) i drugim testem pilnującym, żeby pusta lista
+uwag NIE drukowała pustego nagłówka. To NIE jest zgubione — **obalam tę część zarzutu, dowód: kod +
+test istniały przed moim dotknięciem pliku.**
+
+**Prawdziwa, potwierdzona część:** nagłówek CSV miał TYLKO okres (`Analityk HR {od} – {do}`) — BRAK
+nazwy najemcy i BRAK znacznika czasu wygenerowania. To jest realny problem (dowód w komentarzu
+funkcji sprzed zmiany — brak jakiejkolwiek wzmianki o tenant/dacie), zgodny z tą częścią zarzutu.
+
+**TDD — czerwone przed poprawką:** dopisano 5 testów do `lib/analityk.test.ts` (`Najemca;`/
+`Wygenerowano;`/kombinacja/backward-compat) →
+```
+npx vitest run lib/analityk.test.ts
+FAIL: 3 failed | 53 passed (56)   — 3 nowe asercje dla Najemca/Wygenerowano faktycznie padają
+```
+Naprawa: `podsumowanieToCsv(data, opts?: {companyName?, generatedAt?})` — opcje DOMYŚLNIE puste (stary
+kształt eksportu bajt-w-bajt niezmieniony, dowód: nowy test "stays byte-identical... backward
+compatible"), `Najemca;<nazwa>` dopisywane PRZED tytułem gdy podane, `Wygenerowano;<data>` PO
+tytule gdy podane. Zielono:
+```
+Tests: 56 passed, 56 total
+```
+Okablowanie w `components/analityk/dashboard.tsx`: dociągnięcie `ustawieniaApi.getCompany()`
+(best-effort, jak `porownanie`/`anomalie` — awaria nie blokuje dashboardu), `exportCsv` przekazuje
+`{companyName, generatedAt: new Date()}`. **Bez dedykowanego testu komponentu** — potwierdzone
+wcześniej przez tor V2 (`track-v2.md`), że `docs/design/web-kit` nie ma infrastruktury testów
+komponentów (brak jsdom/@testing-library w `package.json`), a dodawanie jej wykracza poza zakres
+tego zadania. Zweryfikowane: `npx tsc --noEmit` (czysto) + pełen `npx vitest run` w `web-kit`
+(**525 testów, 23 pliki, wszystkie zielone** — dowód, że zmiana nie zepsuła niczego innego). Portu
+`:5601` (własność użytkownika) nie zajęto ani nie nawigowano — brak weryfikacji na żywym podglądzie
+przeglądarki dla tej konkretnej zmiany, tylko typecheck + testy.

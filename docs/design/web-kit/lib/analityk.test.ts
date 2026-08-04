@@ -313,6 +313,39 @@ describe('podsumowanieToCsv', () => {
   it('omits the caveat block entirely rather than printing an empty heading', () => {
     expect(podsumowanieToCsv(summary)).not.toContain('Zastrzeżenia')
   })
+
+  it('with no opts, stays byte-identical to the un-annotated export (backward compatible)', () => {
+    expect(podsumowanieToCsv(summary)).toBe(podsumowanieToCsv(summary, {}))
+  })
+
+  it('prepends "Najemca;<companyName>" when a tenant name is supplied — the export must say WHOSE numbers these are', () => {
+    const csv = podsumowanieToCsv(summary, { companyName: '4Mobility sp. z o.o.' })
+    expect(csv.split('\r\n')[0]).toBe('Najemca;4Mobility sp. z o.o.')
+    // The title line (which already carries the period) follows right after.
+    expect(csv.split('\r\n')[1]).toBe('Analityk HR 2026-06-01 – 2026-06-14')
+  })
+
+  it('omits the Najemca line when no company name is available, rather than printing "Najemca;"', () => {
+    const csv = podsumowanieToCsv(summary, { generatedAt: new Date('2026-06-15T10:30:00Z') })
+    expect(csv).not.toMatch(/^Najemca;/m)
+  })
+
+  it('appends "Wygenerowano;<data>" when a generation timestamp is supplied — a snapshot needs a snapshot date', () => {
+    const csv = podsumowanieToCsv(summary, { generatedAt: new Date('2026-06-15T10:30:00Z') })
+    expect(csv).toContain('Wygenerowano;2026-06-15 10:30')
+    // Comes right after the title line, before the KPI table.
+    const lines = csv.split('\r\n')
+    expect(lines[1]).toBe('Wygenerowano;2026-06-15 10:30')
+  })
+
+  it('combines Najemca + Wygenerowano + Zastrzeżenia in one export without dropping any of them', () => {
+    const withUwagi = { ...summary, meta: meta(['Dni robocze liczone jako pn–pt.']) } as unknown as PodsumowanieResult
+    const csv = podsumowanieToCsv(withUwagi, { companyName: '4Mobility sp. z o.o.', generatedAt: new Date('2026-06-15T10:30:00Z') })
+    expect(csv).toContain('Najemca;4Mobility sp. z o.o.')
+    expect(csv).toContain('Wygenerowano;2026-06-15 10:30')
+    expect(csv).toContain('Zastrzeżenia')
+    expect(csv).toContain('Dni robocze liczone jako pn–pt')
+  })
 })
 
 describe('zebraneUwagi', () => {

@@ -466,6 +466,12 @@ export function zebraneUwagi(data: PodsumowanieResult): string[] {
   ]
 }
 
+/** `HH:mm` in a timezone-agnostic, purely mechanical `YYYY-MM-DD HH:mm` shape — this is a snapshot
+ * timestamp for a downloaded file, not a user-facing clock, so no locale/timezone formatting. */
+function formatGeneratedAt(d: Date): string {
+  return d.toISOString().slice(0, 16).replace('T', ' ')
+}
+
 /**
  * Flatten a full summary into the CSV rows the export button downloads.
  *
@@ -474,8 +480,19 @@ export function zebraneUwagi(data: PodsumowanieResult): string[] {
  * surplus is not KP overtime", "departures come from account deactivations" — and this export is
  * exactly the path by which the numbers travel into a management deck or a grant annex. Shipping
  * them stripped of the caveats would strip them of the only thing keeping them truthful.
+ *
+ * The file also OPENS with who/when: `Najemca` (tenant name, when the caller has it — the API
+ * payload itself is tenant-scoped but carries no tenant name, see `AnalitykMeta`) and
+ * `Wygenerowano` (the moment this specific snapshot was produced). A CSV that travels into a
+ * management deck without either can outlive its own accuracy silently — six months on, nobody
+ * looking at a naked number can tell whether it is this week's or last quarter's, or whose. Both
+ * are optional and additive: omitting `opts` reproduces the exact export shape byte-for-byte
+ * (existing callers/tests are unaffected).
  */
-export function podsumowanieToCsv(data: PodsumowanieResult): string {
+export function podsumowanieToCsv(
+  data: PodsumowanieResult,
+  opts: { companyName?: string; generatedAt?: Date } = {},
+): string {
   const rows: (string | number | null)[][] = [
     ['Stan zatrudnienia na koniec', data.zatrudnienie.stanNaKoniec, 'os.'],
     ['Przyjęcia w okresie', data.zatrudnienie.przyjecia, 'os.'],
@@ -493,9 +510,12 @@ export function podsumowanieToCsv(data: PodsumowanieResult): string {
     ['Mediana czasu do decyzji', data.wnioski.medianaGodzinDoDecyzji, 'h'],
     ['Odsetek odrzuceń', data.wnioski.odsetekOdrzucen, 'udział'],
   ]
-  const header = [`Analityk HR ${data.meta.od} – ${data.meta.do}`]
+  const headerBlock: string[] = []
+  if (opts.companyName) headerBlock.push(`Najemca;${opts.companyName}`)
+  headerBlock.push(`Analityk HR ${data.meta.od} – ${data.meta.do}`)
+  if (opts.generatedAt) headerBlock.push(`Wygenerowano;${formatGeneratedAt(opts.generatedAt)}`)
   const uwagi = zebraneUwagi(data)
   const zastrzezenia =
     uwagi.length > 0 ? ['', 'Zastrzeżenia', toCsv(['Lp.', 'Treść'], uwagi.map((u, i) => [i + 1, u]))] : []
-  return [header.join(';'), toCsv(['Wskaźnik', 'Wartość', 'Jednostka'], rows), ...zastrzezenia].join('\r\n')
+  return [...headerBlock, toCsv(['Wskaźnik', 'Wartość', 'Jednostka'], rows), ...zastrzezenia].join('\r\n')
 }
