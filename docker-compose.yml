@@ -173,7 +173,9 @@ services:
   # Behind "full" like the other app services. The ~490 MB model is downloaded on FIRST use and
   # cached in the named volume, so a restart does not re-download it; after that it runs offline.
   stt:
-    profiles: ["full"]
+    # BEZ profilu: rozpoznawanie mowy jest czescia sciezki demo, a nie dodatkiem. Dopoki `stt` siedzial
+    # za profilem "full", zwykle `docker compose up` go nie podnosilo i asystent odpowiadal
+    # "Usluga rozpoznawania mowy jest niedostepna" — mimo ze kod dzialal (transkrypcja PL, pewnosc 0.82).
     build:
       context: ./stt-service
       dockerfile: Dockerfile
@@ -196,7 +198,12 @@ services:
     volumes:
       - hrobot_stt_models:/models
     ports:
-      - "8010:8010"
+      # Port HOSTA 8011, nie 8010 (znalezisko W14). 8010 na hoscie zajmuje `agent-service`, ktory
+      # startuje POZA tym compose (wlasny `docker run` w agent-service/demo/up.sh) i jest tak opisany
+      # w runbooku demo J4. Przy 8010 po obu stronach pierwszy `docker compose up` przy dzialajacym
+      # agencie konczy sie "port already allocated", a sciezka demo J4 przestaje istniec.
+      # Port KONTENERA zostaje 8010 — tak jest w Dockerfile i README stt-service, kod bez zmian.
+      - "8011:8010"
 
 volumes:
   hrobot_pgdata:

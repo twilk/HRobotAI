@@ -18,9 +18,18 @@ import { resolveAuthorization } from '@/lib/tenant-runtime'
 
 export const dynamic = 'force-dynamic'
 
-/** Base URL of the local STT service. Compose default; override per environment. */
+/**
+ * Base URL of the local STT service. Compose default; override per environment.
+ *
+ * 8011, NOT 8010 (finding W14). On the host, 8010 belongs to `agent-service` — it starts outside
+ * docker-compose (its own `docker run` in agent-service/demo/up.sh) and the J4 demo runbook
+ * documents it on that port. While this default said 8010, a voice recording was proxied to the
+ * SCHEDULING agent instead of the speech service: not a connection error the user would notice,
+ * but audio delivered to the wrong service. The container port stays 8010; only the host mapping
+ * differs (docker-compose.yml `stt`).
+ */
 function sttBaseUrl(): string {
-  const raw = process.env.STT_SERVICE_URL ?? 'http://localhost:8010'
+  const raw = process.env.STT_SERVICE_URL ?? 'http://localhost:8011'
   return raw.replace(/\/+$/, '')
 }
 
