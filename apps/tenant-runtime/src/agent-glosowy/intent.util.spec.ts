@@ -101,7 +101,7 @@ describe('parseIntent — closed PL command set (K1 urlop / K2 L4 / K3 mój graf
     it('every non-NIEZNANE intent has exactly one INTENT_CATALOG entry (POMOC source of truth)', () => {
       const cataloged = INTENT_CATALOG.map((e) => e.intent).sort()
       expect(cataloged).toEqual(
-        ['L4', 'MOJ_GRAFIK', 'POMOC', 'SALDO_URLOPU', 'STATUS_WNIOSKU', 'URLOP', 'KTO_PRACUJE'].sort(),
+        ['L4', 'MOJ_GRAFIK', 'POMOC', 'SALDO_URLOPU', 'STATUS_WNIOSKU', 'URLOP', 'KTO_PRACUJE', 'NASTEPNA_ZMIANA'].sort(),
       )
     })
   })
@@ -128,6 +128,24 @@ describe('parseIntent — closed PL command set (K1 urlop / K2 L4 / K3 mój graf
 
     it('does not affect an ordinary MOJ_GRAFIK utterance', () => {
       expect(parseIntent('jaki mam grafik jutro', TODAY).intent).toBe('MOJ_GRAFIK')
+    })
+  })
+
+  describe('NASTEPNA_ZMIANA (next shift, read)', () => {
+    it('parses "kiedy mam następną zmianę"', () => {
+      const r = parseIntent('kiedy mam następną zmianę', TODAY)
+      expect(r.intent).toBe('NASTEPNA_ZMIANA')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+
+    it('parses "kiedy pracuję" (reclassified from the old MOJ_GRAFIK "kiedy pracuj" marker — "when do I next work" is a better fit than the whole schedule)', () => {
+      const r = parseIntent('kiedy pracuję', TODAY)
+      expect(r.intent).toBe('NASTEPNA_ZMIANA')
+    })
+
+    it('does not affect an ordinary MOJ_GRAFIK / KTO_PRACUJE utterance', () => {
+      expect(parseIntent('jaki mam grafik jutro', TODAY).intent).toBe('MOJ_GRAFIK')
+      expect(parseIntent('kto dzisiaj pracuje', TODAY).intent).toBe('KTO_PRACUJE')
     })
   })
 

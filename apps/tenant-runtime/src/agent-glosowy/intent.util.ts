@@ -23,6 +23,7 @@ export type AgentIntent =
   | 'STATUS_WNIOSKU'
   | 'POMOC'
   | 'KTO_PRACUJE'
+  | 'NASTEPNA_ZMIANA'
   | 'NIEZNANE'
 
 /** One catalog row per registered (non-`NIEZNANE`) intent — the SINGLE source of truth for POMOC's
@@ -47,6 +48,11 @@ export const INTENT_CATALOG: readonly IntentCatalogEntry[] = [
     intent: 'KTO_PRACUJE',
     opis: 'sprawdzenie kto dziś pracuje / kto jest nieobecny (zakres zależny od roli)',
     przyklad: 'kto dzisiaj pracuje',
+  },
+  {
+    intent: 'NASTEPNA_ZMIANA',
+    opis: 'sprawdzenie, kiedy jest moja najbliższa zmiana',
+    przyklad: 'kiedy mam następną zmianę',
   },
 ]
 
@@ -206,8 +212,14 @@ const SALDO_URLOPU_RE = /ile.{0,20}(dni )?urlopu|saldo urlop|urlop.{0,10}saldo|i
  * `GRAFIK_RE` — "kto ma zmianę w piątek" also matches `GRAFIK_RE`'s `zmian[ayę]\b`, and "kto" is
  * what disambiguates a roster question from "mój grafik". */
 const KTO_PRACUJE_RE = /\bkto\b.{0,20}(pracuj|nieobecn|zmian)/
-/** Schedule (grafik) markers. */
-const GRAFIK_RE = /grafik|zmian[ayę]\b|kiedy pracuj|moje zmiany/
+/** Next-shift markers ("kiedy mam następną zmianę" / "kiedy pracuję"). Checked BEFORE `GRAFIK_RE` —
+ * both "następną zmianę" and "kiedy pracuj" would otherwise be swallowed by `GRAFIK_RE`'s broader
+ * `zmian[ayę]\b`/`kiedy pracuj` markers. "kiedy pracuję" moved HERE (out of `GRAFIK_RE`, see below):
+ * "when do I next work" is a next-shift question, not a request for the whole schedule. */
+const NASTEPNA_ZMIANA_RE = /nast[eę]pn.{0,10}zmian|kiedy.{0,15}(pracuj|zmian)/
+/** Schedule (grafik) markers. NOTE: `kiedy pracuj` intentionally lives in `NASTEPNA_ZMIANA_RE` now,
+ * not here — checked earlier in `parseIntent`, so this branch never sees it. */
+const GRAFIK_RE = /grafik|zmian[ayę]\b|moje zmiany/
 /** Leave-request status markers ("co z moim wnioskiem" / "status wniosku"). */
 const STATUS_WNIOSKU_RE = /status.{0,15}wniosk|co z (moim )?wniosk|wniosek.{0,15}status/
 /** Help markers ("pomoc" / "jakie masz polecenia" / "co potrafisz"). Checked first — it never
@@ -268,6 +280,12 @@ export function parseIntent(text: string, today: Date): ParsedIntent {
       entities: { dateFrom, dateTo: dates.dateTo ?? dateFrom },
       confidence: HIGH_CONFIDENCE,
     }
+  }
+
+  if (NASTEPNA_ZMIANA_RE.test(normalized)) {
+    // "Next shift" is always relative to "now" — any date word is deliberately not surfaced as a
+    // slot here (the caller resolves "next" against today, not against a spoken date).
+    return { intent: 'NASTEPNA_ZMIANA', entities: {}, confidence: HIGH_CONFIDENCE }
   }
 
   if (GRAFIK_RE.test(normalized)) {

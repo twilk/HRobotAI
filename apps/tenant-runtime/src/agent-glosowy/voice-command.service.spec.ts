@@ -115,6 +115,14 @@ describe('VoiceCommandService', () => {
       expect(r.proposedAction.kind).toBe('READ_WHO_WORKS')
     })
 
+    it('NASTEPNA_ZMIANA (read) does NOT require confirmation', () => {
+      const r = svc.interpret('kiedy mam następną zmianę', TODAY, actor)
+      expect(r.intent).toBe('NASTEPNA_ZMIANA')
+      expect(r.requiresConfirmation).toBe(false)
+      expect(r.fallbackToForm).toBe(false)
+      expect(r.proposedAction.kind).toBe('READ_NEXT_SHIFT')
+    })
+
     it('carries an EU AI Act transparency notice on every interpretation', () => {
       const r = svc.interpret('jaki mam grafik jutro', TODAY, actor)
       expect(r.aiNotice).toMatch(/AI/)
@@ -269,6 +277,36 @@ describe('VoiceCommandService', () => {
         expect(res.result).toEqual({ date: '2026-07-29', self: { working: true, onApprovedLeave: false } })
         expect(JSON.stringify(res.result)).not.toMatch(/emp-OTHER/)
         expect(JSON.stringify(res.humanReadable)).not.toMatch(/emp-OTHER/)
+      })
+    })
+
+    describe('NASTEPNA_ZMIANA — earliest upcoming own shift', () => {
+      it('picks the earliest FUTURE shift (skipping a past one and picking over a later one), scoped to own employeeId', async () => {
+        prismaClient.employee.findFirst.mockResolvedValue({ id: 'emp-self' })
+        grafik.listShifts.mockResolvedValue([
+          { id: 's-past', employeeId: 'emp-self', date: new Date('2026-07-28T00:00:00.000Z'), start: '08:00', end: '16:00' },
+          { id: 's-later', employeeId: 'emp-self', date: new Date('2026-08-02T00:00:00.000Z'), start: '08:00', end: '16:00' },
+          { id: 's-next', employeeId: 'emp-self', date: new Date('2026-07-30T00:00:00.000Z'), start: '08:00', end: '16:00' },
+          { id: 's-other', employeeId: 'emp-OTHER', date: new Date('2026-07-29T00:00:00.000Z'), start: '08:00', end: '16:00' },
+        ])
+
+        const res = await svc.execute(client, actor, { intent: 'NASTEPNA_ZMIANA', entities: {}, confirm: false }, TODAY)
+
+        expect(grafik.listShifts).toHaveBeenCalledWith(client, actor)
+        expect(res.executed).toBe(true)
+        expect((res.result as { id: string }).id).toBe('s-next')
+        expect(res.humanReadable).toMatch(/2026-07-30/)
+      })
+
+      it('a dateless "no upcoming shifts" answers in Polish — never an empty result or a thrown exception', async () => {
+        prismaClient.employee.findFirst.mockResolvedValue({ id: 'emp-self' })
+        grafik.listShifts.mockResolvedValue([])
+
+        const res = await svc.execute(client, actor, { intent: 'NASTEPNA_ZMIANA', entities: {}, confirm: false }, TODAY)
+
+        expect(res.executed).toBe(true)
+        expect(res.result).toBeNull()
+        expect(res.humanReadable).toMatch(/nie masz.{0,40}zmian/i)
       })
     })
 

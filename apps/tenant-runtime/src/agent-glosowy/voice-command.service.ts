@@ -38,6 +38,7 @@ export type ProposedActionKind =
   | 'READ_LEAVE_STATUS'
   | 'READ_HELP'
   | 'READ_WHO_WORKS'
+  | 'READ_NEXT_SHIFT'
   | 'NONE'
 
 /** A description of what WOULD happen — never a side effect. `interpret` returns this; nothing runs. */
@@ -208,6 +209,16 @@ export class VoiceCommandService {
           body: { date: entities.dateFrom },
         },
         humanReadable: `Kto pracuje ${entities.dateFrom} (zakres zależny od Twojej roli).`,
+      }
+    }
+
+    if (intent === 'NASTEPNA_ZMIANA') {
+      return {
+        ...base,
+        requiresConfirmation: false,
+        fallbackToForm: false,
+        proposedAction: { kind: 'READ_NEXT_SHIFT', method: 'GET', endpoint: '/api/grafik/shifts' },
+        humanReadable: 'Twoja najbliższa zaplanowana zmiana.',
       }
     }
 
@@ -411,6 +422,39 @@ export class VoiceCommandService {
               // roster of colleagues (that requires MANAGER/HR/ADMIN scope; see `ktoPracuje` below).
               `${result.self.working ? `Pracujesz ${date}.` : result.self.onApprovedLeave ? `Jesteś na urlopie ${date}.` : `Nie masz zaplanowanej zmiany ${date}.`} Widzisz tylko swoje dane — pytanie o innych pracownikach wymaga roli managera/HR.`
             : `Na ${date} pracuje: ${result.pracujacy.length ? result.pracujacy.join(', ') : 'nikt'}. Nieobecni: ${result.nieobecni.length ? result.nieobecni.join(', ') : 'nikt'}.`,
+      }
+    }
+
+    if (intent === 'NASTEPNA_ZMIANA') {
+      const myId = await this.ownEmployeeId(client, actor)
+      const todayIso = today.toISOString().slice(0, 10)
+      const all = (await this.grafik.listShifts(client, actor)) as Array<{ employeeId: string; date: unknown; start: string }>
+      // Defense-in-depth own-filter (see KTO_PRACUJE): never trust `listShifts` alone to have
+      // scoped to "just me" — a MANAGER/HR actor's call returns a wider set by design.
+      const upcoming = all
+        .filter((s) => myId != null && s.employeeId === myId && (toISODate(s.date) ?? '') >= todayIso)
+        .sort((a, b) => (toISODate(a.date) ?? '').localeCompare(toISODate(b.date) ?? '') || a.start.localeCompare(b.start))
+      const next = upcoming[0] ?? null
+
+      await this.audit.log({
+        tenantClient: client,
+        actorUserId: actor.userId,
+        action: 'agent-glosowy.execute',
+        entityType: 'Shift',
+        entityId: (next as { id?: string } | null)?.id ?? 'none',
+        payload: { intent, found: next != null },
+        ipAddress: actor.ipAddress,
+      })
+
+      return {
+        ...base,
+        executed: true,
+        requiresConfirmation: false,
+        fallbackToForm: false,
+        result: next,
+        humanReadable: next
+          ? `Twoja najbliższa zmiana: ${toISODate(next.date)} (${next.start}–${(next as { end?: string }).end ?? ''}).`
+          : 'Nie masz żadnych zaplanowanych zmian.',
       }
     }
 
