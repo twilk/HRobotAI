@@ -185,3 +185,30 @@ Tests: 5 passed, 5 total
 ```
 Test skipuje się (nie failuje) gdy brak Chromium w środowisku (`HROBOT_CHROMIUM_PATH` sprawdzany
 najpierw) — nie blokuje reszty integration lane na maszynie bez przeglądarki.
+
+## [14:35] Dockerfile | Chromium w obrazie runner + dowód działania w kontenerze (nie tylko w Windows)
+
+`apps/tenant-runtime/Dockerfile` (w moim zakresie — NIE `docker-compose.yml`, którego nie dotykam):
+dopisano `chromium fonts-liberation` do istniejącego `apt-get install` w stage `runner` +
+`ENV HROBOT_CHROMIUM_PATH=/usr/bin/chromium` (czytane przez `resolveChromiumExecutable()`).
+
+**Dowód — nie tylko "powinno działać", zbudowano i uruchomiono rzeczywisty kontener.** Docker Desktop
+dostępny w tym środowisku (`docker version` → server `linux/amd64`). Żeby nie płacić za pełny build
+monorepo (niepowiązany z tą zmianą), zbudowano jednorazowy probe-obraz z DOKŁADNIE tą samą linią
+`apt-get install` na tej samej bazie (`node:22-bookworm-slim`):
+```
+docker build -f Dockerfile.chromium-probe -t hrobot-chromium-probe:tmp .
+-> RUN chromium --version -> "Chromium 151.0.7922.71 built on Debian GNU/Linux 12 (bookworm)"
+```
+Potem realny test roundtrip identyczny z potokiem `pdf.renderer.ts` (spawn `/usr/bin/chromium`
+`--headless=new --no-sandbox --disable-dev-shm-usage`, CDP WebSocket, `Page.navigate` + `Page.
+printToPDF`) URUCHOMIONY WEWNĄTRZ kontenera (`docker run --rm -v .../probe.mjs:/probe.mjs:ro
+--entrypoint node hrobot-chromium-probe:tmp /probe.mjs`):
+```
+CONTAINER PRINT OK, bytes: 16685 magic: %PDF-
+```
+D-Bus błędy w stderr (`Failed to connect to the bus: ...`) są nieszkodliwym szumem Chromium bez
+sesji D-Bus w minimalnym kontenerze — potwierdzone przez sam fakt sukcesu `--dump-dom` i
+`Page.printToPDF` mimo ich obecności. Probe-obraz i tymczasowe pliki posprzątane
+(`docker rmi hrobot-chromium-probe:tmp`, scratch pliki usunięte) — stos współdzielony (`hrobot-*`
+compose) nietknięty przez cały ten krok.

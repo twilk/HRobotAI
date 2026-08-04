@@ -43,9 +43,20 @@ RUN cd apps/tenant-runtime \
 ########## runner ##########
 FROM base AS runner
 ARG APP_DIR=apps/tenant-runtime
-RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
+# `chromium` (+ transitive libnss3/libgtk/libasound/fonts-liberation etc, pulled in automatically by
+# apt as package dependencies) — headless print engine for the `dokumenty` PDF renderer
+# (render/pdf.renderer.ts, tor DOK). Every font actually shown in a rendered document is embedded as
+# a base64 `data:` URI by the app itself (render/fonts/fonts.ts) — no glyph coverage depends on
+# whatever system fonts ship with the image; `fonts-liberation` here is only Chromium's own baseline
+# requirement to start without warnings, not something the rendered PDFs rely on.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      openssl ca-certificates chromium fonts-liberation \
  && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
+# Consumed by pdf.renderer.ts's resolveChromiumExecutable() — set explicitly rather than relying on
+# the platform-search fallback list (which is Windows/`/usr/bin/*`-dev-machine oriented), so the
+# container never has to guess.
+ENV HROBOT_CHROMIUM_PATH=/usr/bin/chromium
 COPY --from=builder /app ./
 WORKDIR /app/${APP_DIR}
 EXPOSE 3000
