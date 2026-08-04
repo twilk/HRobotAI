@@ -50,6 +50,26 @@ describe('middleware — /api is closed to anonymous callers', () => {
     expect(res.headers.get('location')).toBeNull()
   })
 
+  it('rejects BEFORE the token chain is consulted — a fully configured service credential changes nothing', () => {
+    // The invariant is not "answers 401 for some reason" but "is turned away before anything reaches
+    // for a service token". Configure every ambient source, including the opt-in flag, and the
+    // anonymous answer must be identical: middleware never touches lib/tenant-runtime.ts.
+    const saved = { ...process.env }
+    try {
+      process.env.HROBOT_ALLOW_AMBIENT_TOKEN = '1'
+      process.env.TENANT_RUNTIME_DEV_TOKEN = 'a-perfectly-valid-service-token'
+      process.env.KEYCLOAK_TOKEN_URL = 'http://kc.test/realms/hrobot-staging/protocol/openid-connect/token'
+      process.env.KEYCLOAK_CLIENT_ID = 'hrobot-web'
+      process.env.KEYCLOAK_USERNAME = 'demo'
+      process.env.KEYCLOAK_PASSWORD = 'pw'
+      const res = middleware(request('/api/employees'))
+      expect(res.status).toBe(401)
+      expect(res.headers.get('x-middleware-next')).toBeNull()
+    } finally {
+      process.env = saved
+    }
+  })
+
   it('never lets an anonymous /api request reach the handler', () => {
     // NextResponse.next() carries the internal rewrite header that tells Next to continue to the
     // route handler; a 401 body response does not. Asserting on the status alone would not

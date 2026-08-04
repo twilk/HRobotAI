@@ -13,10 +13,27 @@ import { apiRequestIsAllowed, isApiPath } from '@/lib/api-gate'
 // and NOT ONE of the 17 route handlers under app/api/ checked a session. Those handlers proxy to
 // tenant-runtime through lib/tenant-runtime.ts, whose token chain ends in AMBIENT service credentials
 // (a minted Keycloak token, then TENANT_RUNTIME_DEV_TOKEN). So an anonymous request did not merely
-// reach the backend — the BFF attached its own service token and fetched tenant data on the
-// anonymous caller's behalf. Verified live against an instrumented upstream: `GET /api/analityk`
-// with no cookie answered 200 with tenant HR aggregates while `/analiza` (the screen showing the
-// same data) answered 307. In an HR system those are personal data.
+// reach the backend — the BFF attached its OWN service token and fetched tenant data on the
+// anonymous caller's behalf.
+//
+// Reproduced against the LIVE stack, no cookie and no Authorization header:
+//   GET /api/employees                       -> 200, 11157 B, 39 employee records (firstName/lastName)
+//   GET /api/analityk?od=…&do=…              -> 200,  7575 B, tenant-wide HR aggregates
+//   GET /api/dokumenty | /wnioski | /uzytkownicy -> 200, all with real records
+//   GET :3001/api/employees (backend direct) -> 401  ← the backend defends itself correctly
+//   GET /analiza (the screen for that data)  -> 307 -> /login
+// The backend was never the weak point; the BFF was handing out its own credential. In an HR system
+// these are personal data, and the dev server binds 0.0.0.0, so the reach was the local network —
+// not just localhost.
+//
+// A NOTE ON DIAGNOSING THIS. An earlier probe of the same box saw 401 on these routes and read it as
+// "the gap is latent". It was not: the server had inherited KEYCLOAK_CLIENT_ID=admin-cli from the
+// shell, Next.js does not let .env.local override a real env var, and tenant-runtime rejected the
+// resulting token on `azp`. That 401 came from the BACKEND, passed through by the proxy — it was
+// never an access-control decision by this layer. Launched via start-live.mjs (which forces
+// KEYCLOAK_CLIENT_ID=hrobot-web) the same requests returned data. Whether an anonymous request gets
+// data has always depended only on whether the fallback can obtain a token the backend accepts,
+// which is exactly why the gate cannot live in the token chain.
 //
 // The public exemptions and the credential rule live in lib/api-gate.ts — one module, shared with
 // the proxy, so the gate and the token resolver cannot drift apart. lib/api-gate.test.ts holds the

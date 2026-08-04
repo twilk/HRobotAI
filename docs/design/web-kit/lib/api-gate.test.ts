@@ -9,10 +9,10 @@ import { PUBLICZNE_API, apiRequestIsAllowed, isApiPath, isPublicApiPath, readCal
  *
  * WHY THIS EXISTS. Every route under app/api/ proxies to tenant-runtime with a bearer resolved by
  * lib/tenant-runtime.ts, whose chain ends in ambient service credentials. Before this branch the
- * middleware matcher had no /api entry and not one of the 17 handlers checked a session, so an
- * anonymous `GET /api/analityk` answered 200 with tenant HR aggregates — verified live against an
- * instrumented upstream, which recorded the BFF attaching its own service token for that anonymous
- * caller.
+ * middleware matcher had no /api entry and not one of the 17 handlers checked a session, so against
+ * the LIVE stack an anonymous `GET /api/employees` answered 200 with 39 employee records and
+ * `GET /api/analityk?od=…&do=…` answered 200 with tenant-wide HR aggregates — while the backend hit
+ * directly answered 401. The BFF was lending its own service token to anonymous callers.
  *
  * The gate is now default-closed (`/api/:path*` in the matcher), which fixes the recurrence mode
  * that bit the screens three times: a NEW route is protected automatically. What can still rot is
