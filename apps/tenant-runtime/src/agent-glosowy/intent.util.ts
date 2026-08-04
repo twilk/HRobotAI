@@ -15,7 +15,34 @@
  * reads the wall clock — so a given (text, today) pair always yields the identical ParsedIntent.
  */
 
-export type AgentIntent = 'URLOP' | 'L4' | 'MOJ_GRAFIK' | 'SALDO_URLOPU' | 'STATUS_WNIOSKU' | 'NIEZNANE'
+export type AgentIntent =
+  | 'URLOP'
+  | 'L4'
+  | 'MOJ_GRAFIK'
+  | 'SALDO_URLOPU'
+  | 'STATUS_WNIOSKU'
+  | 'POMOC'
+  | 'NIEZNANE'
+
+/** One catalog row per registered (non-`NIEZNANE`) intent — the SINGLE source of truth for POMOC's
+ * help text (see `VoiceCommandService`) and for the `ExecuteDto` `@IsIn` allowlist. Adding an intent
+ * means adding ONE row here; nothing else needs to be told about it by hand. */
+export interface IntentCatalogEntry {
+  intent: Exclude<AgentIntent, 'NIEZNANE'>
+  /** Polish, human-facing: what the command does. */
+  opis: string
+  /** A representative utterance a user might actually say. */
+  przyklad: string
+}
+
+export const INTENT_CATALOG: readonly IntentCatalogEntry[] = [
+  { intent: 'URLOP', opis: 'złożenie wniosku urlopowego', przyklad: 'chcę urlop od piątku do poniedziałku' },
+  { intent: 'L4', opis: 'zgłoszenie zwolnienia lekarskiego', przyklad: 'zgłoś L4 na dziś' },
+  { intent: 'MOJ_GRAFIK', opis: 'sprawdzenie mojego grafiku', przyklad: 'jaki mam grafik jutro' },
+  { intent: 'SALDO_URLOPU', opis: 'sprawdzenie salda urlopu wypoczynkowego', przyklad: 'ile mam dni urlopu' },
+  { intent: 'STATUS_WNIOSKU', opis: 'sprawdzenie statusu ostatniego wniosku', przyklad: 'co z moim wnioskiem' },
+  { intent: 'POMOC', opis: 'wyświetlenie listy dostępnych poleceń', przyklad: 'pomoc' },
+]
 
 /** Slots extracted from an utterance. Dates are ISO `YYYY-MM-DD`; `type` is the leave kind. */
 export interface ParsedEntities {
@@ -173,6 +200,10 @@ const SALDO_URLOPU_RE = /ile.{0,20}(dni )?urlopu|saldo urlop|urlop.{0,10}saldo|i
 const GRAFIK_RE = /grafik|zmian[ayę]\b|kiedy pracuj|moje zmiany/
 /** Leave-request status markers ("co z moim wnioskiem" / "status wniosku"). */
 const STATUS_WNIOSKU_RE = /status.{0,15}wniosk|co z (moim )?wniosk|wniosek.{0,15}status/
+/** Help markers ("pomoc" / "jakie masz polecenia" / "co potrafisz"). Checked first — it never
+ * overlaps the domain vocabulary above, but keeping it first keeps the ordering obviously safe as
+ * more intents are added below it. */
+const POMOC_RE = /\bpomoc\b|jakie (polecenia|komendy|masz polecenia)|co (potrafisz|umiesz)|lista (poleceń|polecen|komend)/
 
 /**
  * Parse a Polish utterance into `{intent, entities, confidence}` against the CLOSED command set.
@@ -186,6 +217,12 @@ const STATUS_WNIOSKU_RE = /status.{0,15}wniosk|co z (moim )?wniosk|wniosek.{0,15
  */
 export function parseIntent(text: string, today: Date): ParsedIntent {
   const normalized = text.toLowerCase().trim()
+
+  // POMOC first — meta-command, never collides with domain vocabulary, dateless.
+  if (POMOC_RE.test(normalized)) {
+    return { intent: 'POMOC', entities: {}, confidence: HIGH_CONFIDENCE }
+  }
+
   const dates = extractDates(normalized, today)
 
   // L4 first (sick) — "zwolnienie" must not be swallowed by any urlop phrasing.

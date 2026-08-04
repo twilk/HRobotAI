@@ -5,7 +5,7 @@ import { LeaveService } from '../leave/leave.service.js'
 import { GrafikService } from '../grafik/grafik.service.js'
 import type { CreateLeaveDto } from '../leave/dto/leave.dto.js'
 import { drawsDownAnnualEntitlement } from '../common/leave-type.js'
-import { parseIntent, CONFIDENCE_THRESHOLD, type AgentIntent, type ParsedEntities } from './intent.util.js'
+import { parseIntent, CONFIDENCE_THRESHOLD, INTENT_CATALOG, type AgentIntent, type ParsedEntities } from './intent.util.js'
 
 /** Flat statutory annual entitlement (KP art. 154 §1) — mirrors `analityk/analityk.service.ts`
  * `WYMIAR_URLOPU_DNI`. Duplicated here (not imported) because `agent-glosowy` never depends on
@@ -30,7 +30,13 @@ export interface VoiceActor {
   ipAddress: string
 }
 
-export type ProposedActionKind = 'CREATE_LEAVE' | 'READ_SCHEDULE' | 'READ_LEAVE_BALANCE' | 'READ_LEAVE_STATUS' | 'NONE'
+export type ProposedActionKind =
+  | 'CREATE_LEAVE'
+  | 'READ_SCHEDULE'
+  | 'READ_LEAVE_BALANCE'
+  | 'READ_LEAVE_STATUS'
+  | 'READ_HELP'
+  | 'NONE'
 
 /** A description of what WOULD happen — never a side effect. `interpret` returns this; nothing runs. */
 export interface ProposedAction {
@@ -83,6 +89,17 @@ const LEAVE_TYPE_BY_INTENT: Record<'URLOP' | 'L4', string> = {
 
 const WRITE_INTENTS: ReadonlySet<AgentIntent> = new Set<AgentIntent>(['URLOP', 'L4'])
 
+/**
+ * Renders POMOC's help text FROM {@link INTENT_CATALOG} — never a hand-copied string. Growing the
+ * command set means adding one row to `INTENT_CATALOG`; this function (and therefore POMOC's
+ * output) picks it up on its own. See `voice-command.service.spec.ts` for the test that enforces
+ * this by iterating the catalog at test-run time rather than asserting a fixed string.
+ */
+function buildPomocText(): string {
+  const lines = INTENT_CATALOG.filter((e) => e.intent !== 'POMOC').map((e) => `- ${e.opis} (np. „${e.przyklad}”)`)
+  return ['Dostępne polecenia:', ...lines].join('\n')
+}
+
 function toISODate(value: unknown): string | undefined {
   if (value instanceof Date) return value.toISOString().slice(0, 10)
   if (typeof value === 'string') return value.slice(0, 10)
@@ -128,6 +145,16 @@ export class VoiceCommandService {
         proposedAction: { kind: 'NONE' },
         humanReadable:
           'Nie rozpoznano polecenia z wystarczającą pewnością — wypełnij formularz ręcznie (nie wykonuję akcji „w ciemno").',
+      }
+    }
+
+    if (intent === 'POMOC') {
+      return {
+        ...base,
+        requiresConfirmation: false,
+        fallbackToForm: false,
+        proposedAction: { kind: 'READ_HELP' },
+        humanReadable: buildPomocText(),
       }
     }
 
@@ -198,6 +225,25 @@ export class VoiceCommandService {
         requiresConfirmation: false,
         fallbackToForm: true,
         humanReadable: 'Nie rozpoznano polecenia — użyj formularza. Nie wykonano żadnej akcji.',
+      }
+    }
+
+    if (intent === 'POMOC') {
+      await this.audit.log({
+        tenantClient: client,
+        actorUserId: actor.userId,
+        action: 'agent-glosowy.execute',
+        entityType: 'Help',
+        entityId: 'n/a',
+        payload: { intent },
+        ipAddress: actor.ipAddress,
+      })
+      return {
+        ...base,
+        executed: true,
+        requiresConfirmation: false,
+        fallbackToForm: false,
+        humanReadable: buildPomocText(),
       }
     }
 

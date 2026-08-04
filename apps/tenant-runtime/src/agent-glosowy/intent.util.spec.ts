@@ -1,4 +1,4 @@
-import { parseIntent, CONFIDENCE_THRESHOLD } from './intent.util.js'
+import { parseIntent, CONFIDENCE_THRESHOLD, INTENT_CATALOG } from './intent.util.js'
 
 /** Wednesday, 2026-07-29 (UTC midnight) — the fixed "today" every case reasons from. */
 const TODAY = new Date('2026-07-29T00:00:00.000Z')
@@ -83,6 +83,24 @@ describe('parseIntent — closed PL command set (K1 urlop / K2 L4 / K3 mój graf
     it('parses "jaki jest status mojego wniosku"', () => {
       const r = parseIntent('jaki jest status mojego wniosku', TODAY)
       expect(r.intent).toBe('STATUS_WNIOSKU')
+    })
+  })
+
+  describe('POMOC (help, read)', () => {
+    it('parses "pomoc" with HIGH confidence', () => {
+      const r = parseIntent('pomoc', TODAY)
+      expect(r.intent).toBe('POMOC')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+
+    it('parses "jakie masz polecenia" and "co potrafisz"', () => {
+      expect(parseIntent('jakie masz polecenia', TODAY).intent).toBe('POMOC')
+      expect(parseIntent('co potrafisz', TODAY).intent).toBe('POMOC')
+    })
+
+    it('every non-NIEZNANE, non-POMOC intent has exactly one INTENT_CATALOG entry (POMOC source of truth)', () => {
+      const cataloged = INTENT_CATALOG.map((e) => e.intent).sort()
+      expect(cataloged).toEqual(['L4', 'MOJ_GRAFIK', 'POMOC', 'SALDO_URLOPU', 'STATUS_WNIOSKU', 'URLOP'].sort())
     })
   })
 

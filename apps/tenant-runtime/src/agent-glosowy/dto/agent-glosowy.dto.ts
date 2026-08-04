@@ -1,9 +1,10 @@
 import { Type } from 'class-transformer'
 import { IsBoolean, IsIn, IsNotEmpty, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator'
-import type { AgentIntent } from '../intent.util.js'
+import { INTENT_CATALOG, type AgentIntent } from '../intent.util.js'
 
-/** The intents of the CLOSED command set (K1/K2/K3 + the out-of-set sentinel), grown incrementally. */
-const AGENT_INTENTS: readonly AgentIntent[] = ['URLOP', 'L4', 'MOJ_GRAFIK', 'SALDO_URLOPU', 'STATUS_WNIOSKU', 'NIEZNANE']
+/** The intents of the CLOSED command set, DERIVED from {@link INTENT_CATALOG} (+ the out-of-set
+ * sentinel) — never hand-copied, so a new catalog row is automatically a valid `execute` intent. */
+const AGENT_INTENTS: readonly AgentIntent[] = [...INTENT_CATALOG.map((e) => e.intent), 'NIEZNANE']
 
 /**
  * `POST /agent-glosowy/interpret` body. Text-only — audio→text (STT) is an out-of-process concern

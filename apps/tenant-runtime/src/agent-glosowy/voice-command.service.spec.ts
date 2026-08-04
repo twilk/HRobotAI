@@ -4,6 +4,7 @@ import { VoiceCommandService, type VoiceActor } from './voice-command.service.js
 import { LeaveService } from '../leave/leave.service.js'
 import { GrafikService } from '../grafik/grafik.service.js'
 import { AuditService } from '../tenant-runtime/audit/audit.service.js'
+import { INTENT_CATALOG } from './intent.util.js'
 
 const TODAY = new Date('2026-07-29T00:00:00.000Z') // Wednesday
 
@@ -75,6 +76,24 @@ describe('VoiceCommandService', () => {
       expect(r.requiresConfirmation).toBe(false)
       expect(r.fallbackToForm).toBe(false)
       expect(r.proposedAction.kind).toBe('READ_LEAVE_STATUS')
+    })
+
+    it('POMOC (read) is SELF-UPDATING from INTENT_CATALOG — never a hand-copied string', () => {
+      const r = svc.interpret('pomoc', TODAY, actor)
+      expect(r.intent).toBe('POMOC')
+      expect(r.requiresConfirmation).toBe(false)
+      expect(r.fallbackToForm).toBe(false)
+      expect(r.proposedAction.kind).toBe('READ_HELP')
+      // every catalog entry (bar POMOC itself) must appear — this reads INTENT_CATALOG at TEST-RUN
+      // TIME, so a future intent added to the catalog is asserted here automatically, with no edit
+      // to this test required; a hand-copied help string would drift and fail this loop.
+      const rest = INTENT_CATALOG.filter((e) => e.intent !== 'POMOC')
+      for (const entry of rest) {
+        expect(r.humanReadable).toContain(entry.opis)
+      }
+      // exact count: catches both a stray hardcoded extra line AND a silently dropped entry.
+      const lines = r.humanReadable.split('\n').filter((l) => l.startsWith('- '))
+      expect(lines.length).toBe(rest.length)
     })
 
     it('carries an EU AI Act transparency notice on every interpretation', () => {
@@ -180,6 +199,14 @@ describe('VoiceCommandService', () => {
       expect(res.executed).toBe(true)
       expect(res.result).toBeNull()
       expect(res.humanReadable).toMatch(/nie złożyłeś|brak wniosk/i)
+    })
+
+    it('runs POMOC directly (read, no confirm) and audits it', async () => {
+      const res = await svc.execute(client, actor, { intent: 'POMOC', entities: {}, confirm: false }, TODAY)
+      expect(res.executed).toBe(true)
+      expect(res.fallbackToForm).toBe(false)
+      expect(res.humanReadable).toContain(INTENT_CATALOG.find((e) => e.intent === 'URLOP')!.opis)
+      expect(audit.log).toHaveBeenCalledTimes(1)
     })
 
     it('NIEZNANE never executes — returns a fallback-to-form result', async () => {
