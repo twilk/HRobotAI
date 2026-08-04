@@ -5,12 +5,23 @@
 // KEYCLOAK_* + TENANT_RUNTIME_URL env as start-live so the self-auth proxy mints an `hrobot-web`
 // token. LOCAL DEMO ONLY.
 import { spawnSync, spawn } from 'node:child_process'
-import { rmSync } from 'node:fs'
+import { existsSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const dir = dirname(fileURLToPath(import.meta.url))
 const nextBin = join(dir, 'node_modules', 'next', 'dist', 'bin', 'next')
+
+// KEYCLOAK_PASSWORD is deliberately NOT set here — see the same note in start-live.mjs. A credential
+// in the repo is a credential in every clone and in the git history; supply it from the environment
+// or from the gitignored .env.local, which Next.js loads for keys this launcher leaves unset.
+if (!process.env.KEYCLOAK_PASSWORD && !existsSync(join(dir, '.env.local'))) {
+  console.error(
+    '\n✗ Brak hasła Keycloaka. Ustaw KEYCLOAK_PASSWORD w środowisku albo utwórz' +
+      '\n  docs/design/web-kit/.env.local (gitignored) z KEYCLOAK_PASSWORD=...\n',
+  )
+  process.exit(1)
+}
 
 const env = {
   ...process.env,
@@ -18,7 +29,6 @@ const env = {
   KEYCLOAK_TOKEN_URL: 'http://localhost:8081/realms/hrobot-staging/protocol/openid-connect/token',
   KEYCLOAK_CLIENT_ID: 'hrobot-web',
   KEYCLOAK_USERNAME: 'demo',
-  KEYCLOAK_PASSWORD: 'demo-staging-2026',
   NODE_ENV: 'production',
   // Ambient (server-owned) token opt-in — see lib/tenant-runtime.ts ambientServiceTokenAllowed and
   // the same comment in start-live.mjs. NOTE that NODE_ENV is 'production' here purely to get a
