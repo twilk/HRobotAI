@@ -45,6 +45,25 @@ describe('leave-type classification', () => {
       expect(classifyLeaveType('urlop_chorobowy')).toBe('L4')
     })
 
+    it('[W10] classifies ZWOLNIENIE_LEKARSKIE — the literal the product actually writes', () => {
+      // This is not a hypothetical spelling: `ZWOLNIENIE_LEKARSKIE` is what the leave form and the
+      // voice assistant both store, with 14 occurrences in production code. Until this marker
+      // existed it fell through to NIEZNANY, so an employee on sick leave was NOT excluded from the
+      // AI-Grafik scoring window — scored as if they had worked — and landed in the "unknown"
+      // bucket in Analityk HR. (H1 triage, finding W10.)
+      expect(classifyLeaveType('ZWOLNIENIE_LEKARSKIE')).toBe('L4')
+      expect(classifyLeaveType('zwolnienie lekarskie')).toBe('L4')
+      expect(classifyLeaveType('Zwolnienie-Lekarskie')).toBe('L4')
+    })
+
+    it('[W10] does NOT swallow a medical EXAMINATION into sickness', () => {
+      // Deliberately narrow marker (`zwolnienie_lekarsk`, not `lekarsk`): occupational health exams
+      // are paid working time under Polish labour law, not a sickness absence. A wider stem would
+      // have misclassified them and quietly removed those hours from the roster.
+      expect(classifyLeaveType('BADANIE_LEKARSKIE')).not.toBe('L4')
+      expect(classifyLeaveType('badania lekarskie')).not.toBe('L4')
+    })
+
     it('leaves an unrecognised type UNKNOWN rather than guessing it into a bucket', () => {
       expect(classifyLeaveType('OPIEKA_NAD_DZIECKIEM')).toBe('NIEZNANY')
       expect(classifyLeaveType('')).toBe('NIEZNANY')

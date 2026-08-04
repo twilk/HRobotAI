@@ -37,8 +37,16 @@ export type LeaveCategory = 'WYPOCZYNKOWY' | 'URLOP_INNY' | 'L4' | 'NIEZNANY'
 export const URLOP_WYPOCZYNKOWY_TYPES: readonly string[] = ['urlop_wypoczynkowy', 'urlop_na_zadanie']
 
 /** Normalized substrings that mark a sickness absence. Checked BEFORE holiday (an "urlop" never wins
- * over an "l4" in a combined string). */
-const L4_MARKERS: readonly string[] = ['l4', 'chorob']
+ * over an "l4" in a combined string).
+ *
+ * `zwolnienie_lekarsk` is deliberately NARROWER than `lekarsk`: an occupational health examination
+ * (`BADANIE_LEKARSKIE`) is paid working time under Polish labour law, not a sickness absence, and a
+ * wider stem would have quietly removed those hours from the roster. It was added because
+ * `ZWOLNIENIE_LEKARSKIE` — the literal the leave form and the voice assistant both write, 14
+ * occurrences in production code — matched neither `l4` nor `chorob` and fell through to NIEZNANY.
+ * Consequence while it was missing: an employee on sick leave was not excluded from the AI-Grafik
+ * scoring window (scored as if present) and landed in the "unknown" bucket in Analityk HR. */
+const L4_MARKERS: readonly string[] = ['l4', 'chorob', 'zwolnienie_lekarsk']
 
 /** Normalized substring that marks any kind of leave ("urlop"). */
 const URLOP_MARKER = 'urlop'
