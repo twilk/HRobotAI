@@ -1,9 +1,13 @@
+import { ForbiddenException } from '@nestjs/common'
 import { ZastepstwaService } from './zastepstwa.service.js'
 import { InAppOutreachChannel } from './outreach-channel.in-app.adapter.js'
 import { InMemoryZastepstwaRepository } from './zastepstwa.repository.js'
 import type { RankingClient, RankingPozycja } from './ranking.client.js'
 import { ZastepstwoStan, NielegalneStanoweTransition } from './zastepstwa-state-machine.js'
 import type { RozpocznijPoszukiwanieDto } from './dto/rozpocznij-poszukiwanie.dto.js'
+
+const MANAGER_ACTOR = { userId: 'mgr-1', roles: ['MANAGER'] }
+const PRACOWNIK_ACTOR = { userId: 'emp-1', roles: ['PRACOWNIK'] }
 
 /** Ranking-stub: zwraca kandydatów w kolejności podanej w konstruktorze (ranking.py jest testowany osobno w Pythonie). */
 class StubRankingClient implements RankingClient {
@@ -43,7 +47,7 @@ describe('ZastepstwaService — orkiestracja end-to-end (adaptery in-memory real
       kandydaci: [kandydat('a'), kandydat('b'), kandydat('c')],
     } as RozpocznijPoszukiwanieDto
 
-    let proces = await service.rozpocznij(dto)
+    let proces = await service.rozpocznij(MANAGER_ACTOR, dto)
     expect(proces.stan).toBe(ZastepstwoStan.OCZEKIWANIE)
     expect(proces.aktualnyKandydat).toBe('a')
 
@@ -61,7 +65,7 @@ describe('ZastepstwaService — orkiestracja end-to-end (adaptery in-memory real
       kandydaci: [kandydat('a'), kandydat('b'), kandydat('c')],
     } as RozpocznijPoszukiwanieDto
 
-    let proces = await service.rozpocznij(dto)
+    let proces = await service.rozpocznij(MANAGER_ACTOR, dto)
     expect(proces.aktualnyKandydat).toBe('a')
 
     proces = await service.pracownikOdpowiedzial(proces.id, proces.aktualneZapytanieId!, 'NIE')
@@ -84,7 +88,7 @@ describe('ZastepstwaService — orkiestracja end-to-end (adaptery in-memory real
       kandydaci: [kandydat('a'), kandydat('b')],
     } as RozpocznijPoszukiwanieDto
 
-    let proces = await service.rozpocznij(dto)
+    let proces = await service.rozpocznij(MANAGER_ACTOR, dto)
     proces = await service.pracownikOdpowiedzial(proces.id, proces.aktualneZapytanieId!, 'NIE')
     proces = await service.pracownikOdpowiedzial(proces.id, proces.aktualneZapytanieId!, 'NIE')
 
@@ -101,7 +105,7 @@ describe('ZastepstwaService — orkiestracja end-to-end (adaptery in-memory real
       terminMinut: 1,
     } as RozpocznijPoszukiwanieDto
 
-    let proces = await service.rozpocznij(dto)
+    let proces = await service.rozpocznij(MANAGER_ACTOR, dto)
     expect(proces.aktualnyKandydat).toBe('a')
 
     // Przesuwamy termin w przeszłość bezpośrednio w repo, żeby zasymulować upłynięcie czasu bez
@@ -126,7 +130,7 @@ describe('ZastepstwaService — orkiestracja end-to-end (adaptery in-memory real
       ],
     } as RozpocznijPoszukiwanieDto
 
-    const proces = await service.rozpocznij(dto)
+    const proces = await service.rozpocznij(MANAGER_ACTOR, dto)
     expect(proces.aktualnyKandydat).toBe('b') // 'a' pominięty mimo że ranking.py go zwraca (na końcu, wynik 0)
   })
 })
@@ -140,7 +144,7 @@ describe('ZastepstwaService — GRANICA ZGODNOŚCI: urlop/zastępstwo NIE jest p
       kandydaci: [kandydat('a')],
     } as RozpocznijPoszukiwanieDto
 
-    let proces = await service.rozpocznij(dto)
+    let proces = await service.rozpocznij(MANAGER_ACTOR, dto)
     proces = await service.pracownikOdpowiedzial(proces.id, proces.aktualneZapytanieId!, 'TAK')
 
     expect(proces.stan).toBe(ZastepstwoStan.SUKCES)
@@ -156,7 +160,7 @@ describe('ZastepstwaService — GRANICA ZGODNOŚCI: urlop/zastępstwo NIE jest p
       kandydaci: [kandydat('a')],
     } as RozpocznijPoszukiwanieDto
 
-    let proces = await service.rozpocznij(dto)
+    let proces = await service.rozpocznij(MANAGER_ACTOR, dto)
     proces = await service.pracownikOdpowiedzial(proces.id, proces.aktualneZapytanieId!, 'TAK')
 
     const rozstrzygniety = await service.potwierdz(proces.id, 'manager-7')
@@ -173,7 +177,7 @@ describe('ZastepstwaService — GRANICA ZGODNOŚCI: urlop/zastępstwo NIE jest p
       kandydaci: [kandydat('a')],
     } as RozpocznijPoszukiwanieDto
 
-    const proces = await service.rozpocznij(dto)
+    const proces = await service.rozpocznij(MANAGER_ACTOR, dto)
     expect(proces.stan).toBe(ZastepstwoStan.OCZEKIWANIE)
 
     await expect(service.potwierdz(proces.id, 'manager-7')).rejects.toThrow(NielegalneStanoweTransition)
@@ -186,7 +190,7 @@ describe('ZastepstwaService — CAS/dzierżawa (InMemoryZastepstwaRepository)', 
     const outreach = new InAppOutreachChannel()
     const ranking = new StubRankingClient(['a'])
     const service = new ZastepstwaService(outreach, ranking, repo)
-    const proces = await service.rozpocznij({
+    const proces = await service.rozpocznij(MANAGER_ACTOR, {
       shiftId: 's',
       nieobecnyId: 'absent',
       kandydaci: [kandydat('a')],
@@ -199,5 +203,32 @@ describe('ZastepstwaService — CAS/dzierżawa (InMemoryZastepstwaRepository)', 
     ])
     const zwyciezcy = [p1, p2].filter((p) => p !== null)
     expect(zwyciezcy).toHaveLength(1)
+  })
+})
+
+describe('ZastepstwaService — RBAC egzekwowane W SERWISIE, niezależnie od kontrolera', () => {
+  it('[LUKA] wywołanie service.rozpocznij() BEZPOŚREDNIO przez DI (z pominięciem kontrolera/HTTP) w roli PRACOWNIK -> odmowa (ForbiddenException), zanim jakikolwiek kandydat zostanie skontaktowany', async () => {
+    const { service, outreach } = zbuduj(['a'])
+    const dto = {
+      shiftId: 'shift-1',
+      nieobecnyId: 'absent-1',
+      kandydaci: [kandydat('a')],
+    } as RozpocznijPoszukiwanieDto
+
+    await expect(service.rozpocznij(PRACOWNIK_ACTOR, dto)).rejects.toThrow(ForbiddenException)
+    void outreach
+  })
+
+  it('MANAGER/HR/ADMIN_KLIENTA przez DI może rozpocząć poszukiwanie (kontrola ról nie blokuje uprawnionych)', async () => {
+    for (const role of ['MANAGER', 'HR', 'ADMIN_KLIENTA']) {
+      const { service } = zbuduj(['a'])
+      const dto = {
+        shiftId: 'shift-1',
+        nieobecnyId: 'absent-1',
+        kandydaci: [kandydat('a')],
+      } as RozpocznijPoszukiwanieDto
+      const proces = await service.rozpocznij({ userId: 'u', roles: [role] }, dto)
+      expect(proces.stan).toBe(ZastepstwoStan.OCZEKIWANIE)
+    }
   })
 })

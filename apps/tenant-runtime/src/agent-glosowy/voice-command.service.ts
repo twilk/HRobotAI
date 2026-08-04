@@ -1,11 +1,10 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
-import { Role } from '@hrobot/shared'
 import { AuditService } from '../tenant-runtime/audit/audit.service.js'
 import { LeaveService } from '../leave/leave.service.js'
 import { GrafikService } from '../grafik/grafik.service.js'
 import { ShiftSwapService } from '../shift-swap/shift-swap.service.js'
-import { ZastepstwaService } from '../zastepstwa/zastepstwa.service.js'
+import { ZastepstwaService, KADROWY_ROLES as ZASTEPSTWA_KADROWY_ROLES } from '../zastepstwa/zastepstwa.service.js'
 import type { KandydatZapytaniaDto } from '../zastepstwa/dto/rozpocznij-poszukiwanie.dto.js'
 import type { CreateLeaveDto } from '../leave/dto/leave.dto.js'
 import { drawsDownAnnualEntitlement } from '../common/leave-type.js'
@@ -126,17 +125,6 @@ const WRITE_INTENTS: ReadonlySet<AgentIntent> = new Set<AgentIntent>([
   'ZAMIANA_ZMIANY',
   'ZNAJDZ_ZASTEPSTWO',
 ])
-
-/**
- * [RBAC GAP GUARD] `ZastepstwaController` gates `POST /zastepstwa` to MANAGER/HR/ADMIN_KLIENTA
- * (`KADROWY_ROLES` in `zastepstwa.controller.ts`) — but `ZastepstwaService.rozpocznij` itself has NO
- * internal role check; the guard lives ONLY on the HTTP route. Calling the service directly via DI
- * (as this agent does) bypasses that route entirely, so WITHOUT this explicit check a PRACOWNIK could
- * use the voice agent to trigger `zastepstwa` outreach — a capability a keyboard PRACOWNIK does not
- * have. Mirrors `KADROWY_ROLES` exactly; see the dedicated RBAC test in
- * `voice-command.service.spec.ts`.
- */
-const KADROWY_ROLES: ReadonlySet<string> = new Set([Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA])
 
 /**
  * Renders POMOC's help text FROM {@link INTENT_CATALOG} — never a hand-copied string. Growing the
@@ -518,7 +506,14 @@ export class VoiceCommandService {
       // explicit manager action on the real controller, can do that — this agent never calls it).
       // Granting leave / reassigning the shift remains a separate, human, downstream decision.
       if (intent === 'ZNAJDZ_ZASTEPSTWO') {
-        if (!actor.roles.some((r) => KADROWY_ROLES.has(r))) {
+        // [RBAC] `ZastepstwaService.rozpocznij` now enforces MANAGER/HR/ADMIN_KLIENTA itself (see
+        // `zastepstwa.service.ts` `KADROWY_ROLES`) — this is no longer the ONLY gate, so this is not
+        // a duplicated role LIST (imported as `ZASTEPSTWA_KADROWY_ROLES`, single source of truth),
+        // just a fail-fast precheck that avoids building a full candidate roster (grafik/leave reads
+        // below) for a caller who could never pass the service's own check anyway. See the dedicated
+        // RBAC test in `voice-command.service.spec.ts` and the DI-bypass test in
+        // `zastepstwa.service.spec.ts` for the authoritative enforcement.
+        if (!actor.roles.some((r) => ZASTEPSTWA_KADROWY_ROLES.has(r))) {
           throw new ForbiddenException(
             'Rozpoczęcie poszukiwania zastępstwa wymaga roli managera, HR lub administratora.',
           )
@@ -605,7 +600,10 @@ export class VoiceCommandService {
         // supply the candidate facts, never a decision. `kwalifikujacySie` filtering — including the
         // possibility that NO candidate is dostepny/wykonalnaZamiana — is entirely its concern (it
         // lands the process in WYCZERPANO rather than KOLEJKA); we don't second-guess that here.
-        const proces = await this.zastepstwa.rozpocznij({ shiftId: target.id, nieobecnyId: myId!, kandydaci })
+        const proces = await this.zastepstwa.rozpocznij(
+          { userId: actor.userId, roles: actor.roles },
+          { shiftId: target.id, nieobecnyId: myId!, kandydaci },
+        )
 
         await this.audit.log({
           tenantClient: client,

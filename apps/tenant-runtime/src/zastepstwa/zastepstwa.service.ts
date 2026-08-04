@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { Role } from '@hrobot/shared'
 import { OUTREACH_CHANNEL, type OutreachChannel } from './outreach-channel.port.js'
 import { RANKING_CLIENT, type RankingClient } from './ranking.client.js'
 import { ZASTEPSTWA_REPOSITORY, type ZastepstwaRepository } from './zastepstwa.repository.js'
@@ -32,6 +33,23 @@ function wspieraRejestracje(x: unknown): x is WspieraRejestracjeOdpowiedzi {
 const PYTANIE = (shiftId: string) =>
   `Czy możesz wziąć zastępstwo na zmianie ${shiftId}? Odpowiedz TAK lub NIE — masz ograniczony czas na odpowiedź.`
 
+/** Wywołujący projektowany z JWT (mirror `LeaveActor`/`VoiceActor`) — wystarczy tożsamość + role,
+ * bo to jedyne, czego potrzebuje kontrola RBAC poniżej. */
+export interface ZastepstwaActor {
+  userId: string
+  roles: string[]
+}
+
+/**
+ * Kto może uruchomić poszukiwanie zastępstwa — egzekwowane TUTAJ, w serwisie, a nie tylko na
+ * dekoratorze `@Roles` kontrolera (`zastepstwa.controller.ts`). Wywołanie przez DI (np. agent głosowy
+ * w `VoiceCommandService`, albo dowolny przyszły wywołujący) omija HTTP i dekorator kontrolera
+ * całkowicie — bez kontroli TUTAJ nic by go nie zatrzymało. Jedyne miejsce definicji tego zestawu ról
+ * — `zastepstwa.controller.ts` importuje/utrzymuje własny `KADROWY_ROLES` jako pierwszą linię obrony
+ * (obrona w głąb), ale MUSI pozostać identyczny z tym zestawem.
+ */
+export const KADROWY_ROLES: ReadonlySet<string> = new Set([Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA])
+
 @Injectable()
 export class ZastepstwaService {
   private readonly logger = new Logger(ZastepstwaService.name)
@@ -42,7 +60,15 @@ export class ZastepstwaService {
     @Inject(ZASTEPSTWA_REPOSITORY) private readonly repo: ZastepstwaRepository,
   ) {}
 
-  async rozpocznij(dto: RozpocznijPoszukiwanieDto): Promise<ZastepstwoProces> {
+  async rozpocznij(actor: ZastepstwaActor, dto: RozpocznijPoszukiwanieDto): Promise<ZastepstwoProces> {
+    // RBAC W SERWISIE — niezależnie od tego, czy wywołujący przyszedł przez HTTP (kontroler ma
+    // własny `@Roles` jako pierwszą linię) czy przez DI (np. agent głosowy). Rzuca ZANIM cokolwiek
+    // zostanie zapisane/wysłane — żaden kandydat nie jest kontaktowany dla nieuprawnionego wołania.
+    if (!actor.roles.some((r) => KADROWY_ROLES.has(r))) {
+      throw new ForbiddenException(
+        'Rozpoczęcie poszukiwania zastępstwa wymaga roli managera, HR lub administratora.',
+      )
+    }
     const pozycje = await this.ranking.rankuj(dto.shiftId, dto.nieobecnyId, dto.kandydaci, dto.wagi)
     // Tylko KWALIFIKUJĄCY SIĘ kandydaci trafiają do kolejki kontaktu — dyskwalifikacja (dostępność
     // / wykonalność) jest twardym warunkiem ustalonym przez `ranking.py`; nie kontaktujemy nikogo,

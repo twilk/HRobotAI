@@ -2,11 +2,15 @@ import { Body, Controller, Get, Param, Post } from '@nestjs/common'
 import { Role } from '@hrobot/shared'
 import { TenantRoute } from '../tenant-runtime/tenant-route.decorator.js'
 import { Roles } from '../tenant-runtime/rbac/roles.decorator.js'
-import { ZastepstwaService } from './zastepstwa.service.js'
+import { CurrentUser } from '../tenant-runtime/tenant-context/current-tenant-client.decorator.js'
+import type { JwtPayload } from '../tenant-runtime/keycloak/keycloak-jwt.strategy.js'
+import { ZastepstwaService, type ZastepstwaActor } from './zastepstwa.service.js'
 import { RozpocznijPoszukiwanieDto } from './dto/rozpocznij-poszukiwanie.dto.js'
 import { OdpowiedzPracownikaDto } from './dto/odpowiedz-pracownika.dto.js'
 
-/** Kto może uruchamiać/oglądać/rozstrzygać poszukiwanie zastępstwa — nie pracownik-kandydat sam z siebie. */
+/** Kto może uruchamiać/oglądać/rozstrzygać poszukiwanie zastępstwa — nie pracownik-kandydat sam z siebie.
+ * Pierwsza linia obrony (obrona w głąb) — MUSI pozostać identyczna z `KADROWY_ROLES` w
+ * `zastepstwa.service.ts`, które jest źródłem prawdy egzekwowanym niezależnie od HTTP. */
 const KADROWY_ROLES = [Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA] as const
 
 /**
@@ -22,10 +26,14 @@ const KADROWY_ROLES = [Role.MANAGER, Role.HR, Role.ADMIN_KLIENTA] as const
 export class ZastepstwaController {
   constructor(private readonly service: ZastepstwaService) {}
 
+  private actor(user: JwtPayload): ZastepstwaActor {
+    return { userId: user.sub, roles: user.hrobot_roles ?? [] }
+  }
+
   @Post()
   @Roles(...KADROWY_ROLES)
-  rozpocznij(@Body() dto: RozpocznijPoszukiwanieDto) {
-    return this.service.rozpocznij(dto)
+  rozpocznij(@CurrentUser() user: JwtPayload, @Body() dto: RozpocznijPoszukiwanieDto) {
+    return this.service.rozpocznij(this.actor(user), dto)
   }
 
   @Get(':procesId')
