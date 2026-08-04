@@ -1,13 +1,46 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { apiRequestIsAllowed, isApiPath } from '@/lib/api-gate'
 
-// Gate the (tenant) route group: any request to a tenant screen without an `hrobot_token` cookie is
-// redirected to /login. The marketing group (/, /login, /signup), API routes, and static assets are
-// left public (they're excluded by the matcher below). The cookie name is inlined rather than imported
-// from lib/session so this stays in the lightweight edge-middleware bundle (no next/headers import).
+// Session gate for BOTH halves of the app:
+//
+//  - TENANT SCREENS (/dashboard, /grafik, …): no `hrobot_token` cookie → redirect to /login.
+//  - THE BFF (/api/**): no caller credential → 401 JSON, and the request never reaches the route
+//    handler. A redirect would be wrong here — an XHR/fetch caller needs a status, not an HTML login
+//    page — so the two halves answer differently even though the precondition is the same.
+//
+// WHY /api HAD TO BE ADDED. Until this change the matcher was a page-prefix list with no /api entry,
+// and NOT ONE of the 17 route handlers under app/api/ checked a session. Those handlers proxy to
+// tenant-runtime through lib/tenant-runtime.ts, whose token chain ends in AMBIENT service credentials
+// (a minted Keycloak token, then TENANT_RUNTIME_DEV_TOKEN). So an anonymous request did not merely
+// reach the backend — the BFF attached its own service token and fetched tenant data on the
+// anonymous caller's behalf. Verified live against an instrumented upstream: `GET /api/analityk`
+// with no cookie answered 200 with tenant HR aggregates while `/analiza` (the screen showing the
+// same data) answered 307. In an HR system those are personal data.
+//
+// The public exemptions and the credential rule live in lib/api-gate.ts — one module, shared with
+// the proxy, so the gate and the token resolver cannot drift apart. lib/api-gate.test.ts holds the
+// parity guard that keeps new routes closed by default.
+//
+// The cookie name is inlined below rather than imported from lib/session so this stays in the
+// lightweight edge-middleware bundle (lib/session imports next/headers). lib/api-gate.ts is
+// dependency-free for the same reason.
 const SESSION_COOKIE = 'hrobot_token'
 
 export function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl
+
+  if (isApiPath(pathname)) {
+    if (apiRequestIsAllowed(pathname, req)) return NextResponse.next()
+    return NextResponse.json(
+      {
+        error: 'unauthenticated',
+        message: 'Ta trasa wymaga sesji. Zaloguj się albo prześlij nagłówek Authorization.',
+      },
+      { status: 401 },
+    )
+  }
+
   const token = req.cookies.get(SESSION_COOKIE)?.value
   if (token) return NextResponse.next()
 
@@ -16,10 +49,16 @@ export function middleware(req: NextRequest) {
   return NextResponse.redirect(url)
 }
 
-// Only the tenant screens are protected. Keeping an explicit list (rather than a broad negative
-// lookahead) means marketing + API + assets never hit this middleware.
+// Tenant screens + the whole BFF surface. Keeping an explicit list for the SCREENS (rather than a
+// broad negative lookahead) means marketing + assets never hit this middleware; `/api/:path*` is a
+// single catch-all because the correct default for a BFF route is "closed", with exemptions named in
+// lib/api-gate.ts PUBLICZNE_API rather than by omission from this list.
 export const config = {
   matcher: [
+    // The BFF. `:path*` also matches the bare `/api`. Every route under app/api/ is gated unless it
+    // appears in PUBLICZNE_API (lib/api-gate.ts) — currently only the three pre-authentication
+    // signup mocks, which reach no backend and touch no personal data.
+    '/api/:path*',
     '/dashboard/:path*',
     '/pracownicy/:path*',
     '/grafik/:path*',

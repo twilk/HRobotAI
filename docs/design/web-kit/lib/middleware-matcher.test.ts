@@ -32,12 +32,21 @@ function tenantRoutes(): string[] {
     .sort()
 }
 
-/** The `/segment` prefixes listed in the middleware matcher. */
+/**
+ * The `/segment` prefixes listed in the middleware matcher, restricted to the SCREEN entries.
+ *
+ * `/api/:path*` is dropped: it gates the BFF, not a screen, so it has no counterpart under
+ * `app/(tenant)/` and would fail the stale-entry check below. The BFF half of the matcher is guarded
+ * by lib/api-gate.test.ts, which asserts that entry is present and pins the exemption list.
+ */
 function matcherRoutes(): string[] {
   const src = readFileSync(`${webKitRoot}middleware.ts`, 'utf8')
   const block = /matcher:\s*\[([\s\S]*?)\]/.exec(src)
   if (!block) throw new Error('middleware.ts: matcher array not found')
-  return [...block[1]!.matchAll(/'\/([^/']+)(?:\/:path\*)?'/g)].map((m) => m[1]!).sort()
+  return [...block[1]!.matchAll(/'\/([^/']+)(?:\/:path\*)?'/g)]
+    .map((m) => m[1]!)
+    .filter((r) => r !== 'api')
+    .sort()
 }
 
 /**

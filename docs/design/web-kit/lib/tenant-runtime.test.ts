@@ -21,6 +21,16 @@ function setKeycloakCreds() {
   process.env.KEYCLOAK_PASSWORD = 'secret-pw'
 }
 
+/**
+ * Opt in to the AMBIENT (server-owned) token sources. They are off by default now — see
+ * ambientServiceTokenAllowed() — so the tests below that exercise minting / TENANT_RUNTIME_DEV_TOKEN
+ * must enable them explicitly, exactly as the local demo launchers do. The "refuses …" cases
+ * deliberately do NOT call this.
+ */
+function allowAmbientToken() {
+  process.env.HROBOT_ALLOW_AMBIENT_TOKEN = '1'
+}
+
 function mockFetch(status: number, body: unknown, contentType = 'application/json') {
   const fn = vi.fn(async (_url: string | URL, _init?: RequestInit) =>
     typeof body === 'string'
@@ -34,6 +44,7 @@ function mockFetch(status: number, body: unknown, contentType = 'application/jso
 beforeEach(() => {
   delete process.env.TENANT_RUNTIME_URL
   delete process.env.TENANT_RUNTIME_DEV_TOKEN
+  delete process.env.HROBOT_ALLOW_AMBIENT_TOKEN
   for (const k of KEYCLOAK_ENV_KEYS) delete process.env[k]
   __resetKeycloakTokenCacheForTests()
 })
@@ -96,7 +107,8 @@ describe('proxyToTenantRuntime — auth resolution', () => {
     expect((fetchFn.mock.calls[0][1] as RequestInit).headers).toMatchObject({ authorization: 'Bearer cookie-jwt' })
   })
 
-  it('falls back to TENANT_RUNTIME_DEV_TOKEN', async () => {
+  it('falls back to TENANT_RUNTIME_DEV_TOKEN when ambient tokens are allowed', async () => {
+    allowAmbientToken()
     process.env.TENANT_RUNTIME_DEV_TOKEN = 'dev-service-token'
     const fetchFn = mockFetch(200, [])
     await proxyToTenantRuntime(new Request('http://localhost/api/grafik/shifts'), 'grafik/shifts')
@@ -104,6 +116,7 @@ describe('proxyToTenantRuntime — auth resolution', () => {
   })
 
   it('prefers the header over cookie and env', async () => {
+    allowAmbientToken()
     process.env.TENANT_RUNTIME_DEV_TOKEN = 'dev'
     const fetchFn = mockFetch(200, [])
     const req = new Request('http://localhost/api/grafik/shifts', {
@@ -111,6 +124,71 @@ describe('proxyToTenantRuntime — auth resolution', () => {
     })
     await proxyToTenantRuntime(req, 'grafik/shifts')
     expect((fetchFn.mock.calls[0][1] as RequestInit).headers).toMatchObject({ authorization: 'Bearer header-wins' })
+  })
+})
+
+/**
+ * SECOND LINE OF DEFENCE. middleware.ts 401s an anonymous /api request before any handler runs, but
+ * that gate is one config edit (or one framework middleware-bypass bug) away from not applying. These
+ * cases pin the invariant at the choke point itself: with no caller credential, the proxy does not
+ * borrow the server's own identity — it refuses, and the backend is never called.
+ *
+ * BEFORE THIS BRANCH all four failed: TENANT_RUNTIME_DEV_TOKEN and the minted Keycloak token were
+ * bare `process.env` reads with no environmental condition at all, so merely configuring them made
+ * anonymous proxying work — including under NODE_ENV=production (start-prod.mjs).
+ */
+describe('proxyToTenantRuntime — ambient service tokens are opt-in', () => {
+  it('refuses TENANT_RUNTIME_DEV_TOKEN when HROBOT_ALLOW_AMBIENT_TOKEN is unset', async () => {
+    process.env.TENANT_RUNTIME_DEV_TOKEN = 'dev-service-token'
+    const fetchFn = mockFetch(200, [{ pesel: 'nope' }])
+    const res = await proxyToTenantRuntime(new Request('http://localhost/api/analityk'), 'analityk')
+    expect(res.status).toBe(401)
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it('refuses to mint a Keycloak token when HROBOT_ALLOW_AMBIENT_TOKEN is unset', async () => {
+    setKeycloakCreds()
+    const fetchFn = mockKeycloakAndBackend(200, [{ pesel: 'nope' }])
+    const res = await proxyToTenantRuntime(new Request('http://localhost/api/analityk'), 'analityk')
+    expect(res.status).toBe(401)
+    // Not even the token endpoint is contacted — the refusal happens before any network call.
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it('still refuses when NODE_ENV is production and the demo creds are present', async () => {
+    // The exact shape of start-prod.mjs minus the explicit opt-in: a NODE_ENV-keyed guard would have
+    // let this through, which is why the guard is a dedicated flag.
+    const prev = process.env.NODE_ENV
+    try {
+      Object.defineProperty(process.env, 'NODE_ENV', { value: 'production', configurable: true, writable: true })
+      setKeycloakCreds()
+      process.env.TENANT_RUNTIME_DEV_TOKEN = 'dev-service-token'
+      const fetchFn = mockKeycloakAndBackend(200, [])
+      const res = await proxyToTenantRuntime(new Request('http://localhost/api/analityk'), 'analityk')
+      expect(res.status).toBe(401)
+      expect(fetchFn).not.toHaveBeenCalled()
+    } finally {
+      Object.defineProperty(process.env, 'NODE_ENV', { value: prev, configurable: true, writable: true })
+    }
+  })
+
+  it('honours the flag only for an explicit 1/true, not any truthy string', async () => {
+    process.env.TENANT_RUNTIME_DEV_TOKEN = 'dev-service-token'
+    process.env.HROBOT_ALLOW_AMBIENT_TOKEN = '0'
+    const fetchFn = mockFetch(200, [])
+    expect((await proxyToTenantRuntime(new Request('http://localhost/api/analityk'), 'analityk')).status).toBe(401)
+    expect(fetchFn).not.toHaveBeenCalled()
+
+    process.env.HROBOT_ALLOW_AMBIENT_TOKEN = 'true'
+    expect((await proxyToTenantRuntime(new Request('http://localhost/api/analityk'), 'analityk')).status).toBe(200)
+  })
+
+  it('a caller credential still works with the flag off — the gate is on ANONYMITY, not on the proxy', async () => {
+    const fetchFn = mockFetch(200, [{ id: 'ok' }])
+    const req = new Request('http://localhost/api/analityk', { headers: { cookie: 'hrobot_token=real-jwt' } })
+    const res = await proxyToTenantRuntime(req, 'analityk')
+    expect(res.status).toBe(200)
+    expect((fetchFn.mock.calls[0][1] as RequestInit).headers).toMatchObject({ authorization: 'Bearer real-jwt' })
   })
 })
 
@@ -133,8 +211,11 @@ function mockKeycloakAndBackend(backendStatus: number, backendBody: unknown, acc
   return fn
 }
 
+// These exercise the ambient minting path, which is opt-in — see the "ambient service tokens are
+// opt-in" block above for what happens without the flag.
 describe('proxyToTenantRuntime — minted Keycloak token', () => {
   it('mints a Keycloak token and forwards it when no header/cookie is present', async () => {
+    allowAmbientToken()
     setKeycloakCreds()
     const fetchFn = mockKeycloakAndBackend(200, [{ id: 's1' }])
     const res = await proxyToTenantRuntime(new Request('http://localhost/api/grafik/shifts'), 'grafik/shifts')
@@ -144,6 +225,7 @@ describe('proxyToTenantRuntime — minted Keycloak token', () => {
   })
 
   it('prefers the caller header + cookie over a minted token', async () => {
+    allowAmbientToken()
     setKeycloakCreds()
     const fetchFn = mockKeycloakAndBackend(200, [])
     const req = new Request('http://localhost/api/grafik/shifts', {
@@ -156,6 +238,7 @@ describe('proxyToTenantRuntime — minted Keycloak token', () => {
   })
 
   it('prefers a minted token over the legacy TENANT_RUNTIME_DEV_TOKEN', async () => {
+    allowAmbientToken()
     setKeycloakCreds()
     process.env.TENANT_RUNTIME_DEV_TOKEN = 'legacy-static'
     const fetchFn = mockKeycloakAndBackend(200, [])
@@ -165,6 +248,7 @@ describe('proxyToTenantRuntime — minted Keycloak token', () => {
   })
 
   it('force-refreshes + retries once on a backend 401 for a minted token', async () => {
+    allowAmbientToken()
     setKeycloakCreds()
     let mints = 0
     let backendCalls = 0

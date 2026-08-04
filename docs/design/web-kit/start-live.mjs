@@ -21,6 +21,12 @@ const child = spawn(process.execPath, [nextBin, 'dev', '-p', '5601'], {
     KEYCLOAK_CLIENT_ID: 'hrobot-web',
     KEYCLOAK_USERNAME: 'demo',
     KEYCLOAK_PASSWORD: 'demo-staging-2026',
+    // Self-minting is an AMBIENT credential (see lib/tenant-runtime.ts ambientServiceTokenAllowed):
+    // off by default so no deployment can lend its own token to an anonymous caller. This launcher
+    // is LOCAL DEMO ONLY and its whole point is the self-authenticating proxy, so it opts in. The
+    // /api gate in middleware.ts still 401s anonymous callers here — the fallback only ever applies
+    // to a request that already carried a credential.
+    HROBOT_ALLOW_AMBIENT_TOKEN: '1',
   },
 })
 

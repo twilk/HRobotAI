@@ -20,6 +20,11 @@ const env = {
   KEYCLOAK_USERNAME: 'demo',
   KEYCLOAK_PASSWORD: 'demo-staging-2026',
   NODE_ENV: 'production',
+  // Ambient (server-owned) token opt-in — see lib/tenant-runtime.ts ambientServiceTokenAllowed and
+  // the same comment in start-live.mjs. NOTE that NODE_ENV is 'production' here purely to get a
+  // production BUILD for the local demo; this is not a hosted deployment, which is precisely why the
+  // ambient guard is an explicit flag rather than a NODE_ENV check.
+  HROBOT_ALLOW_AMBIENT_TOKEN: '1',
 }
 
 rmSync(join(dir, '.next'), { recursive: true, force: true })
