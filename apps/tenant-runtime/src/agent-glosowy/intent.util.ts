@@ -27,6 +27,7 @@ export type AgentIntent =
   | 'KTO_PRACUJE'
   | 'NASTEPNA_ZMIANA'
   | 'MOJA_EWIDENCJA'
+  | 'ANULUJ_WNIOSEK'
   | 'NIEZNANE'
 
 /** One catalog row per registered (non-`NIEZNANE`) intent — the SINGLE source of truth for POMOC's
@@ -61,6 +62,11 @@ export const INTENT_CATALOG: readonly IntentCatalogEntry[] = [
     intent: 'MOJA_EWIDENCJA',
     opis: 'sprawdzenie przepracowanych godzin i nadwyżki ponad normę za okres',
     przyklad: 'ile przepracowałem godzin w tym tygodniu',
+  },
+  {
+    intent: 'ANULUJ_WNIOSEK',
+    opis: 'anulowanie Twojego najnowszego oczekującego wniosku (wymaga potwierdzenia)',
+    przyklad: 'anuluj mój wniosek urlopowy',
   },
 ]
 
@@ -238,6 +244,10 @@ const STATUS_WNIOSKU_RE = /status.{0,15}wniosk|co z (moim )?wniosk|wniosek.{0,15
  * overlaps the domain vocabulary above, but keeping it first keeps the ordering obviously safe as
  * more intents are added below it. */
 const POMOC_RE = /\bpomoc\b|jakie (polecenia|komendy|masz polecenia)|co (potrafisz|umiesz)|lista (poleceń|polecen|komend)/
+/** Cancel-request markers ("anuluj wniosek" / "anuluj mój urlop" / "wycofaj wniosek"). Checked
+ * BEFORE L4/SALDO/URLOP/STATUS — "anuluj wniosek O URLOP" or "anuluj ZWOLNIENIE" would otherwise be
+ * swallowed by `URLOP_RE`/`L4_RE` (both just look for the domain word, not for "anuluj"). */
+const ANULUJ_WNIOSEK_RE = /anuluj.{0,15}wniosek|anuluj.{0,10}(urlop|zwolnieni)|wycofa[jć].{0,15}wniosek|odwoła[jć].{0,15}wniosek/
 
 /**
  * Parse a Polish utterance into `{intent, entities, confidence}` against the CLOSED command set.
@@ -255,6 +265,12 @@ export function parseIntent(text: string, today: Date): ParsedIntent {
   // POMOC first — meta-command, never collides with domain vocabulary, dateless.
   if (POMOC_RE.test(normalized)) {
     return { intent: 'POMOC', entities: {}, confidence: HIGH_CONFIDENCE }
+  }
+
+  // ANULUJ_WNIOSEK before ANY domain word check — "anuluj wniosek o urlop" / "anuluj zwolnienie"
+  // must never be read as a NEW request for that leave type.
+  if (ANULUJ_WNIOSEK_RE.test(normalized)) {
+    return { intent: 'ANULUJ_WNIOSEK', entities: {}, confidence: HIGH_CONFIDENCE }
   }
 
   const dates = extractDates(normalized, today)

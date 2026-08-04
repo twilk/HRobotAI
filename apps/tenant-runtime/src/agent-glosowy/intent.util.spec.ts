@@ -103,7 +103,7 @@ describe('parseIntent — closed PL command set (K1 urlop / K2 L4 / K3 mój graf
       expect(cataloged).toEqual(
         [
           'L4', 'MOJ_GRAFIK', 'POMOC', 'SALDO_URLOPU', 'STATUS_WNIOSKU', 'URLOP',
-          'KTO_PRACUJE', 'NASTEPNA_ZMIANA', 'MOJA_EWIDENCJA',
+          'KTO_PRACUJE', 'NASTEPNA_ZMIANA', 'MOJA_EWIDENCJA', 'ANULUJ_WNIOSEK',
         ].sort(),
       )
     })
@@ -171,6 +171,31 @@ describe('parseIntent — closed PL command set (K1 urlop / K2 L4 / K3 mój graf
 
     it('parses "moje nadgodziny" (trigger word only — the response must not label the metric that way)', () => {
       expect(parseIntent('jakie mam nadgodziny', TODAY).intent).toBe('MOJA_EWIDENCJA')
+    })
+  })
+
+  describe('ANULUJ_WNIOSEK (cancel my request, write)', () => {
+    it('parses "anuluj mój wniosek urlopowy"', () => {
+      const r = parseIntent('anuluj mój wniosek urlopowy', TODAY)
+      expect(r.intent).toBe('ANULUJ_WNIOSEK')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+
+    it('"anuluj wniosek o urlop" is NOT read as a new URLOP request', () => {
+      expect(parseIntent('anuluj wniosek o urlop', TODAY).intent).toBe('ANULUJ_WNIOSEK')
+    })
+
+    it('"anuluj zwolnienie" is NOT read as a new L4 request', () => {
+      expect(parseIntent('anuluj moje zwolnienie lekarskie', TODAY).intent).toBe('ANULUJ_WNIOSEK')
+    })
+
+    it('parses "wycofaj wniosek"', () => {
+      expect(parseIntent('chcę wycofać wniosek', TODAY).intent).toBe('ANULUJ_WNIOSEK')
+    })
+
+    it('does not affect an ordinary URLOP/L4 request', () => {
+      expect(parseIntent('chcę wziąć urlop od piątku do poniedziałku', TODAY).intent).toBe('URLOP')
+      expect(parseIntent('zgłoś L4 na dziś', TODAY).intent).toBe('L4')
     })
   })
 

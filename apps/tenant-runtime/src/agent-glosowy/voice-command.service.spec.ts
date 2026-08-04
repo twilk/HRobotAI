@@ -8,7 +8,7 @@ import { INTENT_CATALOG } from './intent.util.js'
 
 const TODAY = new Date('2026-07-29T00:00:00.000Z') // Wednesday
 
-const leave = { createRequest: jest.fn(), list: jest.fn() }
+const leave = { createRequest: jest.fn(), list: jest.fn(), cancel: jest.fn() }
 const grafik = { listShifts: jest.fn() }
 const audit = { log: jest.fn() }
 
@@ -129,6 +129,15 @@ describe('VoiceCommandService', () => {
       expect(r.requiresConfirmation).toBe(false)
       expect(r.fallbackToForm).toBe(false)
       expect(r.proposedAction.kind).toBe('READ_TIMESHEET')
+    })
+
+    it('ANULUJ_WNIOSEK (write) requires confirmation', () => {
+      const r = svc.interpret('anuluj mój wniosek urlopowy', TODAY, actor)
+      expect(r.intent).toBe('ANULUJ_WNIOSEK')
+      expect(r.requiresConfirmation).toBe(true)
+      expect(r.fallbackToForm).toBe(false)
+      expect(r.proposedAction.kind).toBe('CANCEL_LEAVE')
+      expect(leave.cancel).not.toHaveBeenCalled()
     })
 
     it('carries an EU AI Act transparency notice on every interpretation', () => {
@@ -347,6 +356,39 @@ describe('VoiceCommandService', () => {
         expect(res.humanReadable).not.toMatch(/twoje nadgodziny/i)
         expect(res.humanReadable).toMatch(/nadwyżk[ae]/i)
         expect(res.humanReadable).toMatch(/nie są nadgodzin/i)
+      })
+    })
+
+    describe('ANULUJ_WNIOSEK — human-in-the-loop write gate', () => {
+      it('REFUSES without confirm === true and NEVER calls LeaveService.cancel', async () => {
+        await expect(
+          svc.execute(client, actor, { intent: 'ANULUJ_WNIOSEK', entities: {}, confirm: false }, TODAY),
+        ).rejects.toBeInstanceOf(BadRequestException)
+        expect(leave.cancel).not.toHaveBeenCalled()
+        expect(audit.log).not.toHaveBeenCalled()
+      })
+
+      it('cancels the most recent PENDING request via the REAL LeaveService when confirmed', async () => {
+        leave.list.mockResolvedValue([
+          { id: 'lr-latest', type: 'URLOP_WYPOCZYNKOWY', startDate: new Date('2026-08-10T00:00:00.000Z'), endDate: new Date('2026-08-12T00:00:00.000Z') },
+        ])
+        leave.cancel.mockResolvedValue({ id: 'lr-latest', type: 'URLOP_WYPOCZYNKOWY', startDate: new Date('2026-08-10T00:00:00.000Z'), endDate: new Date('2026-08-12T00:00:00.000Z'), status: 'CANCELLED' })
+
+        const res = await svc.execute(client, actor, { intent: 'ANULUJ_WNIOSEK', entities: {}, confirm: true }, TODAY)
+
+        expect(leave.list).toHaveBeenCalledWith(client, actor, { mine: true, state: 'PENDING' })
+        expect(leave.cancel).toHaveBeenCalledWith(client, actor, 'lr-latest')
+        expect(res.executed).toBe(true)
+        expect(res.confirmedByHuman).toBe(true)
+        expect(audit.log).toHaveBeenCalledTimes(1)
+      })
+
+      it('reports gracefully when there is nothing pending to cancel — no exception', async () => {
+        leave.list.mockResolvedValue([])
+        const res = await svc.execute(client, actor, { intent: 'ANULUJ_WNIOSEK', entities: {}, confirm: true }, TODAY)
+        expect(res.executed).toBe(false)
+        expect(leave.cancel).not.toHaveBeenCalled()
+        expect(res.humanReadable).toMatch(/nie masz.{0,30}wniosk/i)
       })
     })
 

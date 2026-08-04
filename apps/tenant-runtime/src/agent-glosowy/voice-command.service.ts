@@ -61,6 +61,7 @@ export type ProposedActionKind =
   | 'READ_WHO_WORKS'
   | 'READ_NEXT_SHIFT'
   | 'READ_TIMESHEET'
+  | 'CANCEL_LEAVE'
   | 'NONE'
 
 /** A description of what WOULD happen — never a side effect. `interpret` returns this; nothing runs. */
@@ -112,7 +113,7 @@ const LEAVE_TYPE_BY_INTENT: Record<'URLOP' | 'L4', string> = {
   L4: 'ZWOLNIENIE_LEKARSKIE',
 }
 
-const WRITE_INTENTS: ReadonlySet<AgentIntent> = new Set<AgentIntent>(['URLOP', 'L4'])
+const WRITE_INTENTS: ReadonlySet<AgentIntent> = new Set<AgentIntent>(['URLOP', 'L4', 'ANULUJ_WNIOSEK'])
 
 /**
  * Renders POMOC's help text FROM {@link INTENT_CATALOG} — never a hand-copied string. Growing the
@@ -196,6 +197,16 @@ export class VoiceCommandService {
           body: { startDate: entities.dateFrom, endDate: entities.dateTo ?? entities.dateFrom, type },
         },
         humanReadable: `Czy złożyć wniosek (${type}) od ${entities.dateFrom} do ${entities.dateTo ?? entities.dateFrom}? Wymagane potwierdzenie.`,
+      }
+    }
+
+    if (intent === 'ANULUJ_WNIOSEK') {
+      return {
+        ...base,
+        requiresConfirmation: true,
+        fallbackToForm: false,
+        proposedAction: { kind: 'CANCEL_LEAVE', method: 'POST', endpoint: '/api/wnioski/{id}/anuluj' },
+        humanReadable: 'Czy anulować Twój najnowszy oczekujący wniosek? Wymagane potwierdzenie.',
       }
     }
 
@@ -313,43 +324,97 @@ export class VoiceCommandService {
     }
 
     if (WRITE_INTENTS.has(intent)) {
-      // [EU AI Act / RODO art. 22] hard human-in-the-loop gate: no confirmation → no write.
+      // [EU AI Act / RODO art. 22] hard human-in-the-loop gate: no confirmation → no write. Shared
+      // by EVERY write intent below — nothing in this block runs before it.
       if (confirm !== true) {
         throw new BadRequestException(
-          'Potwierdzenie człowieka jest wymagane przed złożeniem wniosku (nadzór człowieka — EU AI Act / art. 22 RODO).',
+          'Potwierdzenie człowieka jest wymagane przed wykonaniem tej akcji (nadzór człowieka — EU AI Act / art. 22 RODO).',
         )
       }
-      if (entities.dateFrom == null) {
-        throw new BadRequestException('Brak daty początkowej — nie można złożyć wniosku.')
+
+      if (intent === 'URLOP' || intent === 'L4') {
+        if (entities.dateFrom == null) {
+          throw new BadRequestException('Brak daty początkowej — nie można złożyć wniosku.')
+        }
+
+        const type = entities.type ?? LEAVE_TYPE_BY_INTENT[intent]
+        const dto: CreateLeaveDto = {
+          startDate: entities.dateFrom,
+          endDate: entities.dateTo ?? entities.dateFrom,
+          type,
+        }
+        // Reuse the REAL leave service AS the actor — its RBAC + PENDING + maker-checker rules apply.
+        const created = (await this.leave.createRequest(client, actor, dto)) as { id: string; employeeId: string }
+
+        await this.audit.log({
+          tenantClient: client,
+          actorUserId: actor.userId,
+          action: 'agent-glosowy.execute',
+          entityType: 'LeaveRequest',
+          entityId: created.id,
+          payload: { intent, leaveRequestId: created.id, employeeId: created.employeeId },
+          ipAddress: actor.ipAddress,
+        })
+
+        return {
+          ...base,
+          executed: true,
+          requiresConfirmation: false,
+          fallbackToForm: false,
+          confirmedByHuman: true,
+          result: created,
+          humanReadable: `Złożono wniosek (${type}) od ${dto.startDate} do ${dto.endDate} — status: do decyzji przełożonego.`,
+        }
       }
 
-      const type = entities.type ?? LEAVE_TYPE_BY_INTENT[intent as 'URLOP' | 'L4']
-      const dto: CreateLeaveDto = {
-        startDate: entities.dateFrom,
-        endDate: entities.dateTo ?? entities.dateFrom,
-        type,
-      }
-      // Reuse the REAL leave service AS the actor — its RBAC + PENDING + maker-checker rules apply.
-      const created = (await this.leave.createRequest(client, actor, dto)) as { id: string; employeeId: string }
+      // ANULUJ_WNIOSEK: cancel the caller's own most-recent PENDING request. `LeaveService.cancel`
+      // already enforces "only the requester, only while PENDING" — we just pick WHICH one (the
+      // agent has no id-slot in its closed vocabulary, so "my latest pending request" is the only
+      // unambiguous target a voice command can name).
+      if (intent === 'ANULUJ_WNIOSEK') {
+        const mine = (await this.leave.list(client, actor, { mine: true, state: 'PENDING' })) as Array<{
+          id: string
+          type: string
+          startDate: Date
+          endDate: Date
+        }>
+        const target = mine[0] // LeaveService.list orders createdAt desc → [0] is the most recent.
+        if (!target) {
+          return {
+            ...base,
+            executed: false,
+            requiresConfirmation: false,
+            fallbackToForm: false,
+            humanReadable: 'Nie masz żadnego oczekującego wniosku do anulowania.',
+          }
+        }
 
-      await this.audit.log({
-        tenantClient: client,
-        actorUserId: actor.userId,
-        action: 'agent-glosowy.execute',
-        entityType: 'LeaveRequest',
-        entityId: created.id,
-        payload: { intent, leaveRequestId: created.id, employeeId: created.employeeId },
-        ipAddress: actor.ipAddress,
-      })
+        const cancelled = (await this.leave.cancel(client, actor, target.id)) as {
+          id: string
+          type: string
+          startDate: Date
+          endDate: Date
+        }
 
-      return {
-        ...base,
-        executed: true,
-        requiresConfirmation: false,
-        fallbackToForm: false,
-        confirmedByHuman: true,
-        result: created,
-        humanReadable: `Złożono wniosek (${type}) od ${dto.startDate} do ${dto.endDate} — status: do decyzji przełożonego.`,
+        await this.audit.log({
+          tenantClient: client,
+          actorUserId: actor.userId,
+          action: 'agent-glosowy.execute',
+          entityType: 'LeaveRequest',
+          entityId: cancelled.id,
+          payload: { intent, leaveRequestId: cancelled.id },
+          ipAddress: actor.ipAddress,
+        })
+
+        return {
+          ...base,
+          executed: true,
+          requiresConfirmation: false,
+          fallbackToForm: false,
+          confirmedByHuman: true,
+          result: cancelled,
+          humanReadable: `Anulowano wniosek (${cancelled.type}) od ${toISODate(cancelled.startDate)} do ${toISODate(cancelled.endDate)}.`,
+        }
       }
     }
 
