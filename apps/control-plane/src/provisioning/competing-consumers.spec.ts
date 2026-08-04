@@ -240,5 +240,11 @@ describe('tenant.provision — competing consumers (N-1)', () => {
         })
       }
     }
-  })
+    // Timeout podniesiony z domyślnych 5 s. W izolacji ten test trwa ~600 ms, ale w pełnym
+    // przebiegu monorepo (13 suit control-plane obok siebie) cała suita zwalnia ~4×, bo każda
+    // iteracja pary konsumentów buduje osobny moduł testowy Nesta. Pod obciążeniem przekraczał
+    // 5 s i CI stawało się migoczące — a migoczący test pilnujący realnego defektu (druga
+    // „Cała firma" przy ponownym dostarczeniu z RabbitMQ) jest gorszy niż jego brak, bo uczy
+    // ignorować czerwone. Limit dobrany z zapasem względem zmierzonych 78 s całej suity.
+  }, 30_000)
 })
