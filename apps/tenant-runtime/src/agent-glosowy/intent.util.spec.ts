@@ -98,9 +98,36 @@ describe('parseIntent — closed PL command set (K1 urlop / K2 L4 / K3 mój graf
       expect(parseIntent('co potrafisz', TODAY).intent).toBe('POMOC')
     })
 
-    it('every non-NIEZNANE, non-POMOC intent has exactly one INTENT_CATALOG entry (POMOC source of truth)', () => {
+    it('every non-NIEZNANE intent has exactly one INTENT_CATALOG entry (POMOC source of truth)', () => {
       const cataloged = INTENT_CATALOG.map((e) => e.intent).sort()
-      expect(cataloged).toEqual(['L4', 'MOJ_GRAFIK', 'POMOC', 'SALDO_URLOPU', 'STATUS_WNIOSKU', 'URLOP'].sort())
+      expect(cataloged).toEqual(
+        ['L4', 'MOJ_GRAFIK', 'POMOC', 'SALDO_URLOPU', 'STATUS_WNIOSKU', 'URLOP', 'KTO_PRACUJE'].sort(),
+      )
+    })
+  })
+
+  describe('KTO_PRACUJE (roster read)', () => {
+    it('parses "kto dzisiaj pracuje" and defaults to today', () => {
+      const r = parseIntent('kto dzisiaj pracuje', TODAY)
+      expect(r.intent).toBe('KTO_PRACUJE')
+      expect(r.entities.dateFrom).toBe('2026-07-29')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+
+    it('parses "kto jest nieobecny jutro"', () => {
+      const r = parseIntent('kto jest nieobecny jutro', TODAY)
+      expect(r.intent).toBe('KTO_PRACUJE')
+      expect(r.entities.dateFrom).toBe('2026-07-30')
+    })
+
+    it('parses "kto ma zmianę w piątek" (must not be swallowed by MOJ_GRAFIK\'s "zmian" marker)', () => {
+      const r = parseIntent('kto ma zmianę w piątek', TODAY)
+      expect(r.intent).toBe('KTO_PRACUJE')
+      expect(r.entities.dateFrom).toBe('2026-07-31')
+    })
+
+    it('does not affect an ordinary MOJ_GRAFIK utterance', () => {
+      expect(parseIntent('jaki mam grafik jutro', TODAY).intent).toBe('MOJ_GRAFIK')
     })
   })
 

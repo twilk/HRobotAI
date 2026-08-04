@@ -22,6 +22,7 @@ export type AgentIntent =
   | 'SALDO_URLOPU'
   | 'STATUS_WNIOSKU'
   | 'POMOC'
+  | 'KTO_PRACUJE'
   | 'NIEZNANE'
 
 /** One catalog row per registered (non-`NIEZNANE`) intent — the SINGLE source of truth for POMOC's
@@ -42,6 +43,11 @@ export const INTENT_CATALOG: readonly IntentCatalogEntry[] = [
   { intent: 'SALDO_URLOPU', opis: 'sprawdzenie salda urlopu wypoczynkowego', przyklad: 'ile mam dni urlopu' },
   { intent: 'STATUS_WNIOSKU', opis: 'sprawdzenie statusu ostatniego wniosku', przyklad: 'co z moim wnioskiem' },
   { intent: 'POMOC', opis: 'wyświetlenie listy dostępnych poleceń', przyklad: 'pomoc' },
+  {
+    intent: 'KTO_PRACUJE',
+    opis: 'sprawdzenie kto dziś pracuje / kto jest nieobecny (zakres zależny od roli)',
+    przyklad: 'kto dzisiaj pracuje',
+  },
 ]
 
 /** Slots extracted from an utterance. Dates are ISO `YYYY-MM-DD`; `type` is the leave kind. */
@@ -196,6 +202,10 @@ const URLOP_RE = /urlop|wolne\b|wolnego\b/
 /** Leave-balance (saldo urlopu) markers — checked BEFORE plain URLOP so "ile ... urlopu" / "saldo
  * urlopowe" never reads as a request to file a new leave. */
 const SALDO_URLOPU_RE = /ile.{0,20}(dni )?urlopu|saldo urlop|urlop.{0,10}saldo|ile.{0,10}urlopu.{0,10}zostało|pozostał.{0,10}urlop/
+/** Roster markers ("kto dziś pracuje" / "kto jest nieobecny" / "kto ma zmianę"). Checked BEFORE
+ * `GRAFIK_RE` — "kto ma zmianę w piątek" also matches `GRAFIK_RE`'s `zmian[ayę]\b`, and "kto" is
+ * what disambiguates a roster question from "mój grafik". */
+const KTO_PRACUJE_RE = /\bkto\b.{0,20}(pracuj|nieobecn|zmian)/
 /** Schedule (grafik) markers. */
 const GRAFIK_RE = /grafik|zmian[ayę]\b|kiedy pracuj|moje zmiany/
 /** Leave-request status markers ("co z moim wnioskiem" / "status wniosku"). */
@@ -249,6 +259,15 @@ export function parseIntent(text: string, today: Date): ParsedIntent {
 
   if (STATUS_WNIOSKU_RE.test(normalized)) {
     return { intent: 'STATUS_WNIOSKU', entities: {}, confidence: HIGH_CONFIDENCE }
+  }
+
+  if (KTO_PRACUJE_RE.test(normalized)) {
+    const dateFrom = dates.dateFrom ?? toISO(today)
+    return {
+      intent: 'KTO_PRACUJE',
+      entities: { dateFrom, dateTo: dates.dateTo ?? dateFrom },
+      confidence: HIGH_CONFIDENCE,
+    }
   }
 
   if (GRAFIK_RE.test(normalized)) {

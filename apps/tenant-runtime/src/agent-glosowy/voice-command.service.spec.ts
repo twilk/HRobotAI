@@ -12,8 +12,16 @@ const leave = { createRequest: jest.fn(), list: jest.fn() }
 const grafik = { listShifts: jest.fn() }
 const audit = { log: jest.fn() }
 
-const client = {} as unknown as TenantClient
+// Real client methods KTO_PRACUJE reads directly (own-identity + roster lookups), mirroring how
+// GrafikService/LeaveService/EmployeesService resolve "who am I" / unit scope inline. Everything
+// else on TenantClient is untouched by VoiceCommandService.
+const prismaClient = {
+  employee: { findFirst: jest.fn(), findMany: jest.fn() },
+  userRole: { findMany: jest.fn() },
+}
+const client = prismaClient as unknown as TenantClient
 const actor: VoiceActor = { userId: 'kc-emp-1', roles: ['PRACOWNIK'], ipAddress: '1.2.3.4' }
+const managerActor: VoiceActor = { userId: 'kc-mgr-1', roles: ['MANAGER'], ipAddress: '1.2.3.4' }
 
 function makeService(): VoiceCommandService {
   return new VoiceCommandService(
@@ -28,6 +36,9 @@ describe('VoiceCommandService', () => {
   beforeEach(() => {
     svc = makeService()
     jest.clearAllMocks()
+    prismaClient.userRole.findMany.mockResolvedValue([])
+    prismaClient.employee.findFirst.mockResolvedValue(null)
+    prismaClient.employee.findMany.mockResolvedValue([])
   })
 
   describe('interpret — describes, NEVER executes', () => {
@@ -94,6 +105,14 @@ describe('VoiceCommandService', () => {
       // exact count: catches both a stray hardcoded extra line AND a silently dropped entry.
       const lines = r.humanReadable.split('\n').filter((l) => l.startsWith('- '))
       expect(lines.length).toBe(rest.length)
+    })
+
+    it('KTO_PRACUJE (read) does NOT require confirmation', () => {
+      const r = svc.interpret('kto dzisiaj pracuje', TODAY, actor)
+      expect(r.intent).toBe('KTO_PRACUJE')
+      expect(r.requiresConfirmation).toBe(false)
+      expect(r.fallbackToForm).toBe(false)
+      expect(r.proposedAction.kind).toBe('READ_WHO_WORKS')
     })
 
     it('carries an EU AI Act transparency notice on every interpretation', () => {
@@ -207,6 +226,50 @@ describe('VoiceCommandService', () => {
       expect(res.fallbackToForm).toBe(false)
       expect(res.humanReadable).toContain(INTENT_CATALOG.find((e) => e.intent === 'URLOP')!.opis)
       expect(audit.log).toHaveBeenCalledTimes(1)
+    })
+
+    describe('KTO_PRACUJE — scoped roster read', () => {
+      it('MANAGER sees the roster of their managed unit(s), split into working/absent', async () => {
+        prismaClient.userRole.findMany.mockResolvedValue([{ unitId: 'unit-1' }])
+        prismaClient.employee.findMany.mockResolvedValue([
+          { id: 'emp-A', firstName: 'Anna', lastName: 'Nowak' },
+          { id: 'emp-B', firstName: 'Bartek', lastName: 'Kowal' },
+        ])
+        grafik.listShifts.mockResolvedValue([
+          { employeeId: 'emp-A', date: new Date('2026-07-29T00:00:00.000Z') },
+        ])
+        leave.list.mockResolvedValue([
+          { employeeId: 'emp-B', startDate: new Date('2026-07-28T00:00:00.000Z'), endDate: new Date('2026-07-30T00:00:00.000Z') },
+        ])
+
+        const res = await svc.execute(client, managerActor, { intent: 'KTO_PRACUJE', entities: { dateFrom: '2026-07-29' }, confirm: false }, TODAY)
+
+        expect(leave.list).toHaveBeenCalledWith(client, managerActor, { state: 'APPROVED' })
+        expect(res.executed).toBe(true)
+        expect(res.result).toEqual({ date: '2026-07-29', pracujacy: ['Anna Nowak'], nieobecni: ['Bartek Kowal'] })
+        expect(audit.log).toHaveBeenCalledTimes(1)
+      })
+
+      it('[SZCZELNOŚĆ] a plain PRACOWNIK never triggers a roster query and never sees another employee — even if the underlying mocks hand back foreign data', async () => {
+        // actor has NO managed units (userRole.findMany → []); this is what makes them "plain".
+        prismaClient.employee.findFirst.mockResolvedValue({ id: 'emp-self' })
+        // Simulate a hypothetically-buggy GrafikService/LeaveService handing back OTHER people's
+        // rows too — VoiceCommandService itself must still never surface them for a plain employee.
+        grafik.listShifts.mockResolvedValue([
+          { employeeId: 'emp-self', date: new Date('2026-07-29T00:00:00.000Z') },
+          { employeeId: 'emp-OTHER', date: new Date('2026-07-29T00:00:00.000Z') },
+        ])
+        leave.list.mockResolvedValue([])
+
+        const res = await svc.execute(client, actor, { intent: 'KTO_PRACUJE', entities: { dateFrom: '2026-07-29' }, confirm: false }, TODAY)
+
+        // no unit-wide roster lookup at all for a plain employee
+        expect(prismaClient.employee.findMany).not.toHaveBeenCalled()
+        expect(leave.list).toHaveBeenCalledWith(client, actor, { mine: true, state: 'APPROVED' })
+        expect(res.result).toEqual({ date: '2026-07-29', self: { working: true, onApprovedLeave: false } })
+        expect(JSON.stringify(res.result)).not.toMatch(/emp-OTHER/)
+        expect(JSON.stringify(res.humanReadable)).not.toMatch(/emp-OTHER/)
+      })
     })
 
     it('NIEZNANE never executes — returns a fallback-to-form result', async () => {

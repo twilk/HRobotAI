@@ -5,6 +5,7 @@ import { LeaveService } from '../leave/leave.service.js'
 import { GrafikService } from '../grafik/grafik.service.js'
 import type { CreateLeaveDto } from '../leave/dto/leave.dto.js'
 import { drawsDownAnnualEntitlement } from '../common/leave-type.js'
+import { isGlobal, managedUnitIds } from '../tenant-runtime/rbac/unit-scope.js'
 import { parseIntent, CONFIDENCE_THRESHOLD, INTENT_CATALOG, type AgentIntent, type ParsedEntities } from './intent.util.js'
 
 /** Flat statutory annual entitlement (KP art. 154 §1) — mirrors `analityk/analityk.service.ts`
@@ -36,6 +37,7 @@ export type ProposedActionKind =
   | 'READ_LEAVE_BALANCE'
   | 'READ_LEAVE_STATUS'
   | 'READ_HELP'
+  | 'READ_WHO_WORKS'
   | 'NONE'
 
 /** A description of what WOULD happen — never a side effect. `interpret` returns this; nothing runs. */
@@ -191,6 +193,21 @@ export class VoiceCommandService {
         fallbackToForm: false,
         proposedAction: { kind: 'READ_LEAVE_STATUS', method: 'GET', endpoint: '/api/wnioski?mine=true' },
         humanReadable: 'Status Twojego najnowszego wniosku.',
+      }
+    }
+
+    if (intent === 'KTO_PRACUJE') {
+      return {
+        ...base,
+        requiresConfirmation: false,
+        fallbackToForm: false,
+        proposedAction: {
+          kind: 'READ_WHO_WORKS',
+          method: 'GET',
+          endpoint: '/api/grafik/shifts',
+          body: { date: entities.dateFrom },
+        },
+        humanReadable: `Kto pracuje ${entities.dateFrom} (zakres zależny od Twojej roli).`,
       }
     }
 
@@ -368,6 +385,35 @@ export class VoiceCommandService {
       }
     }
 
+    if (intent === 'KTO_PRACUJE') {
+      const date = entities.dateFrom ?? today.toISOString().slice(0, 10)
+      const result = await this.ktoPracuje(client, actor, date)
+
+      await this.audit.log({
+        tenantClient: client,
+        actorUserId: actor.userId,
+        action: 'agent-glosowy.execute',
+        entityType: 'Roster',
+        entityId: date,
+        payload: { intent, date, scoped: 'self' in result ? 'self' : 'unit-or-global' },
+        ipAddress: actor.ipAddress,
+      })
+
+      return {
+        ...base,
+        executed: true,
+        requiresConfirmation: false,
+        fallbackToForm: false,
+        result,
+        humanReadable:
+          'self' in result
+            ? // Least-privilege default: a plain employee sees ONLY their own status — never a
+              // roster of colleagues (that requires MANAGER/HR/ADMIN scope; see `ktoPracuje` below).
+              `${result.self.working ? `Pracujesz ${date}.` : result.self.onApprovedLeave ? `Jesteś na urlopie ${date}.` : `Nie masz zaplanowanej zmiany ${date}.`} Widzisz tylko swoje dane — pytanie o innych pracownikach wymaga roli managera/HR.`
+            : `Na ${date} pracuje: ${result.pracujacy.length ? result.pracujacy.join(', ') : 'nikt'}. Nieobecni: ${result.nieobecni.length ? result.nieobecni.join(', ') : 'nikt'}.`,
+      }
+    }
+
     // MOJ_GRAFIK (read) — safe to run directly, no confirmation.
     const date = entities.dateFrom ?? today.toISOString().slice(0, 10)
     const all = (await this.grafik.listShifts(client, actor)) as Array<Record<string, unknown>>
@@ -390,6 +436,72 @@ export class VoiceCommandService {
       fallbackToForm: false,
       result: shifts,
       humanReadable: `Twój grafik na ${date}: ${shifts.length} zmian(y).`,
+    }
+  }
+
+  // --- KTO_PRACUJE -----------------------------------------------------------------------------
+
+  /**
+   * The caller's OWN Employee id, resolved via their Keycloak subject — mirrors the identical
+   * `ownEmployeeId` helper private to `LeaveService`/`GrafikService`. Reading this can NEVER leak
+   * another employee's identity: the `where` clause is keyed to the caller's own JWT subject.
+   */
+  private async ownEmployeeId(client: TenantClient, actor: VoiceActor): Promise<string | null> {
+    const me = await client.employee.findFirst({ where: { user: { keycloakSub: actor.userId } }, select: { id: true } })
+    return me?.id ?? null
+  }
+
+  /**
+   * [SZCZELNOŚĆ / scope tightness] `KTO_PRACUJE` must never show a PRACOWNIK data outside their own
+   * record. Rather than re-deriving a scoping rule of our own, this defers ENTIRELY to the SAME
+   * `isGlobal`/`managedUnitIds` primitives `GrafikService`/`LeaveService`/`EmployeesService` already
+   * use for their own row-level RBAC:
+   *
+   *  - GLOBAL (HR/ADMIN) or a MANAGER of ≥1 unit → a roster query scoped the identical way
+   *    `EmployeesService.list` scopes it (global: everyone; manager: their managed unit(s)), cross-
+   *    checked against `GrafikService.listShifts`/`LeaveService.list` — which are ALREADY scoped
+   *    the same way for those roles — so no query here can return a wider audience than the real
+   *    services would.
+   *  - Anyone else (plain PRACOWNIK) → NO roster query is issued at all. The answer is built solely
+   *    from the caller's own employee id + the SAME `mine: true`-scoped leave/shift reads the other
+   *    read intents use, so even a hypothetically-misbehaving mock/service could never surface a
+   *    colleague through this path (see the "even if the underlying mocks hand back foreign data"
+   *    test in `voice-command.service.spec.ts`, which asserts this defensively).
+   */
+  private async ktoPracuje(
+    client: TenantClient,
+    actor: VoiceActor,
+    date: string,
+  ): Promise<{ date: string; pracujacy: string[]; nieobecni: string[] } | { date: string; self: { working: boolean; onApprovedLeave: boolean } }> {
+    const managed = await managedUnitIds(client, actor.userId)
+    const privileged = isGlobal(actor.roles) || managed.length > 0
+
+    if (!privileged) {
+      const myId = await this.ownEmployeeId(client, actor)
+      const shifts = (await this.grafik.listShifts(client, actor)) as Array<{ employeeId: string; date: unknown }>
+      const working = myId != null && shifts.some((s) => s.employeeId === myId && toISODate(s.date) === date)
+      const leaves = (await this.leave.list(client, actor, { mine: true, state: 'APPROVED' })) as Array<{ startDate: Date; endDate: Date }>
+      const onApprovedLeave = leaves.some((l) => toISODate(l.startDate)! <= date && date <= toISODate(l.endDate)!)
+      return { date, self: { working, onApprovedLeave } }
+    }
+
+    const scopeUnits = isGlobal(actor.roles) ? null : managed
+    const roster = (await client.employee.findMany({
+      where: scopeUnits ? { unitId: { in: scopeUnits } } : {},
+      select: { id: true, firstName: true, lastName: true },
+    })) as Array<{ id: string; firstName: string; lastName: string }>
+
+    const shifts = (await this.grafik.listShifts(client, actor)) as Array<{ employeeId: string; date: unknown }>
+    const workingIds = new Set(shifts.filter((s) => toISODate(s.date) === date).map((s) => s.employeeId))
+
+    const leaves = (await this.leave.list(client, actor, { state: 'APPROVED' })) as Array<{ employeeId: string; startDate: Date; endDate: Date }>
+    const absentIds = new Set(leaves.filter((l) => toISODate(l.startDate)! <= date && date <= toISODate(l.endDate)!).map((l) => l.employeeId))
+
+    const name = (e: { firstName: string; lastName: string }): string => `${e.firstName} ${e.lastName}`
+    return {
+      date,
+      pracujacy: roster.filter((e) => workingIds.has(e.id)).map(name),
+      nieobecni: roster.filter((e) => absentIds.has(e.id)).map(name),
     }
   }
 }
