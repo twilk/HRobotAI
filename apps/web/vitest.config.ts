@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url'
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['lib/**/*.test.ts'],
+    // lib/** = grafik wiring logic; components/tour/** = pure tour data + navigation helpers
+    // (the isolated guided-tour component's testable, non-React logic).
+    include: ['lib/**/*.test.ts', 'components/tour/**/*.test.ts'],
   },
   resolve: {
     alias: {
