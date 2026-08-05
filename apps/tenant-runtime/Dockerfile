@@ -35,7 +35,7 @@ RUN pnpm install --frozen-lockfile
 
 # Source, then build: turbo runs db:generate -> ^build -> `nest build`.
 COPY . .
-RUN pnpm run build
+RUN pnpm exec turbo run build --filter=@hrobot/tenant-runtime
 # bcrypt native sanity check — run from the app dir so pnpm resolves the app's own bcrypt.
 RUN cd apps/tenant-runtime \
  && node -e "const b=require('bcrypt'); if(!b.compareSync('x', b.hashSync('x',4))) process.exit(1); console.log('bcrypt native ok')"

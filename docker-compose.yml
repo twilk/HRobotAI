@@ -162,6 +162,43 @@ services:
       PYTHONUNBUFFERED: "1"
     # command:  # set by the RL-agent task (shares the optimizer image; runs the agent loop, not uvicorn)
 
+  # Front produktowy (Next.js standalone) — apps/web. WEWNĘTRZNY (brak host portu); publiczny origin
+  # to Caddy. Proxy BFF /api/* → tenant-runtime po stronie serwera (tokeny httpOnly, RODO).
+  web:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      TENANT_RUNTIME_URL: http://tenant-runtime:3001
+      KEYCLOAK_TOKEN_URL: http://keycloak:8080/realms/hrobot-staging/protocol/openid-connect/token
+      KEYCLOAK_CLIENT_ID: hrobot-web
+      KEYCLOAK_USERNAME: demo
+      KEYCLOAK_PASSWORD: ${KEYCLOAK_DEMO_PASSWORD:-demo-staging-2026}
+      NODE_ENV: production
+      PORT: "3000"
+    depends_on:
+      tenant-runtime:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Brama — jeden publiczny origin. Przeglądarka → caddy:8080 → web. (/api/* NIE routujemy tu do
+  # backendu — robi to front BFF server-side, trzymając tokeny httpOnly.)
+  caddy:
+    profiles: ["full"]
+    image: caddy:2-alpine
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      web:
+        condition: service_healthy
+
 volumes:
   hrobot_pgdata:
   hrobot_keycloak:
