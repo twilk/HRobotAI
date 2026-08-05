@@ -1,0 +1,12 @@
+LOGIN pracownik.demo -> /dashboard
+/dashboard status=200 landed=/dashboard h="Pulpit 4Mobility" textLen=936 newErrors=0
+/pracownicy status=200 landed=/pracownicy h="Pracownicy" textLen=1199 newErrors=0
+/grafik status=200 landed=/grafik h="Grafik" textLen=649 newErrors=0
+/zamiany status=200 landed=/zamiany h="Propozycje AI — zastępstwo wymaga Twojej zgody" textLen=839 newErrors=0
+/wnioski status=200 landed=/wnioski h="Wnioski" textLen=872 newErrors=0
+/dokumenty status=200 landed=/dokumenty h="Dokumenty kadrowo-płacowe" textLen=884 newErrors=0
+/asystent status=200 landed=/asystent h="Asystent głosowy" textLen=745 newErrors=0
+/analiza status=200 landed=/analiza h="Strategiczny mózg kadrowy" textLen=812 newErrors=0
+/dostepy status=200 landed=/dostepy h="Brak dostępu" textLen=302 newErrors=0
+--- CONSOLE ERRORS ---
+(none)

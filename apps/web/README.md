@@ -1,47 +1,86 @@
-# HRobot — onboarding web app
+# HRobot web-kit — portable Next.js + Tailwind components
 
-A dependency-free single-page app that walks a new customer through **every function HRobot
-exposes today**, with a guided **Shepherd.js** tour. It drives the real APIs (no mock backend):
-the control-plane (signup, slug check, provisioning status, global-admin login) and the
-tenant-runtime (employee directory, onboarding checklist).
+Production React/Tailwind implementation of the HRobot design system
+([`DESIGN.md`](../../../DESIGN.md)), derived 1:1 from the rendered-verified mockups in
+[`../mockups/`](../mockups/). Drop these into the Foundation `apps/web` (Next.js 16 App
+Router). Server Components by default; only `mobile-drawer`, `slug-input`,
+`password-strength`, and `signup-form` are client components.
 
-## Run
+> **Verification:** every file here is syntax-checked with esbuild. It is **not** compiled in
+> this docs repo (there is no Next.js project here) — type-checking happens when you integrate
+> it into `apps/web` with the deps + tsconfig path alias below. The visuals are proven by the
+> mockups this was ported from.
 
-```bash
-# 1. Serve the app (no install needed — pure Node, zero deps).
-node apps/web/serve.mjs            # -> http://localhost:5173
+## Integrate into apps/web
 
-# 2. (Optional, for the LIVE flow) start the backends it proxies to:
-#    control-plane on :3000, tenant-runtime on :3001.
-docker compose up -d               # postgres, redis, rabbitmq, keycloak
-pnpm --filter @hrobot/db migrate:control:deploy
-pnpm --filter @hrobot/db seed:admin:dev
-pnpm --filter @hrobot/control-plane dev                   # control-plane :3000
-PORT=3001 pnpm --filter @hrobot/tenant-runtime dev        # tenant-runtime :3001
-```
+1. **Copy** preserving paths:
+   - `app/globals.css`, `app/fonts.ts`, `tailwind.config.ts`
+   - `lib/cn.ts`, `lib/nav.ts`
+   - `components/**`
+   - example pages: `app/(tenant)/dashboard/page.tsx`, `app/(marketing)/signup/page.tsx`
+2. **Dependencies:** `pnpm add clsx tailwind-merge` (and `tailwindcss postcss autoprefixer` if
+   not present). Optional: `pnpm add zxcvbn` to replace the demo heuristic in `password-strength.tsx`.
+3. **Path alias** — `tsconfig.json` (Next default):
+   ```json
+   { "compilerOptions": { "paths": { "@/*": ["./*"] } } }
+   ```
+4. **Fonts** — download the Fontshare woff2 into `app/fonts/` (free, ITF license):
+   `CabinetGrotesk-Bold.woff2`, `CabinetGrotesk-Extrabold.woff2`,
+   `GeneralSans-Regular.woff2`, `GeneralSans-Medium.woff2`, `GeneralSans-Semibold.woff2`.
+   IBM Plex Mono loads from `next/font/google` (no files). Wire the variables onto `<html>`:
+   ```tsx
+   // app/layout.tsx
+   import './globals.css'
+   import { fontVars } from './fonts'
 
-Open `http://localhost:5173`. The tour auto-starts on first visit; re-run it any time with
-**Take the tour** (top-right). The header pill shows live API health.
+   export default function RootLayout({ children }: { children: React.ReactNode }) {
+     return (
+       <html lang="pl" className={fontVars}>
+         <body>{children}</body>
+       </html>
+     )
+   }
+   ```
+   No woff2 yet? Temporary fallback: load Cabinet Grotesk + General Sans from the Fontshare CDN
+   via a `<link>` (as the mockups do) and set `font-display`/`font-sans` to those names.
+5. **Tailwind** — `tailwind.config.ts` here is **v3** (matches the Foundation spec). On Tailwind
+   v4, port the `theme.extend` values into an `@theme` block in CSS — the token values are identical.
+6. **Wire real data** — the example pages use placeholder identity. Replace with the Auth.js
+   session + tenant context:
+   ```ts
+   const session = await auth()
+   const tenant  = await getTenantForRequest() // from x-tenant-id header
+   const roles   = session.user.roles as Role[]
+   ```
+   Endpoints the client components expect:
+   - `GET /api/slugs/check/{slug}` → `{ available: boolean }`
+   - `POST /api/auth/signup` → `202 { jobId }` (redirects to `/signup/status?job=…`) or `409`
 
-## How it works
+## File map
 
-- **`index.html`** — the SPA: one card per function (claim URL → create workspace → provisioning
-  → sign in → team → onboarding checklist).
-- **`app.js`** — the API client and screen logic: slug check, signup, live provisioning polling
-  (the `CREATE_DB → RUN_MIGRATIONS → SEED → KEYCLOAK_SETUP → DONE` state machine), login + JWT
-  decode, employee directory, checklist. All API data is HTML-escaped before rendering.
-- **`tour.js`** — the Shepherd.js guided tour, one step per function.
-- **`serve.mjs`** — a tiny zero-dependency static server that reverse-proxies the API so the
-  browser stays same-origin (no CORS, no backend changes): `/api/*` → control-plane (`:3000`),
-  `/tapi/*` → tenant-runtime (`:3001`). Override with `WEB_PORT`, `CONTROL_PLANE_ORIGIN`,
-  `TENANT_RUNTIME_ORIGIN`.
+| Path | What |
+|---|---|
+| `tailwind.config.ts` | Design tokens (colors, fonts, radius, shadow, animation) |
+| `app/globals.css` | Base layer + the engraved `motif-navy` / `motif-brand` utilities |
+| `app/fonts.ts` | `next/font` setup (Cabinet Grotesk, General Sans, IBM Plex Mono) |
+| `lib/cn.ts` | `cn()` class-merge helper |
+| `lib/nav.ts` | Typed nav config + `visibleGroups(roles)` RBAC filter |
+| `components/icons.tsx` | Hoisted line-icon set (decorative, `aria-hidden`) |
+| `components/ui/*` | Button, Card, Badge, Input + Field, SecuredChip, BrandMark + Wordmark |
+| `components/layout/*` | Sidebar, TopBar, AppShell, MobileNav (drawer) |
+| `components/dashboard/*` | QuickActions, SetupChecklist, DataProtectionPanel |
+| `components/auth/*` | SlugInput, PasswordField, SignupForm |
+| `app/(tenant)/dashboard/page.tsx` | Dashboard, composed (Server Component) |
+| `app/(marketing)/signup/page.tsx` | Signup (Server shell + client form) |
 
-## Notes
+## Not yet ported (do the same way)
 
-- The employee directory and checklist are tenant-scoped and require a **tenant** Keycloak JWT
-  (the global-admin token can't read tenant data — that isolation is intentional). When no tenant
-  token is present, those screens explain this and offer clearly-labelled demo data so the tour
-  still covers the function.
-- PESEL (Polish national ID) is never sent to the browser by the employees endpoint (RODO).
-- This is a demo/onboarding surface over the implemented foundation (Plans 1-3); it is not the
-  full HR product UI.
+Provisioning status (mono pipeline), the employees table + empty state, mobile drawer page, and
+the Keycloak FreeMarker theme exist as mockups in [`../mockups/`](../mockups/). Port them with the
+same primitives (`Card`, `Badge`, `Table` pattern, `AppShell`, `motif-navy`).
+
+## Guardrails
+
+Keep the [`DESIGN.md`](../../../DESIGN.md) anti-slop rules: no glassmorphism, no Inter/system-ui as
+display/body, no neon cyan, no gradient CTAs, no centered-everything, no icon-in-colored-circle
+grids. Teal is a sparing signal; green means verified; mono is the machine/security layer.

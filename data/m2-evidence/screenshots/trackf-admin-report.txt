@@ -1,0 +1,17 @@
+LOGIN demo -> /dashboard
+/dashboard status=200 landed=/dashboard h="Pulpit 4Mobility" textLen=1104 newErrors=0
+/pracownicy status=200 landed=/pracownicy h="Pracownicy" textLen=3288 newErrors=0
+/grafik status=200 landed=/grafik h="Grafik" textLen=4718 newErrors=0
+/zamiany status=200 landed=/zamiany h="Propozycje AI — zastępstwo wymaga Twojej zgody" textLen=869 newErrors=2
+/wnioski status=200 landed=/wnioski h="Wnioski" textLen=1069 newErrors=0
+/dokumenty status=200 landed=/dokumenty h="Dokumenty kadrowo-płacowe" textLen=2669 newErrors=0
+/asystent status=200 landed=/asystent h="Asystent głosowy" textLen=822 newErrors=0
+/analiza status=200 landed=/analiza h="Strategiczny mózg kadrowy" textLen=2504 newErrors=4
+/dostepy status=200 landed=/dostepy h="Dostępy" textLen=3099 newErrors=0
+--- CONSOLE ERRORS ---
+HTTP 404 /api/employees/me
+console.error: Failed to load resource: the server responded with a status of 404 (Not Found)
+HTTP 400 /api/strategic-brain/employee/sb_emp_new1
+console.error: Failed to load resource: the server responded with a status of 400 (Bad Request)
+HTTP 400 /api/strategic-brain/employee/sb_emp_new2
+console.error: Failed to load resource: the server responded with a status of 400 (Bad Request)
