@@ -171,6 +171,22 @@ Wnioski: złóż/anuluj/zatwierdź/odrzuć/inbox/lista. Dostępy: wydaj/odwołaj
 
 **G4 downgrade:** P0→P2 (dług techniczny — realny fix = wpięcie istniejącego `GET /api/ustawienia/units` zamiast stałej; pęka na innym tenancie, nie na demie).
 
+## 3.9 WYNIKI PĘTLI NAPRAWCZEJ QA-F (2026-08-06)
+
+Commit `f97f27a` (+ `4b5cfbc` dla G0). 388 vitest zielonych (+8), tsc czysto, obraz web przebudowany i wdrożony.
+
+| Luka | Naprawa | Weryfikacja live (:8080) |
+|---|---|---|
+| **G0** blackout danych | `TENANT_RUNTIME_URL` +`/api` | ✅ 5 endpointów 404→200, dashboard 39/882/1/4 |
+| **G1** martwa ikona profilu | `UserMenu` (kliencki dropdown) + strona `/profil` | ✅ „Menu konta" → „Mój profil"/„Wyloguj"; `/profil` renderuje tożsamość (Demo Admin / demo / Administrator klienta / 4Mobility) |
+| **G2** martwy dzwonek | `NotificationsMenu` — kropka = realna liczba | ✅ „Powiadomienia (9)"; panel linkuje do `/wnioski` + `/zamiany` |
+| **G3** Zamiany peer-flow | `fetchMyEmployeeId` + `computeMineRole` | ⚠️ resolver `/api/employees/me`→200 live; `mineRole` wyliczany (wiersze requestera OK); przyciski strony-target (Akceptuj/Odrzuć) pokryte testami — pełny widok wymaga zamiany wycelowanej w konto (brak w seedzie) |
+| **G5** Tour odpięty | `<TourTrigger/>` w topbarze | ✅ przycisk „Przewodnik" widoczny |
+| **G6** martwy reset hasła | usunięty `href="#"` | ✅ brak linku na /login |
+| **G7** mylący badge „3" | usunięty statyczny tag | ✅ brak „3" przy Wnioskach |
+
+**Status kont:** admin `demo` przetestowany szeroko; pracownik `pracownik.demo` — Zamiany (mine=true zwraca wiersze, /me=200). Do dokończenia w kolejnym biegu: manager.demo (pełne RBAC), pełny cross-actor peer-swap (G3 wizualnie), zapis edycji pracownika.
+
 ## 4. Następny krok: pakiet testów manualnych (3 konta)
 
 Konta demo: **admin `demo`** / **`manager.demo`** / **`pracownik.demo`**. Dla każdej luki P0/P1 — dowód wizualny (screenshot) + status sieci (200/307/403/400) + zapis powodu faila. Cel: potwierdzić, które luki to realne błędy runtime, a które gate ról / brak Employee (znika po zalogowaniu na właściwe konto).
