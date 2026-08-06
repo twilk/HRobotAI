@@ -135,6 +135,42 @@ Wnioski: złóż/anuluj/zatwierdź/odrzuć/inbox/lista. Dostępy: wydaj/odwołaj
 
 ---
 
+## 3.8 WYNIKI TESTÓW MANUALNYCH (live :8080, konto admin `demo`) — 2026-08-06
+
+### 🔴 G0 (NOWY, P0 krytyczny) — CAŁY FRONT BEZ DANYCH — ZNALEZIONE I NAPRAWIONE
+- **Objaw:** po zalogowaniu dashboard „Brak połączenia z serwerem", wszystkie KPI = „—". Każde `GET /api/*` przez BFF → **404**.
+- **Root cause:** BFF forwarduje do `${TENANT_RUNTIME_URL}/employees`, a tenant-runtime ma bezwarunkowy `setGlobalPrefix('api')` (`main.ts:15`). `docker-compose.yml:173` ustawiało `TENANT_RUNTIME_URL=http://tenant-runtime:3001` **bez `/api`** → upstream `.../3001/employees` → 404. Login działał (osobny `KEYCLOAK_TOKEN_URL`). Host-dev nie miał buga (`start-live.mjs` używa `.../3001/api`). Konteneryzacja apps/web zgubiła sufiks.
+- **Fix (commit `4b5cfbc`):** `TENANT_RUNTIME_URL=http://tenant-runtime:3001/api` + recreate `web`.
+- **Dowód:** te same 5 endpointów **404 → 200 OK**; dashboard: **39 pracowników, 882 zmiany, 1 zamiana, 4 jednostki**, sygnały zdrowia org. na żywo.
+- **To wyjaśnia większość zgłoszeń użytkownika** („nie można wejść/edytować/otworzyć") — nie był to gate ról, tylko globalny blackout danych.
+
+### Potwierdzone na żywo (po G0-fix)
+| Test | Wynik | Dowód |
+|---|---|---|
+| Login admin `demo` | ✅ | redirect → /dashboard, sesja httpOnly |
+| Dashboard KPI + zdrowie org | ✅ dane na żywo | 39/882/1/4 |
+| Lista pracowników | ✅ | realny roster (Ewa Lewandowska, Tomasz Nowacki…) |
+| Profil pracownika `[id]` | ✅ | otwiera się |
+| **Przycisk „Edytuj" (admin)** | ✅ WIDOCZNY | admin=ADMIN_KLIENTA → `canManage` true |
+| Formularz edycji | ✅ | pola imię/nazwisko/stanowisko/typ/jednostka/etat/kwalifikacje/PESEL |
+| **G4 — hardcoded units vs realne** | ✅ **UUID-y PASUJĄ** | 0276f4fd/053774f2/10371c96/59790e2a = realne jednostki tenanta → zapis z jednostką działa dla dema |
+
+### Nadal potwierdzone jako martwe (P0/P1 — do naprawy w QA-F)
+| Luka | Dowód live | 
+|---|---|
+| **G1 ikona profilu** | brak `button`/menu profilu w drzewie a11y topbaru (jest tylko „Powiadomienia" + „Wyloguj się") |
+| **G2 dzwonek** | `button "Powiadomienia" [ref_12]` obecny, ale bez panelu/handlera |
+| **G5 Tour** | brak `TourTrigger` w topbarze |
+| **G6 reset hasła** | `link "Zapomniałeś hasła?" href="#"` w drzewie login |
+| G7 badge „3" | statyczny w nav |
+
+### Do dokończenia (kolejne konta)
+- [ ] manager.demo — RBAC (brak przycisków admin, widoczność Grafik/Zamiany/Koszty)
+- [ ] pracownik.demo — self-card, Zamiany peer-flow (G3), zgoda AI, moja ewidencja
+- [ ] Zapis edycji pracownika (write) — odłożone: nie ruszamy anchorów demo bez potrzeby
+
+**G4 downgrade:** P0→P2 (dług techniczny — realny fix = wpięcie istniejącego `GET /api/ustawienia/units` zamiast stałej; pęka na innym tenancie, nie na demie).
+
 ## 4. Następny krok: pakiet testów manualnych (3 konta)
 
 Konta demo: **admin `demo`** / **`manager.demo`** / **`pracownik.demo`**. Dla każdej luki P0/P1 — dowód wizualny (screenshot) + status sieci (200/307/403/400) + zapis powodu faila. Cel: potwierdzić, które luki to realne błędy runtime, a które gate ról / brak Employee (znika po zalogowaniu na właściwe konto).
