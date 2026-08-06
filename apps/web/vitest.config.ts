@@ -8,7 +8,7 @@ export default defineConfig({
     environment: 'node',
     // lib/** = grafik wiring logic; components/tour/** = pure tour data + navigation helpers
     // (the isolated guided-tour component's testable, non-React logic).
-    include: ['lib/**/*.test.ts', 'components/tour/**/*.test.ts'],
+    include: ['lib/**/*.test.ts', 'components/**/*.test.ts'],
   },
   resolve: {
     alias: {

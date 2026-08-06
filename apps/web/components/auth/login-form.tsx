@@ -21,20 +21,17 @@ export function LoginForm() {
           invalid={!!state.error}
         />
       </Field>
-      <div className="relative">
-        <a href="#" className="absolute right-0 top-0 text-xs text-accent-ink font-medium">
-          Zapomniałeś hasła?
-        </a>
-        <Field label="Hasło" htmlFor="pw">
-          <Input
-            id="pw"
-            name="pw"
-            type="password"
-            autoComplete="current-password"
-            invalid={!!state.error}
-          />
-        </Field>
-      </div>
+      {/* Link „Zapomniałeś hasła?" usunięty — nie ma flow resetu (był martwym href="#").
+          Reset hasła realizuje admin klienta / Keycloak; wróci jako realna trasa, gdy powstanie. */}
+      <Field label="Hasło" htmlFor="pw">
+        <Input
+          id="pw"
+          name="pw"
+          type="password"
+          autoComplete="current-password"
+          invalid={!!state.error}
+        />
+      </Field>
       {state.error ? (
         <div role="alert" className="mb-3 -mt-1 text-[13px] font-medium text-error">
           {state.error}

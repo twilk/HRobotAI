@@ -136,6 +136,38 @@ interface EnrichMaps {
   empName: Map<string, string>
   shiftLabel: Map<string, string>
   shiftRole: Map<string, string>
+  /** The caller's own Employee id (via `/api/employees/me`), or null when they have no record. */
+  myEmployeeId: string | null
+}
+
+/**
+ * The caller's own Employee id via `GET /employees/me`, or null when they have no employee record
+ * (403/404 — e.g. an ADMIN_KLIENTA who is not also an employee). Mirrors ai-grafik's resolver so the
+ * swap UI can tell whether the caller is the requester or target of a row (drives the peer actions).
+ */
+export async function fetchMyEmployeeId(): Promise<string | null> {
+  try {
+    const me = await swapFetch<{ id: string }>('/api/employees/me')
+    return me.id
+  } catch (err) {
+    if (err instanceof SwapApiError && (err.status === 404 || err.status === 403)) return null
+    throw err
+  }
+}
+
+/**
+ * The caller's relationship to a swap row, from their own Employee id. Pure so it is unit-testable:
+ * 'requester' when they raised it, 'target' when they are the counterparty, null otherwise (incl. no
+ * `/me` identity). Drives which peer actions (accept/reject, submit-to-manager) the UI renders.
+ */
+export function computeMineRole(
+  row: Pick<BackendSwapRow, 'requesterEmployeeId' | 'targetEmployeeId'>,
+  myEmployeeId: string | null,
+): 'requester' | 'target' | null {
+  if (!myEmployeeId) return null
+  if (row.requesterEmployeeId === myEmployeeId) return 'requester'
+  if (row.targetEmployeeId === myEmployeeId) return 'target'
+  return null
 }
 
 const WEEKDAY_SHORT_PL = ['nd', 'pon', 'wt', 'śr', 'czw', 'pt', 'sob'] as const
@@ -152,9 +184,10 @@ function shiftLabelOf(s: ShiftLite): string {
 
 /** Fetch the roster + shifts once (same-origin proxy) and build the id→label / id→name maps. */
 async function buildEnrichMaps(): Promise<EnrichMaps> {
-  const [emps, shifts] = await Promise.all([
+  const [emps, shifts, myEmployeeId] = await Promise.all([
     swapFetch<EmployeeLite[]>('/api/employees'),
     swapFetch<ShiftLite[]>('/api/grafik/shifts'),
+    fetchMyEmployeeId(),
   ])
   const empName = new Map<string, string>()
   for (const e of emps) empName.set(e.id, `${e.firstName} ${e.lastName}`.trim())
@@ -164,7 +197,7 @@ async function buildEnrichMaps(): Promise<EnrichMaps> {
     shiftLabel.set(s.id, shiftLabelOf(s))
     shiftRole.set(s.id, s.role)
   }
-  return { empName, shiftLabel, shiftRole }
+  return { empName, shiftLabel, shiftRole, myEmployeeId }
 }
 
 /** Project a raw backend row onto the {@link SwapRequest} shape the component renders. */
@@ -185,10 +218,10 @@ function enrichRow(row: BackendSwapRow, maps: EnrichMaps): SwapRequest {
     state: row.state,
     requester,
     target,
-    // No "current employee" endpoint yet, so we cannot tell whether the caller is the requester or
-    // the target of a row. The demo user (ADMIN_KLIENTA) has no Employee record, so the `mine=true`
-    // list is empty and this is moot; a worker view would need a `/me` resolver to populate this.
-    mineRole: null,
+    // Resolved from the caller's own Employee id (`/api/employees/me`, fetched once in buildEnrichMaps):
+    // 'requester' / 'target' / null. Drives the peer accept/reject + submit-to-manager actions. An
+    // ADMIN_KLIENTA with no Employee record resolves to null (their `mine=true` list is empty anyway).
+    mineRole: computeMineRole(row, maps.myEmployeeId),
     // The backend row has no department name; the requester shift's job role is the most meaningful
     // human label available for the "Jednostka" column.
     unit: maps.shiftRole.get(row.requesterShiftId) ?? '—',

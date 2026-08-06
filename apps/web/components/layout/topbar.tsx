@@ -1,7 +1,8 @@
 import { MobileNav } from './mobile-drawer'
+import { UserMenu } from './user-menu'
+import { NotificationsMenu } from './notifications-menu'
 import { SecuredChip } from '@/components/ui/secured-chip'
-import { IconBell, IconLogout } from '@/components/icons'
-import { logout } from '@/lib/auth-actions'
+import { TourTrigger } from '@/components/tour/tour'
 import type { Role } from '@/lib/nav'
 
 export interface TopBarProps {
@@ -22,33 +23,12 @@ export function TopBar({ title, user, activeHref, roles, tenant }: TopBarProps) 
       </div>
       <div className="ml-auto flex items-center gap-3.5">
         <SecuredChip className="hidden sm:inline-flex" />
-        <button
-          type="button"
-          aria-label="Powiadomienia"
-          className="relative grid place-items-center w-[34px] h-[34px] rounded-lg border border-line-strong bg-card text-muted"
-        >
-          <span className="absolute top-[7px] right-2 w-1.5 h-1.5 rounded-full bg-accent ring-2 ring-card" />
-          <IconBell className="w-[17px] h-[17px]" />
-        </button>
-        <div className="flex items-center gap-2.5 pl-1.5">
-          <span className="grid place-items-center w-[34px] h-[34px] rounded-[9px] bg-gradient-to-b from-navy-700 to-navy text-white font-semibold text-[13px]">
-            {user.initials}
-          </span>
-          <div className="hidden sm:block">
-            <div className="text-[13px] font-medium leading-tight">{user.name}</div>
-            <div className="font-mono text-[9.5px] tracking-[.08em] uppercase text-accent-ink mt-0.5">{user.role}</div>
-          </div>
-        </div>
-        <form action={logout} className="flex">
-          <button
-            type="submit"
-            aria-label="Wyloguj się"
-            title="Wyloguj się"
-            className="grid place-items-center w-[34px] h-[34px] rounded-lg border border-line-strong bg-card text-muted hover:text-error hover:border-error/40 transition-colors"
-          >
-            <IconLogout className="w-[17px] h-[17px]" />
-          </button>
-        </form>
+        {/* G5: gotowy przewodnik po produkcie, wcześniej zbudowany lecz niewpięty w topbar. */}
+        <TourTrigger className="hidden md:inline-flex" />
+        {/* G2: realny panel powiadomień (kropka odzwierciedla liczbę pozycji do decyzji). */}
+        <NotificationsMenu />
+        {/* G1: klikalne menu konta z „Mój profil" + „Wyloguj" (wcześniej martwa ikona/avatar). */}
+        <UserMenu name={user.name} role={user.role} initials={user.initials} />
       </div>
     </header>
   )

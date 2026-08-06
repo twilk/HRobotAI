@@ -49,7 +49,9 @@ export const NAV: NavGroup[] = [
         roles: ['MANAGER', 'HR', 'ADMIN_KLIENTA'],
       },
       { label: 'Zamiany', href: '/zamiany', icon: IconRequests },
-      { label: 'Wnioski', href: '/wnioski', icon: IconRequests, tag: '3' },
+      // Bez statycznego licznika ('3' było hardkodem, nie odzwierciedlało realnej liczby wniosków —
+      // mylące). Realny badge = dynamiczny licznik PENDING; do czasu jego wpięcia lepiej bez tagu.
+      { label: 'Wnioski', href: '/wnioski', icon: IconRequests },
       { label: 'Dostępy', href: '/dostepy', icon: IconKey, roles: ['MANAGER', 'HR', 'ADMIN_KLIENTA'] },
       // Moduł Dokumenty (M3, SPEC §7). A plain PRACOWNIK still reaches /dokumenty by direct
       // navigation (the page shows a read-only "moja ewidencja" branch via /dokumenty/mine — see

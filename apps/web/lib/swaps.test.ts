@@ -3,6 +3,7 @@ import {
   STATE_LABEL,
   SwapApiError,
   TERMINAL_STATES,
+  computeMineRole,
   swapApi,
   type SwapState,
 } from './swaps'
@@ -342,5 +343,29 @@ describe('rule violations surface as SwapApiError', () => {
       status: 502,
       message: 'Bad Gateway: tenant-runtime unreachable',
     })
+  })
+})
+
+describe('computeMineRole (G3 — peer-flow reachability)', () => {
+  const row = { requesterEmployeeId: 'emp-A', targetEmployeeId: 'emp-B' }
+
+  it("is 'requester' when the caller raised the swap", () => {
+    expect(computeMineRole(row, 'emp-A')).toBe('requester')
+  })
+
+  it("is 'target' when the caller is the counterparty", () => {
+    expect(computeMineRole(row, 'emp-B')).toBe('target')
+  })
+
+  it('is null for an unrelated employee', () => {
+    expect(computeMineRole(row, 'emp-C')).toBeNull()
+  })
+
+  it('is null when the caller has no employee identity (e.g. admin without /me)', () => {
+    expect(computeMineRole(row, null)).toBeNull()
+  })
+
+  it('is null (not target) when there is no counterparty', () => {
+    expect(computeMineRole({ requesterEmployeeId: 'emp-A', targetEmployeeId: null }, 'emp-B')).toBeNull()
   })
 })
