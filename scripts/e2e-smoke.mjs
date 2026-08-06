@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // CI-5 — real browser smoke lane (replaces scripts/e2e-smoke-placeholder.mjs).
 //
-// The smoke itself lives in docs/design/web-kit (Playwright + the spec), because that is the app it
-// drives. web-kit is a STANDALONE pnpm project, deliberately outside the monorepo workspace, so this
-// root-level shim is what lets `pnpm turbo run test:e2e:smoke` reach it.
+// The smoke itself lives in apps/web (Playwright + the spec), because that is the app it drives.
+// apps/web is a workspace package (@hrobot/web), so this root-level shim is what lets
+// `pnpm turbo run test:e2e:smoke` reach it.
 //
-// Preflight, not just a spawn: Playwright needs a live stack (web-kit + Keycloak + tenant-runtime).
+// Preflight, not just a spawn: Playwright needs a live stack (apps/web + Keycloak + tenant-runtime).
 //   • app reachable        → run the smoke for real;
 //   • app down, local dev   → SKIP with an explanation (a laptop with nothing running must not fail);
 //   • app down, CI          → FAIL. A smoke gate that silently passes because nothing was running is
@@ -19,7 +19,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const WEB_KIT = path.resolve(__dirname, '..', 'docs', 'design', 'web-kit')
+const WEB_KIT = path.resolve(__dirname, '..', 'apps', 'web')
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:5601'
 const IS_CI = Boolean(process.env.CI)
 
@@ -30,7 +30,7 @@ function skipOrFail(reason) {
     process.exit(1)
   }
   console.log(`[test:e2e:smoke] SKIP — ${reason}`)
-  console.log(`[test:e2e:smoke] Bring the stack up (docker compose up -d + web-kit on ${BASE_URL}) to run it.`)
+  console.log(`[test:e2e:smoke] Bring the stack up (docker compose -p hrobot --profile full up -d, front on ${BASE_URL}) to run it.`)
   process.exit(0)
 }
 

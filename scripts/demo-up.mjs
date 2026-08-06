@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // One command: stopped stack → demo-ready. Brings the full compose stack up, waits for Keycloak +
 // tenant-runtime, rebuilds the ephemeral demo realm, auto-applies the keycloak_sub sync the seed
-// emits, and seeds the J5 pending swap. Prints the login table + the one manual step left (the
-// web-kit UI, which is a separate host process by design).
+// emits, and seeds the J5 pending swap. Prints the login table — the front (apps/web) is already
+// part of the compose stack this script brings up, served via Caddy.
 //
 //   node scripts/demo-up.mjs
 //
@@ -152,7 +152,7 @@ async function main() {
   console.log(`
 ✅ Demo backend ready (Grafik + AI + M2 modules).
 
-   Logins (${'http://localhost:5601'} → /login):
+   Logins (${'http://localhost:8080'} → /login):
      demo            / demo-staging-2026   ADMIN      full grafik + swap approval + all M2 modules
      manager.demo    / Manager!2026        MANAGER    unit-scoped grafik/swaps + wnioski/dostępy (own units)
      pracownik.demo  / Pracownik!2026      PRACOWNIK  read-only "my schedule" + own wnioski (Anna Kowalska)
@@ -161,8 +161,8 @@ async function main() {
    M2 modules now populated: Wnioski (6 pending / 26 approved / 1 rejected), Dostępy (15 grants),
    Ustawienia (4Mobility), Użytkownicy (3 kont), Koszty (10 stawek → pełne pokrycie).
 
-   Last step (separate host process by design):
-     cd docs/design/web-kit && node start-prod.mjs     # http://localhost:5601 (demo build)
+   Front is already up — it's part of the compose stack (docker compose -p hrobot --profile full up -d),
+   served behind Caddy at http://localhost:8080. No separate host process needed.
 
    Demo week: 13–19 July 2026.
    Grafik/AI script:  data/m2-evidence/demo-scenario-4mobility.md

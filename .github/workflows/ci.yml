@@ -200,7 +200,7 @@ jobs:
 
   # CI-5 — browser smoke: login → /grafik renders → 0 console errors → screenshot artifact.
   #
-  # This lane drives a RUNNING stack (web-kit + Keycloak + tenant-runtime + Postgres), so unlike the
+  # This lane drives a RUNNING stack (apps/web + Keycloak + tenant-runtime + Postgres), so unlike the
   # other jobs it cannot stand alone on a hosted runner. It is therefore gated on the repo variable
   # E2E_BASE_URL (set it to the staging URL once the self-hosted runner from ENV-1 is registered).
   # Without that variable the job is skipped rather than red — but note the runner script FAILS in CI
@@ -223,13 +223,12 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      # web-kit is a standalone pnpm project outside the workspace — install it separately.
-      - name: Install web-kit deps
-        working-directory: docs/design/web-kit
+      # apps/web (@hrobot/web) is a workspace package now — a normal root install covers it.
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Install Chromium
-        working-directory: docs/design/web-kit
+        working-directory: apps/web
         run: npx playwright install --with-deps chromium
 
       - name: Smoke (login -> /grafik)
@@ -250,7 +249,7 @@ jobs:
           name: ci5-smoke-evidence
           path: |
             data/m2-evidence/screenshots/
-            docs/design/web-kit/.playwright/test-results/
+            apps/web/.playwright/test-results/
           if-no-files-found: warn
 
   # --- Re-add WITH real coverage (do not un-comment empty lanes — they only burn minutes) ---
