@@ -170,7 +170,11 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
     environment:
-      TENANT_RUNTIME_URL: http://tenant-runtime:3001
+      # MUSI zawierać sufiks /api — tenant-runtime ma bezwarunkowy setGlobalPrefix('api')
+      # (apps/tenant-runtime/src/main.ts). BFF forwarduje do ${TENANT_RUNTIME_URL}/employees itd.,
+      # więc bez /api każde wywołanie danych → 404 (login działa, bo KEYCLOAK_TOKEN_URL jest osobny).
+      # Zgodne z apps/web/start-live.mjs (host-dev używał http://localhost:3001/api).
+      TENANT_RUNTIME_URL: http://tenant-runtime:3001/api
       KEYCLOAK_TOKEN_URL: http://keycloak:8080/realms/hrobot-staging/protocol/openid-connect/token
       KEYCLOAK_CLIENT_ID: hrobot-web
       KEYCLOAK_USERNAME: demo
