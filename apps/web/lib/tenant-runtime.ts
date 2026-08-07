@@ -5,13 +5,19 @@
 //
 // AUTH: tenant-runtime derives the tenant from the Keycloak JWT issuer (`iss` → realm `hrobot-<slug>`)
 // and gates every route with KeycloakJwtGuard, so all we must do is forward a valid Bearer token.
-// web-kit has no login flow yet (login-form.tsx is a mock router.push), so the token is resolved,
-// in priority order, from: the caller's Authorization header → an `hrobot_token` cookie → a freshly
-// minted Keycloak token (direct grant, see lib/keycloak-token.ts) → the legacy TENANT_RUNTIME_DEV_TOKEN
-// env (a static service token). See the PR body.
+// The token is resolved, in priority order, from: the caller's Authorization header → an
+// `hrobot_token` cookie (both read via lib/api-gate.ts `readCallerCredential`, the SAME function the
+// middleware gate uses) → a freshly minted Keycloak token (direct grant, see lib/keycloak-token.ts)
+// → the legacy TENANT_RUNTIME_DEV_TOKEN env (a static service token).
+//
+// The last two are AMBIENT credentials: they belong to the server, not to the caller, so using one
+// means the BFF fetches tenant data on behalf of somebody who proved nothing. They are therefore
+// opt-in via HROBOT_ALLOW_AMBIENT_TOKEN and unavailable in any configuration that does not set it —
+// see ambientServiceTokenAllowed() below.
 
 import { getKeycloakToken } from './keycloak-token'
 import { cookies } from 'next/headers'
+import { readCallerCredential } from './api-gate'
 import { refreshAccessToken } from './refresh-token'
 import { SESSION_COOKIE, REFRESH_COOKIE } from './session'
 
@@ -31,14 +37,50 @@ interface ResolvedAuth {
   source: 'header' | 'cookie' | 'minted' | 'dev'
 }
 
-/** Bearer token to forward, or null if the caller supplied none and nothing else is configured. */
-async function resolveAuthorization(req: Request): Promise<ResolvedAuth | null> {
-  const header = req.headers.get('authorization')
-  if (header) return { authorization: header, source: 'header' }
+/**
+ * Whether this process may lend its OWN credential to a request that brought none — i.e. use the
+ * minted Keycloak token or the static TENANT_RUNTIME_DEV_TOKEN.
+ *
+ * WHY THIS IS OPT-IN. Both ambient sources used to be reachable purely by being configured, with no
+ * environmental condition anywhere: lib/keycloak-token.ts gates minting on the presence of the four
+ * KEYCLOAK_* vars, never on NODE_ENV, and the dev token was a bare `process.env` read. That is not a
+ * dev-only path in practice — start-prod.mjs sets NODE_ENV=production together with the full
+ * KEYCLOAK_* set, so a production-mode build minted service tokens for anonymous callers. Keying the
+ * guard on NODE_ENV would therefore have guarded nothing; it has to be an explicit opt-in that a
+ * real deployment simply does not set, so the default everywhere is fail-closed.
+ *
+ * It is NOT removed outright because the two local demo launchers document a deliberate dependency
+ * on self-minting ("LOCAL DEMO ONLY" — start-live.mjs, start-prod.mjs); they set the flag. Nothing
+ * outside docs/design/web-kit references either source (`git grep TENANT_RUNTIME_DEV_TOKEN`).
+ *
+ * Defence in depth, not the primary gate: middleware.ts already 401s an anonymous /api request
+ * before any handler runs, so a request that gets this far normally carries a caller credential and
+ * never consults an ambient one. This second layer is what holds if middleware is bypassed — a
+ * mis-scoped matcher, a wrongly-exempted route, or a middleware-bypass bug in the framework.
+ */
+export function ambientServiceTokenAllowed(): boolean {
+  const flag = process.env.HROBOT_ALLOW_AMBIENT_TOKEN
+  return flag === '1' || flag === 'true'
+}
 
-  const cookie = req.headers.get('cookie')
-  const match = cookie ? /(?:^|;\s*)hrobot_token=([^;]+)/.exec(cookie) : null
-  if (match) return { authorization: `Bearer ${decodeURIComponent(match[1])}`, source: 'cookie' }
+/**
+ * Bearer token to forward, or null if the caller supplied none and ambient credentials are off.
+ *
+ * Exported because the STT service (app/api/voice/transcribe) is a DIFFERENT backend that needs the
+ * IDENTICAL bearer resolution — its FastAPI dependency verifies the same Keycloak token and derives
+ * the same tenant from `iss` (stt-service/app/deps.py). Reusing this keeps one resolution order in
+ * the codebase instead of a second, slowly-diverging copy.
+ */
+export async function resolveAuthorization(req: Request): Promise<ResolvedAuth | null> {
+  // Caller-supplied credential (Authorization header, then the hrobot_token cookie), read through
+  // the same helper the middleware gate uses so the two layers can never disagree about whether a
+  // request is anonymous.
+  const caller = readCallerCredential(req)
+  if (caller) return caller
+
+  // From here on the caller proved nothing. Anything we forward would be OUR credential, so stop
+  // unless this process was explicitly told it may do that.
+  if (!ambientServiceTokenAllowed()) return null
 
   // Mint (or reuse a cached) Keycloak token via the direct grant. Returns null when the four
   // KEYCLOAK_* env vars are unset, so we fall through to the legacy static token below.
@@ -70,7 +112,9 @@ export async function proxyToTenantRuntime(req: Request, backendPath: string, se
       {
         error: 'unauthenticated',
         message:
-          'No bearer token to forward. Send an Authorization header, set an hrobot_token cookie, configure the KEYCLOAK_* env vars, or set TENANT_RUNTIME_DEV_TOKEN.',
+          'No caller credential to forward. Send an Authorization header or an hrobot_token cookie. ' +
+          '(Ambient service tokens — a minted KEYCLOAK_* token or TENANT_RUNTIME_DEV_TOKEN — are only ' +
+          'used when HROBOT_ALLOW_AMBIENT_TOKEN is set, which is for local demos only.)',
       },
       { status: 401 },
     )

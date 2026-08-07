@@ -64,8 +64,14 @@ start_detached() {
 }
 
 # ---- web front -------------------------------------------------------------
+# Paths handed to NATIVE binaries (node) must be Windows-style on the Windows box: the deploy
+# job exports MSYS_NO_PATHCONV=1 (needed by `docker compose exec --workdir /app`), which also
+# disables Git Bash's automatic /c/... -> C:\... conversion — node then misreads /c/Users/...
+# as C:\c\Users\... (drive doubled). cygpath -m converts explicitly; on Linux it's absent and
+# the POSIX path passes through unchanged.
+REPO_ROOT_NATIVE="$(cygpath -m "${REPO_ROOT}" 2>/dev/null || echo "${REPO_ROOT}")"
 stop_by_pidfile web
-start_detached web node "${REPO_ROOT}/apps/web/serve.mjs"
+start_detached web node "${REPO_ROOT_NATIVE}/apps/web/serve.mjs"
 
 # ---- cloudflared tunnel -----------------------------------------------------
 # Named tunnel (stable URL, ENV-2) when CLOUDFLARE_TUNNEL_TOKEN is provided; otherwise degrade

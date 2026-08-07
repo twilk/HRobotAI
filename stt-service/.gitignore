@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+# Downloaded faster-whisper weights (~490 MB) — cached at runtime, never committed.
+models/

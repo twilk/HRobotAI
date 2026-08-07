@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, NotFoundException } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
 import {
   compositeScore,
@@ -100,6 +100,17 @@ function fallbackKeys(peerGroupKey: string): string[] {
 
 function num(v: number | null | undefined): number | null {
   return v == null ? null : Number(v)
+}
+
+/**
+ * [L-2] Prisma's "required record not found" (P2025) — what `update`/`delete` reject with when the
+ * `where` matched nothing. Duck-typed on `code` rather than `instanceof
+ * PrismaClientKnownRequestError`, mirroring `isUniqueViolation` in `performance-config.service.ts`:
+ * the generated client class is not importable from `@hrobot/db`'s public surface, and an
+ * `instanceof` across two copies of the runtime would silently be false anyway.
+ */
+function isRecordNotFound(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2025'
 }
 
 @Injectable()
@@ -308,12 +319,25 @@ export class RecommendationService {
    * the ONLY mutation the acknowledge flow performs — it does NOT touch `Employee`/`Shift`/any
    * personnel-execution state (RODO art. 22: the AI recommends, a human decides, and the decision is
    * merely logged, never auto-actioned). The ids-only AUDIT entry is written by the controller (M19).
+   *
+   * [L-2] An unknown `id` used to reject with Prisma's raw P2025 and surface as
+   * `500 {"statusCode":500,"message":"Internal server error"}` — a client fact reported as a server
+   * fault. It is mapped to 404 here rather than by pre-reading the row: a find-then-update would
+   * both cost a second round-trip and still race, since the record can vanish between the two
+   * queries. Only P2025 is translated; every other error propagates untouched, so a genuine failure
+   * can never be laundered into a tidy 404. Because the throw happens BEFORE the controller's audit
+   * call, no acknowledgement is logged for a decision that never landed.
    */
   async acknowledge(client: TenantClient, id: string, userId: string): Promise<unknown> {
-    return client.recruitmentRecommendation.update({
-      where: { id },
-      data: { acknowledgedByUserId: userId, acknowledgedAt: new Date() },
-    } as never)
+    try {
+      return await client.recruitmentRecommendation.update({
+        where: { id },
+        data: { acknowledgedByUserId: userId, acknowledgedAt: new Date() },
+      } as never)
+    } catch (err: unknown) {
+      if (isRecordNotFound(err)) throw new NotFoundException(`Recruitment recommendation ${id} not found`)
+      throw err
+    }
   }
 
   /**

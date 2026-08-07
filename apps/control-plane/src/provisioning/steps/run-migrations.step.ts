@@ -1,3 +1,4 @@
+import * as path from 'node:path'
 import { Inject, Injectable, Logger } from '@nestjs/common'
 import { EncryptionService } from '@hrobot/shared'
 import { ProvisioningStep } from '@hrobot/shared'
@@ -14,6 +15,16 @@ function resolvePrismaCli(): string {
   const dbEntry = require.resolve('@hrobot/db')
   const pkgJson = require.resolve('prisma/package.json', { paths: [dbEntry] })
   return pkgJson.replace(/package\.json$/, 'build/index.js')
+}
+
+/** Absolute path to the tenant schema. The child process inherits THIS app's cwd
+ *  (/app/apps/control-plane in the container image), so a relative `--schema=packages/db/…`
+ *  silently resolved to a non-existent path and every in-app tenant migration failed — the bug
+ *  that forced manual raw-SQL tenant migrations on the live box. Resolve from @hrobot/db's real
+ *  location instead (its `exports` map blocks `./package.json`, so go via the main entry). */
+function resolveTenantSchema(): string {
+  const dbEntry = require.resolve('@hrobot/db') // …/packages/db/dist/index.js
+  return path.resolve(path.dirname(dbEntry), '..', 'prisma', 'tenant', 'schema.prisma')
 }
 
 // C5: async runner so a long `prisma migrate deploy` never blocks the shared HTTP + AMQP event
@@ -45,14 +56,20 @@ export class RunMigrationsStep implements ProvisioningStepHandler {
     try {
       await this.exec(
         process.execPath, // the current node binary — avoids the pnpm shell shim (hangs on Windows)
-        [resolvePrismaCli(), 'migrate', 'deploy', '--schema=packages/db/prisma/tenant/schema.prisma'],
+        [resolvePrismaCli(), 'migrate', 'deploy', `--schema=${resolveTenantSchema()}`],
         { env: { ...process.env, DATABASE_URL: dbUrl }, timeout: 120_000 },
       )
     } catch (err: unknown) {
-      // execFile rejects with an Error carrying .stderr on non-zero exit. Sanitize: the decrypted
-      // DATABASE_URL (with password) must never surface in the thrown message / lastError.
-      const e = err as { stderr?: unknown; message?: unknown }
-      const detail = String(e.stderr ?? e.message ?? 'migration failed')
+      // execFile rejects with an Error carrying .stderr/.stdout on non-zero exit. Prisma reports
+      // some failures on STDOUT, and an EMPTY stderr must not mask the message (that combination
+      // used to persist last_error = '' — undiagnosable). Sanitize: the decrypted DATABASE_URL
+      // (with password) must never surface in the thrown message / lastError.
+      const e = err as { stderr?: unknown; stdout?: unknown; message?: unknown }
+      const detail =
+        [e.stderr, e.stdout, e.message]
+          .map((v) => (v == null ? '' : String(v).trim()))
+          .filter(Boolean)
+          .join('\n') || 'migration failed'
       throw new Error(detail.replace(/postgresql:\/\/[^@\s]*@/gi, 'postgresql://***@'))
     }
 

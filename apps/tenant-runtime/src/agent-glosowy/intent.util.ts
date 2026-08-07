@@ -15,7 +15,72 @@
  * reads the wall clock — so a given (text, today) pair always yields the identical ParsedIntent.
  */
 
-export type AgentIntent = 'URLOP' | 'L4' | 'MOJ_GRAFIK' | 'NIEZNANE'
+import { isoWeekRange } from '../ai-grafik/week-range.util.js'
+
+export type AgentIntent =
+  | 'URLOP'
+  | 'L4'
+  | 'MOJ_GRAFIK'
+  | 'SALDO_URLOPU'
+  | 'STATUS_WNIOSKU'
+  | 'POMOC'
+  | 'KTO_PRACUJE'
+  | 'NASTEPNA_ZMIANA'
+  | 'MOJA_EWIDENCJA'
+  | 'ANULUJ_WNIOSEK'
+  | 'ZAMIANA_ZMIANY'
+  | 'ZNAJDZ_ZASTEPSTWO'
+  | 'NIEZNANE'
+
+/** One catalog row per registered (non-`NIEZNANE`) intent — the SINGLE source of truth for POMOC's
+ * help text (see `VoiceCommandService`) and for the `ExecuteDto` `@IsIn` allowlist. Adding an intent
+ * means adding ONE row here; nothing else needs to be told about it by hand. */
+export interface IntentCatalogEntry {
+  intent: Exclude<AgentIntent, 'NIEZNANE'>
+  /** Polish, human-facing: what the command does. */
+  opis: string
+  /** A representative utterance a user might actually say. */
+  przyklad: string
+}
+
+export const INTENT_CATALOG: readonly IntentCatalogEntry[] = [
+  { intent: 'URLOP', opis: 'złożenie wniosku urlopowego', przyklad: 'chcę urlop od piątku do poniedziałku' },
+  { intent: 'L4', opis: 'zgłoszenie zwolnienia lekarskiego', przyklad: 'zgłoś L4 na dziś' },
+  { intent: 'MOJ_GRAFIK', opis: 'sprawdzenie mojego grafiku', przyklad: 'jaki mam grafik jutro' },
+  { intent: 'SALDO_URLOPU', opis: 'sprawdzenie salda urlopu wypoczynkowego', przyklad: 'ile mam dni urlopu' },
+  { intent: 'STATUS_WNIOSKU', opis: 'sprawdzenie statusu ostatniego wniosku', przyklad: 'co z moim wnioskiem' },
+  { intent: 'POMOC', opis: 'wyświetlenie listy dostępnych poleceń', przyklad: 'pomoc' },
+  {
+    intent: 'KTO_PRACUJE',
+    opis: 'sprawdzenie kto dziś pracuje / kto jest nieobecny (zakres zależny od roli)',
+    przyklad: 'kto dzisiaj pracuje',
+  },
+  {
+    intent: 'NASTEPNA_ZMIANA',
+    opis: 'sprawdzenie, kiedy jest moja najbliższa zmiana',
+    przyklad: 'kiedy mam następną zmianę',
+  },
+  {
+    intent: 'MOJA_EWIDENCJA',
+    opis: 'sprawdzenie przepracowanych godzin i nadwyżki ponad normę za okres',
+    przyklad: 'ile przepracowałem godzin w tym tygodniu',
+  },
+  {
+    intent: 'ANULUJ_WNIOSEK',
+    opis: 'anulowanie Twojego najnowszego oczekującego wniosku (wymaga potwierdzenia)',
+    przyklad: 'anuluj mój wniosek urlopowy',
+  },
+  {
+    intent: 'ZAMIANA_ZMIANY',
+    opis: 'zgłoszenie prośby o zamianę Twojej zmiany w danym dniu (wymaga potwierdzenia)',
+    przyklad: 'chcę oddać zmianę w piątek',
+  },
+  {
+    intent: 'ZNAJDZ_ZASTEPSTWO',
+    opis: 'rozpoczęcie poszukiwania zastępstwa na zmianę w danym dniu (rola kadrowa; wymaga potwierdzenia)',
+    przyklad: 'potrzebuję zastępstwa na moją zmianę w piątek',
+  },
+]
 
 /** Slots extracted from an utterance. Dates are ISO `YYYY-MM-DD`; `type` is the leave kind. */
 export interface ParsedEntities {
@@ -166,8 +231,42 @@ function extractDates(text: string, today: Date): { dateFrom?: string; dateTo?: 
 const L4_RE = /\bl4\b|zwolnieni|chorob|choruj|jestem chor/
 /** Leave (urlop) markers. */
 const URLOP_RE = /urlop|wolne\b|wolnego\b/
-/** Schedule (grafik) markers. */
-const GRAFIK_RE = /grafik|zmian[ayę]\b|kiedy pracuj|moje zmiany/
+/** Leave-balance (saldo urlopu) markers — checked BEFORE plain URLOP so "ile ... urlopu" / "saldo
+ * urlopowe" never reads as a request to file a new leave. */
+const SALDO_URLOPU_RE = /ile.{0,20}(dni )?urlopu|saldo urlop|urlop.{0,10}saldo|ile.{0,10}urlopu.{0,10}zostało|pozostał.{0,10}urlop/
+/** Roster markers ("kto dziś pracuje" / "kto jest nieobecny" / "kto ma zmianę"). Checked BEFORE
+ * `GRAFIK_RE` — "kto ma zmianę w piątek" also matches `GRAFIK_RE`'s `zmian[ayę]\b`, and "kto" is
+ * what disambiguates a roster question from "mój grafik". */
+const KTO_PRACUJE_RE = /\bkto\b.{0,20}(pracuj|nieobecn|zmian)/
+/** Next-shift markers ("kiedy mam następną zmianę" / "kiedy pracuję"). Checked BEFORE `GRAFIK_RE` —
+ * both "następną zmianę" and "kiedy pracuj" would otherwise be swallowed by `GRAFIK_RE`'s broader
+ * `zmian[ayę]\b`/`kiedy pracuj` markers. "kiedy pracuję" moved HERE (out of `GRAFIK_RE`, see below):
+ * "when do I next work" is a next-shift question, not a request for the whole schedule. */
+const NASTEPNA_ZMIANA_RE = /nast[eę]pn.{0,10}zmian|kiedy.{0,15}(pracuj|zmian)/
+/** Timesheet markers ("moja ewidencja" / "ile przepracowałem" / "moje nadgodziny"). `nadgodzin` is
+ * accepted as a TRIGGER word only — a user naturally says it — but the response NEVER labels the
+ * computed metric that way; see `VoiceCommandService` / `nadwyzkaPonadNorme` for why. */
+const MOJA_EWIDENCJA_RE = /ewidencj|przepracowa[nł]|nadgodzin|godziny.{0,10}pracy/
+/** Shift-swap ("give away my shift") markers. Checked BEFORE `GRAFIK_RE` — "zamienić zmianę" /
+ * "oddać zmianę" would otherwise be swallowed by `GRAFIK_RE`'s `zmian[ayę]\b`. */
+const ZAMIANA_ZMIANY_RE = /zamie[nń].{0,10}zmian|zamian[ae].{0,10}zmian|odda[jć].{0,10}zmian|wymie[nń].{0,10}zmian/
+/** Find-a-replacement markers ("znajdź kogoś na wtorek" / "potrzebuję zastępstwa na zmianę w
+ * piątek"). Checked BEFORE `GRAFIK_RE` — "zastępstwa na moją zmianę" would otherwise be swallowed by
+ * `GRAFIK_RE`'s `zmian[ayę]\b`. */
+const ZNAJDZ_ZASTEPSTWO_RE = /zast[eę]pst|znajd[zź].{0,15}(kogo[sś]|zast[eę]p)/
+/** Schedule (grafik) markers. NOTE: `kiedy pracuj` intentionally lives in `NASTEPNA_ZMIANA_RE` now,
+ * not here — checked earlier in `parseIntent`, so this branch never sees it. */
+const GRAFIK_RE = /grafik|zmian[ayę]\b|moje zmiany/
+/** Leave-request status markers ("co z moim wnioskiem" / "status wniosku"). */
+const STATUS_WNIOSKU_RE = /status.{0,15}wniosk|co z (moim )?wniosk|wniosek.{0,15}status/
+/** Help markers ("pomoc" / "jakie masz polecenia" / "co potrafisz"). Checked first — it never
+ * overlaps the domain vocabulary above, but keeping it first keeps the ordering obviously safe as
+ * more intents are added below it. */
+const POMOC_RE = /\bpomoc\b|jakie (polecenia|komendy|masz polecenia)|co (potrafisz|umiesz)|lista (poleceń|polecen|komend)/
+/** Cancel-request markers ("anuluj wniosek" / "anuluj mój urlop" / "wycofaj wniosek"). Checked
+ * BEFORE L4/SALDO/URLOP/STATUS — "anuluj wniosek O URLOP" or "anuluj ZWOLNIENIE" would otherwise be
+ * swallowed by `URLOP_RE`/`L4_RE` (both just look for the domain word, not for "anuluj"). */
+const ANULUJ_WNIOSEK_RE = /anuluj.{0,15}wniosek|anuluj.{0,10}(urlop|zwolnieni)|wycofa[jć].{0,15}wniosek|odwoła[jć].{0,15}wniosek/
 
 /**
  * Parse a Polish utterance into `{intent, entities, confidence}` against the CLOSED command set.
@@ -181,6 +280,18 @@ const GRAFIK_RE = /grafik|zmian[ayę]\b|kiedy pracuj|moje zmiany/
  */
 export function parseIntent(text: string, today: Date): ParsedIntent {
   const normalized = text.toLowerCase().trim()
+
+  // POMOC first — meta-command, never collides with domain vocabulary, dateless.
+  if (POMOC_RE.test(normalized)) {
+    return { intent: 'POMOC', entities: {}, confidence: HIGH_CONFIDENCE }
+  }
+
+  // ANULUJ_WNIOSEK before ANY domain word check — "anuluj wniosek o urlop" / "anuluj zwolnienie"
+  // must never be read as a NEW request for that leave type.
+  if (ANULUJ_WNIOSEK_RE.test(normalized)) {
+    return { intent: 'ANULUJ_WNIOSEK', entities: {}, confidence: HIGH_CONFIDENCE }
+  }
+
   const dates = extractDates(normalized, today)
 
   // L4 first (sick) — "zwolnienie" must not be swallowed by any urlop phrasing.
@@ -192,10 +303,67 @@ export function parseIntent(text: string, today: Date): ParsedIntent {
     }
   }
 
+  // SALDO_URLOPU (read) before plain URLOP — "ile mam dni urlopu" must not file a request.
+  if (SALDO_URLOPU_RE.test(normalized)) {
+    return { intent: 'SALDO_URLOPU', entities: {}, confidence: HIGH_CONFIDENCE }
+  }
+
   if (URLOP_RE.test(normalized)) {
     return {
       intent: 'URLOP',
       entities: { ...dates, type: LEAVE_TYPE.URLOP },
+      confidence: dates.dateFrom != null ? HIGH_CONFIDENCE : LOW_CONFIDENCE,
+    }
+  }
+
+  if (STATUS_WNIOSKU_RE.test(normalized)) {
+    return { intent: 'STATUS_WNIOSKU', entities: {}, confidence: HIGH_CONFIDENCE }
+  }
+
+  if (KTO_PRACUJE_RE.test(normalized)) {
+    const dateFrom = dates.dateFrom ?? toISO(today)
+    return {
+      intent: 'KTO_PRACUJE',
+      entities: { dateFrom, dateTo: dates.dateTo ?? dateFrom },
+      confidence: HIGH_CONFIDENCE,
+    }
+  }
+
+  if (NASTEPNA_ZMIANA_RE.test(normalized)) {
+    // "Next shift" is always relative to "now" — any date word is deliberately not surfaced as a
+    // slot here (the caller resolves "next" against today, not against a spoken date).
+    return { intent: 'NASTEPNA_ZMIANA', entities: {}, confidence: HIGH_CONFIDENCE }
+  }
+
+  if (MOJA_EWIDENCJA_RE.test(normalized)) {
+    // No parseable period → default to the ISO week (Mon..Sun) containing `today`, deterministically.
+    if (dates.dateFrom != null) {
+      return { intent: 'MOJA_EWIDENCJA', entities: { dateFrom: dates.dateFrom, dateTo: dates.dateTo ?? dates.dateFrom }, confidence: HIGH_CONFIDENCE }
+    }
+    const { weekStart, weekEndExcl } = isoWeekRange(today)
+    return {
+      intent: 'MOJA_EWIDENCJA',
+      entities: { dateFrom: toISO(weekStart), dateTo: toISO(addDays(weekEndExcl, -1)) },
+      confidence: HIGH_CONFIDENCE,
+    }
+  }
+
+  if (ZAMIANA_ZMIANY_RE.test(normalized)) {
+    return {
+      intent: 'ZAMIANA_ZMIANY',
+      entities: { ...dates },
+      // A write intent needs a specific day to identify WHICH shift to offer — no date parsed →
+      // low confidence → the caller falls back to a manual form (same policy as URLOP/L4).
+      confidence: dates.dateFrom != null ? HIGH_CONFIDENCE : LOW_CONFIDENCE,
+    }
+  }
+
+  if (ZNAJDZ_ZASTEPSTWO_RE.test(normalized)) {
+    return {
+      intent: 'ZNAJDZ_ZASTEPSTWO',
+      entities: { ...dates },
+      // A write intent needs a specific day to identify WHICH shift needs covering — no date →
+      // low confidence → manual form (same policy as URLOP/L4/ZAMIANA_ZMIANY).
       confidence: dates.dateFrom != null ? HIGH_CONFIDENCE : LOW_CONFIDENCE,
     }
   }

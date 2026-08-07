@@ -10,6 +10,7 @@ import {
   IconSparkles,
   IconFileText,
   IconMessageCircle,
+  IconChart,
 } from '@/components/icons'
 
 export type Role = 'PRACOWNIK' | 'MANAGER' | 'HR' | 'ADMIN_KLIENTA'
@@ -62,6 +63,9 @@ export const NAV: NavGroup[] = [
       // (self, no escalation; ANY_ROLE gate on AgentGlosowyController). No `roles` restriction — every
       // authenticated role sees this entry, unlike Dostępy/Dokumenty above which hide from PRACOWNIK.
       { label: 'Asystent', href: '/asystent', icon: IconMessageCircle, tag: 'AI' },
+      // M3 Analityk HR: aggregate workforce analytics, so a plain PRACOWNIK never sees the entry
+      // (the tenant-runtime @Roles gate answers them with a 403 regardless).
+      { label: 'Analityk HR', href: '/analityk', icon: IconChart, roles: ['MANAGER', 'HR', 'ADMIN_KLIENTA'] },
     ],
   },
   {

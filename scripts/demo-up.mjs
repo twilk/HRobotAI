@@ -19,6 +19,19 @@ const TR = process.env.TENANT_RUNTIME_URL || 'http://localhost:3001'
 const PG = process.env.PG_CONTAINER || 'hrobot-postgres-1'
 const DB = process.env.TENANT_DB || 'hrobot_t_900d948b'
 
+// DEMO_ADMIN_PASSWORD is a credential and must not live in the repo (see docs/design/web-kit/
+// start-live.mjs for the same rule). Read it from the shell environment; fail loudly instead of
+// falling back to a hardcoded value that would end up committed. Rotate the old value
+// (demo-staging-2026) in Keycloak — it is already in git history.
+const DEMO_ADMIN_PASSWORD = process.env.DEMO_ADMIN_PASSWORD
+if (!DEMO_ADMIN_PASSWORD) {
+  console.error(
+    '\n✗ Brak hasła konta demo. Ustaw zmienną środowiskową DEMO_ADMIN_PASSWORD przed uruchomieniem' +
+      '\n  (to samo hasło, którym zaloguje się `demo` w Keycloaku, realm hrobot-staging).\n',
+  )
+  process.exit(1)
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const step = (m) => console.log(`\n▶ ${m}`)
 
@@ -132,7 +145,7 @@ async function main() {
   psql(readFileSync(join(root, 'scripts', 'seed-demo-m2-modules.sql'), 'utf8'))
   // 4) the seed adds a User row for `demo` (so it can be a leave decider / grant issuer); re-point
   //    its keycloak_sub to the realm's live admin id (same sync class as the users above)
-  const adminSub = await resolveSub('demo', 'demo-staging-2026')
+  const adminSub = await resolveSub('demo', DEMO_ADMIN_PASSWORD)
   if (adminSub) {
     psql(`UPDATE users SET keycloak_sub='${adminSub}' WHERE email='admin@staging.hrobot.local';`)
   } else {
@@ -153,7 +166,7 @@ async function main() {
 ✅ Demo backend ready (Grafik + AI + M2 modules).
 
    Logins (${'http://localhost:8080'} → /login):
-     demo            / demo-staging-2026   ADMIN      full grafik + swap approval + all M2 modules
+     demo            / <hasło z DEMO_ADMIN_PASSWORD>   ADMIN      full grafik + swap approval + all M2 modules
      manager.demo    / Manager!2026        MANAGER    unit-scoped grafik/swaps + wnioski/dostępy (own units)
      pracownik.demo  / Pracownik!2026      PRACOWNIK  read-only "my schedule" + own wnioski (Anna Kowalska)
      pracownica.demo / Pracownica!2026     PRACOWNIK  cross-unit travel demo candidate (Katarzyna Zając, Region Północ)

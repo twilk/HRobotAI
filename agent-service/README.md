@@ -4,23 +4,35 @@
 > **self-developing** scheduling loop: cold-start **behaviour cloning** + **feedback-driven
 > adaptation** + a **formal batch retrain** that regenerates the policy from accumulated feedback,
 > versioned with saved training artifacts — all on synthetic data, layered on the FROZEN grafik
-> contract and the live CP-SAT optimizer. It is **NOT** the finished long-horizon production RL brain,
-> and makes **no claim** of production autonomy or a "4Mobility-ready" model. Full on-policy RL on live
-> data, unsupervised autonomy, multi-branch transfer, and advanced forecasting are the **staged path
-> after M2** (spec §8). The M2-C3 retrain is a dependency-light **numpy BC + feedback re-fit** — the
-> *increment* of self-development, not the full vision. What ships is a *working, measurable loop* —
-> not a finished product. See
-> `docs/superpowers/specs/2026-07-09-m2-p2-agent-ai-grafik-manager-design.md`.
+> contract and the live CP-SAT optimizer. It makes **no claim** of production autonomy or a
+> "4Mobility-ready" model.
+>
+> **What the mechanism actually is:** an **affinity learner + batch re-fit**. `app/policy.py` and
+> `app/retrain.py` import only the standard library. **No reinforcement learning runs anywhere in
+> this repo, and no module imports `stable_baselines3`.** Do not describe this service as "SB3" or
+> "RL" in demos, decks or the evidence pack — say *affinity-learner + batch re-fit*. Full on-policy
+> RL on live data, unsupervised autonomy, multi-branch transfer, and advanced forecasting are the
+> **staged path after M2** (spec §8). See
+> `docs/superpowers/specs/2026-07-09-m2-p2-agent-ai-grafik-manager-design.md` and
+> `data/m2-evidence/known-limitations.md`.
 
-This is a **distinct image** from `grafik-optimizer` on purpose: the heavy RL stack
-(`torch`/`stable-baselines3`/`imitation`) lives here; the CP-SAT image stays lean and is owned by
-another team. The two services communicate only over the FROZEN `POST /solve` contract.
+This is a **distinct image** from `grafik-optimizer` on purpose: the heavier offline imitation stack
+(`imitation`, plus the `torch`/`stable-baselines3` it is built on) is installed here so
+`app/train_bc.py` can run; the CP-SAT image stays lean and is owned by another team. The two
+services communicate only over the FROZEN `POST /solve` contract.
+
+| Component | Imports | Used by the API? |
+|---|---|---|
+| `app/policy.py`, `app/retrain.py` — the affinity learner | stdlib only | **Yes — this is the serving path** |
+| `app/env.py` — `GrafikSchedulingEnv` | `gymnasium`, `numpy` | No. A scaffold; no RL algorithm trains against it |
+| `app/train_bc.py` — offline BC CLI | `imitation` (→ `torch`/SB3) | No. Trains, but the API never loads its artifact (Q8) |
 
 ## Increment history
 
-- **M2-C1 phase B** (merged, PR #20): the SB3 skeleton — `python:3.12-slim` image, own pydantic
-  contract mirror + parity test, `GrafikSchedulingEnv` (Gymnasium) with weight-0 reward seams, the
-  `OptimizerClient` seam, the BC (`imitation`) cold-start entry point, and the `/agent/*` 501 seams.
+- **M2-C1 phase B** (merged, PR #20): the Gymnasium + `imitation` skeleton — `python:3.12-slim` image,
+  own pydantic contract mirror + parity test, `GrafikSchedulingEnv` (Gymnasium) with weight-0 reward
+  seams, the `OptimizerClient` seam, the BC (`imitation`) cold-start entry point, and the `/agent/*`
+  501 seams. (Historically called "the SB3 skeleton" — inaccurate: SB3 is never imported.)
 - **M2-C2** (merged, PR #22): fills those 501 seams with working handlers, adds the tenant-isolated
   feedback store and the online-learning loop, wires the env's manager-acceptance seam, and ships
   the **AG2 edit-distance-drop demo**. Built *on top of* phase B — the contract mirror, env, parity
@@ -44,7 +56,7 @@ it is exactly what the AG2 demo measures.
 
 | Capability | M2-C2 endpoint / mechanism |
 |---|---|
-| **Self-learning** | `POST /agent/feedback` logs manager corrections as reward and re-fits the policy; edit-distance to the manager-accepted schedule **drops monotonically** (AG2). |
+| **Self-learning** | `POST /agent/feedback` logs manager corrections as reward and re-fits the policy; edit-distance to the manager-accepted schedule **drops** (AG2 — monotonically against the constructed reference, non-monotonically against an independent one; see below). |
 | **Reasoning** | `GET /agent/explain` — per-assignment rationale + alternatives considered (AG4). |
 | **Self-developing** | Policy is **versioned**; the **formal batch retrain** (`python -m app.retrain` / `POST /agent/retrain`) regenerates it from the accumulated feedback log and writes an `AgentPolicyVersion` (+ saved artifact) per version. `GET /agent/policy` shows `v1→v2→…` with a rising acceptance metric (AG5). |
 | **Self-healing** | `POST /agent/heal` validates a proposal and repairs it **through the live solver** (`OptimizerClient`) (AG3). |
@@ -52,28 +64,37 @@ it is exactly what the AG2 demo measures.
 
 ### The learning policy (and its honest limits)
 
-The M2-C2 serving policy (`app/policy.py`) is a dependency-light numpy **imitation** learner:
-behavioural cloning of the solver teacher, plus an **online affinity update** keyed by
-`(employee, slot-signature)` where `slot-signature = (role, locId, date, shiftStart)` — a learned
-*preference rule*, not memorisation of a demand id. The spec's risk table explicitly sanctions this
-minimal viable path ("BC przez imitation … degradacja do samego BC+forecaster", §112).
+The M2-C2 serving policy (`app/policy.py`) is a **stdlib-only affinity learner**: behavioural cloning
+of the solver teacher, plus an **online affinity update** keyed by `(employee, slot-signature)` where
+`slot-signature = (role, locId, date, shiftStart)` — a learned *preference rule*, not memorisation of
+a demand id. The spec's risk table explicitly sanctions this minimal viable path ("BC przez imitation
+… degradacja do samego BC+forecaster", §112); M2 ships that degraded path, and calling it RL would be
+wrong.
 
-This sits **alongside** the phase-B RL scaffold, it does not replace it. `GrafikSchedulingEnv` keeps
+**Because the signature contains the date, nothing learned transfers to the next week.** Measured: an
+agent trained to edit-distance 0 on week W scores 98 against the same manager on week W+7d — exactly
+what an untrained agent scores, with a bit-identical proposal (`demo/hon2_controls.py`, control C3).
+Cross-week generalisation is M3 work.
+
+This sits **alongside** the phase-B Gym scaffold, it does not replace it. `GrafikSchedulingEnv` keeps
 its `RewardConfig`; M2-C2 **wires its weight-0 `manager_acceptance` seam** (previously declared but
 unused) so a feasible assignment that reproduces a manager-kept slot earns reward — the env-side
-counterpart of the online feedback signal, and the hook the staged SB3/RL path will train against.
+counterpart of the online feedback signal, and the hook a future RL path could train against. No such
+training exists today.
 
 ## The AG2 money shot
 
 `app/demo_ag2.py` runs a fixed synthetic scenario (the canonical cold-start problem: 36 employees,
-38 demands). A scripted manager prefers *"hours to full-timers first"* — a preference the fixed-weight
-solver cannot encode. Each round: propose → manager corrects the most-mismatched slots (`MOVE` edits)
-→ `/agent/feedback` → re-fit → re-propose.
+38 demands, 52 assignments). A scripted manager has preferences the fixed-weight solver cannot
+encode. Each round: propose → manager corrects the most-mismatched slots (`MOVE` edits) →
+`/agent/feedback` → re-fit → re-propose.
 
 **Metric.** `edit_distance = |proposed △ manager_accepted|` — the symmetric difference of
 `(employeeId, demandId)` pairs (a reassignment counts as 2). `normalized = edit_distance / (2·|A|)`.
 
-Representative run (`python -m app.demo_ag2`):
+### Scenario 1 — `--manager constructed` (default; read the caveat)
+
+Manager prefers *"hours to full-timers first"*. Run (`python -m app.demo_ag2`):
 
 ```
  v1 round 0:  50
@@ -84,9 +105,51 @@ Representative run (`python -m app.demo_ag2`):
  v6 round 5:   0   → converged to the manager-accepted schedule
 ```
 
-The drop is **real**: `python -m app.demo_ag2 --no-feedback` disables learning and the curve stays
-**flat at 50** — the improvement comes only from feedback the policy incorporated. Artifacts land in
-`evidence/` (`ag2_result.json`, `ag2_editdistance.csv`, `ag2_chart.svg`) for the M2 evidence pack.
+> **Caveat you must state out loud (HON-2).** This reference schedule is built by calling the agent's
+> **own** `ImitationPolicy.propose` with the manager's preference loaded into affinity. The target is
+> therefore drawn from the policy's own hypothesis class — the agent reproduces it *exactly* when you
+> hand it the matching affinity table (`demo/hon2_controls.py`, control C1: `edit_distance=0`). It is
+> also unusually close to the agent's cold-start bias, which is why it converges in 5 rounds. Quoting
+> "50 → 0 in 5 rounds" as proof the agent learns manager preferences overstates what was measured.
+>
+> The construction is not the *whole* story — pushing a random preference through the same builder
+> does **not** converge in 6 rounds (`[102, 90, 76, 70, 82, 54]`, `[80, 70, 58, 50, 46, 34]`,
+> `[84, 76, 62, 50, 44, 36]`) — but scenario 2 is the number to quote.
+
+### Scenario 2 — `--manager independent` (the honest one)
+
+`app/manager_profile.py` writes the manager's roster **without ever calling the agent's policy**:
+scarcity-first demand order, a load-dependent "least-loaded wins" rule, a weekly shift cap, and a
+taste for who works mornings vs afternoons derived from a SHA-256 digest — uncorrelated with every
+feature the agent scores on. The target is still hard-feasible (0 violations, 52/52 coverage), so the
+comparison is fair. `tests/test_ag2_independent.py` fails if that reference ever calls `propose()`.
+
+Run (`python -m app.demo_ag2 --manager independent`):
+
+```
+ round  0:  96      round  5:  52      round 10:  34      round 15:  16
+ round  1:  76      round  6:  50      round 11:  36      round 16:  10
+ round  2:  62      round  7:  52      round 12:  28      round 17:   0  → converged
+ round  3:  70      round  8:  44      round 13:  26
+ round  4:  60      round  9:  40      round 14:  20
+```
+
+| | constructed | independent |
+|---|---|---|
+| day-1 edit-distance (of 104) | 50 | **96** |
+| day-1 agreement with the manager | 51.9% | **7.7%** |
+| first round at 0 (budget 6) | 5 | **17** |
+| monotone non-increasing | yes | **no** (62→70, 50→52, 34→36) |
+| ablation `--no-feedback` | flat at 50 | flat at 96 |
+
+**The agent does converge to an independently defined preference** — that is a genuine positive
+result, and it holds for six different arbitrary managers (day-1 96–100, zero at rounds 14–17; see
+`evidence/hon2_controls_run.txt`). It just takes ~3× the feedback and the curve is not monotone.
+
+The drop is **real** in both scenarios: `--no-feedback` disables learning and the curve stays
+perfectly flat. Artifacts land in `evidence/` — `ag2_result.json` / `ag2_editdistance.csv` /
+`ag2_chart.svg` for scenario 1, `ag2_independent_*` for scenario 2, and `hon2_controls_run.txt` for
+the three controls (`python -m demo.hon2_controls`).
 
 ## M2-C3: the formal retrain pipeline (self-development)
 
@@ -212,14 +275,24 @@ and is a **documented follow-up**, out of scope here.
 **2 — run the scripted demo (drives the running agent → live optimizer):**
 
 ```bash
-python3 agent-service/demo/j4_live_demo.py --base http://localhost:8010
+AGENT_DEMO_PASSWORD=… python3 agent-service/demo/j4_live_demo.py --base http://localhost:8010 --user demo
+# …or with a token you already hold:
+AGENT_TOKEN=eyJ… python3 agent-service/demo/j4_live_demo.py --base http://localhost:8010
 ```
 
 Pure-stdlib (`urllib`) client — runs on any host `python3`, no install. It walks the audience through:
 `heal` (proves the **live** solver answers) → `propose` (schedule **+ per-assignment rationale**) →
 `feedback` (scripted manager corrections) → `retrain` (batch self-development, new versioned policy +
-artifact) → re-propose, printing the **edit-distance drop `50 → 0`** live. A fresh per-run tenant means
-every run shows the full curve. Representative run captured in `demo/evidence/j4_live_demo_run.txt`.
+artifact) → re-propose, printing the **edit-distance drop `50 → 0`** live. Representative run captured
+in `demo/evidence/j4_live_demo_run.txt`.
+
+**Auth — there is no `--tenant` flag.** Every `/agent/*` route (including `/agent/demo/corrections`)
+requires a Keycloak bearer token and derives the tenant from the token's issuer realm, never from a
+`tenantId` in the request body (AG6 tenant isolation — see `app/deps.py`). The client mints its token
+with the same password grant the rest of the stack uses (`client_id=hrobot-web`), so **the realm you
+authenticate against *is* the tenant**. Because that tenant is fixed rather than fresh per run, the
+demo opens with `POST /agent/reset` to put it back at cold-start — that is what keeps every run showing
+the full `50 → 0` climb (`--keep-training` skips it).
 
 **Bonus — a self-served visual page** (optional stretch, genuinely working — not a mock):
 
@@ -228,12 +301,14 @@ http://localhost:8010/agent/demo
 ```
 
 Same-origin vanilla-JS page (served by `app/demo_router.py`, no CDN/CORS) that runs the same loop with
-a live table + the edit-distance number falling to 0. Screenshot: `demo/evidence/j4_demo_page.png`.
+a live table + the edit-distance number falling to 0. Paste an access token into the field at the top —
+the page sends it as `Authorization: Bearer` on every call and builds no `tenantId` into any body, so
+the token's realm alone decides whose rosters it can read. Screenshot: `demo/evidence/j4_demo_page.png`.
 
 **Reset & replay (always shows the full climb from a FRESH agent).** The page's primary button —
 *"Reset demo agent to cold-start & replay"* — first calls `POST /agent/reset` then drives the loop, so
 UAT always sees the whole climb (**edit-distance `50 → 0`** AND **agreement `52% → 100%`**) from an
-untrained agent, deterministically every run. `POST /agent/reset` (body `{"tenantId": …}`) is
+untrained agent, deterministically every run. `POST /agent/reset` (tenant from the bearer token) is
 **tenant-scoped** (never a blanket wipe): it clears that tenant's `agent_feedback`, `policy_versions`
 and `policy_state` (via `AgentStore.reset_tenant`) and re-derives the day-1 cold-start BC baseline
 through the *existing* `AgentService._load_policy` cold start — no parallel policy. It is deterministic
@@ -242,7 +317,8 @@ reset semantics. Guarded by `tests/test_reset.py`. Evidence: `demo/evidence/rese
 `demo/evidence/j4_reset_replay_page.png`.
 
 The scripted manager stays **server-side and reused** (`/agent/demo/corrections` calls the committed
-`demo_ag2` helpers) so the client is thin. Guarded by `tests/test_demo_router.py`.
+`demo_ag2` helpers) so the client is thin. Guarded by `tests/test_demo_router.py`; its auth boundary
+(401 without a token, and tenant-A-token + tenant-B-body cannot read B) by `tests/test_demo_router_auth.py`.
 
 ## Consuming the FROZEN contract (mirror + parity)
 

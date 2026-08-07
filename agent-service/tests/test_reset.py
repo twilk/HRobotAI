@@ -4,8 +4,8 @@ Guards the three properties the acceptance criteria call out: after reset a fres
 at the day-1 gap (~edit-distance 50 / ~52% agreement), the reset is **tenant-scoped** (never a
 blanket wipe), and it is **idempotent** (resetting a fresh tenant, or resetting twice, is a no-op).
 
-The tenant is taken from the bearer token now, so each call carries ``headers=auth(tenant)`` (the
-demo-corrections route still reads its own body ``tenantId``, kept alongside for that route).
+The tenant is taken from the bearer token now, so every call — ``/agent/demo/corrections`` included —
+carries ``headers=auth(tenant)`` and never a body ``tenantId``.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ def _gap(client, tenant: str) -> dict:
     ).json()
     corr = client.post(
         "/agent/demo/corrections",
-        json={"proposalId": prop["proposalId"], "tenantId": tenant},
+        json={"proposalId": prop["proposalId"]},
         headers=auth(tenant),
     ).json()
     return {"policyVersion": prop["policyVersion"], **corr}
@@ -33,7 +33,7 @@ def _train_one_round(client, tenant: str) -> None:
     ).json()
     corr = client.post(
         "/agent/demo/corrections",
-        json={"proposalId": prop["proposalId"], "tenantId": tenant},
+        json={"proposalId": prop["proposalId"]},
         headers=auth(tenant),
     ).json()
     client.post(
@@ -122,7 +122,7 @@ def test_reset_then_replay_converges(client):
         ).json()["proposalId"]
         corr = client.post(
             "/agent/demo/corrections",
-            json={"proposalId": prop_id, "tenantId": tenant},
+            json={"proposalId": prop_id},
             headers=auth(tenant),
         ).json()
         client.post(

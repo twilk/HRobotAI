@@ -14,6 +14,7 @@ from fastapi import FastAPI
 
 from .contract import ProblemInput, SolveResult
 from .solver import solve as solve_problem
+from .ranking import RankingZastepstwaRequest, RankingZastepstwaResponse, rank_zastepstwa
 
 app = FastAPI(title="grafik-optimizer", version="0.2.0")
 
@@ -32,3 +33,14 @@ def solve(problem: ProblemInput) -> SolveResult:
     uncoverable slots (never a silent error).
     """
     return solve_problem(problem)
+
+
+@app.post("/ranking/zastepstwa", response_model=RankingZastepstwaResponse)
+def ranking_zastepstwa(req: RankingZastepstwaRequest) -> RankingZastepstwaResponse:
+    """Track F — ważony ranking kandydatów na zastępstwo (problem przypisania, CP-SAT).
+
+    Zwraca WYŁĄCZNIE ranking + uzasadnienie; nie podejmuje żadnej decyzji o przyznaniu zastępstwa
+    — to robi orkiestracja kontaktu w `apps/tenant-runtime/src/zastepstwa/` (kontakt PO KOLEI wg
+    tego rankingu), a finalną decyzję zawsze zatwierdza człowiek (manager). Patrz `ranking.py`.
+    """
+    return rank_zastepstwa(req)

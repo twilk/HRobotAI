@@ -1,7 +1,7 @@
 # UAT — 5 krytycznych user-journey (J1–J5) + skrypt sesji
 
 > Produktowy definition-of-done odbioru. Każdy journey: kroki + kryterium pass/fail + gdzie uchwycić dowód `[CAPTURE]`.
-> Środowisko: front web-kit `http://localhost:5601` (lub URL stagingu: **[CAPTURE: wpisz stały URL Cloudflare]**), backend stack `hrobot`. Konto testowe: `demo` / `demo-staging-2026` (rola ADMIN_KLIENTA), realm `hrobot-staging`.
+> Środowisko: front web-kit `http://localhost:5601` (lub URL tunelu środowiska testowego — generowany na czas sesji i przekazywany uczestnikom przed jej rozpoczęciem), backend stack `hrobot`. Konto testowe: `demo` / `<hasło z .env.local>` (rola ADMIN_KLIENTA), realm `hrobot-staging`. Hasło: `docs/design/web-kit/.env.local` (gitignored) albo zmienna `KEYCLOAK_PASSWORD`; poprzednie hasło (`demo-staging-2026`) trzeba zrotować w Keycloaku, bo zostało w historii gita.
 
 ## J1 — Menadżer tworzy/edytuje zapotrzebowanie
 - Kroki: zaloguj → Grafik → wybierz jednostkę → dodaj/edytuj zapotrzebowanie (szablon → korekta).
@@ -22,7 +22,8 @@
 ## J4 — Agent AI proponuje grafik z uzasadnieniem; menadżer koryguje → agent się uczy
 - Kroki: `http://localhost:8010/agent/demo` → „Reset & replay"; obejrzyj spadek edit-distance po feedbacku; `/agent/explain` = rationale.
 - **Pass:** agent proponuje wykonalny grafik; po N rundach feedbacku mierzalny spadek korekt (AG2); rationale widoczne. **Fail:** brak uczenia / infeasible bez naprawy.
-- Dowód: `agent-service/evidence/ag2_chart.svg`, `ag2_editdistance.csv` (w repo). **Ujęcie uczciwe:** mechanizm = affinity-learner + batch re-fit (NIE produkcyjny SB3/RL) — patrz `known-limitations.md`.
+- Dowód: `agent-service/evidence/ag2_chart.svg`, `ag2_editdistance.csv` (w repo). **Ujęcie uczciwe:** mechanizm = affinity-learner + batch re-fit (NIE produkcyjny SB3/RL — `stable_baselines3` nie jest importowany w żadnym module) — patrz `known-limitations.md`.
+- **Uczciwa wersja liczby (HON-2):** krzywą `50 → 0 w 5 rundach` zbudowano wobec wzorca wygenerowanego **własną funkcją agenta** — nie cytujcie jej jako dowodu uczenia się preferencji. Cytujcie scenariusz niezależny: `agent-service/evidence/ag2_independent_chart.svg` — **96 → 0, zbieżność w rundzie 17, krzywa niemonotoniczna**, ablacja bez feedbacku płaska na 96. Odtworzenie: `python -m app.demo_ag2 --manager independent`.
 - `[CAPTURE]` screen strony demo + wykres AG2.
 
 ## J5 — Pracownik zgłasza zamianę → peer akceptuje → menadżer zatwierdza

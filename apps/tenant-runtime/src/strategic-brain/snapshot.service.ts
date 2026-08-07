@@ -11,6 +11,7 @@ import {
   type ScoreWeights,
 } from './scoring.util.js'
 import { buildScoringInput } from './scoring-input.js'
+import { classifyLeaveType } from '../common/leave-type.js'
 import {
   PerformanceConfigService,
   configHash,
@@ -54,24 +55,23 @@ export const ALGORITHM_VERSION = 1
 export type ExclusionCategory = 'L4' | 'URLOP' | 'ONBOARDING'
 
 /**
- * [M12] Documented map from a free-form `LeaveRequest.type` to a structural exclusion category.
- * Matching is case-insensitive substring — the real `type` values are free text
- * (e.g. `URLOP_WYPOCZYNKOWY`, `URLOP_NA_ZADANIE`, `L4`, `zwolnienie chorobowe`), so we key off the
- * recognizable stem, not an exact enum. Order matters: sickness ("l4"/"chorob") is checked before
- * vacation. A leave whose type matches NOTHING here does NOT exclude the window — we only remove a
- * window from the trend for a recognized, documented reason (fail-safe: unknown ≠ silent exclusion).
+ * [M12] Map a free-form `LeaveRequest.type` to a structural exclusion category.
+ *
+ * The classification RULE now lives in `common/leave-type.ts` — one shared definition for the whole
+ * tenant runtime. It used to be duplicated here as a local `toLowerCase().includes()` map while
+ * `analityk` filtered with a Prisma `startsWith: 'URLOP'` (case-SENSITIVE on Postgres), so the same
+ * `leave_requests` row could be an "urlop" for the scoring engine and invisible to the analytics
+ * module — or the reverse for a lower-cased value.
+ *
+ * Behaviour here is unchanged: sickness ("l4"/"chorob") still wins over holiday, every kind of urlop
+ * (wypoczynkowy, bezpłatny, macierzyński, …) still maps to `URLOP`, and a leave whose type matches
+ * NOTHING still does NOT exclude the window — we only remove a window from the trend for a
+ * recognized, documented reason (fail-safe: unknown ≠ silent exclusion).
  */
-const LEAVE_TYPE_EXCLUSION_MAP: ReadonlyArray<{ contains: string; category: Extract<ExclusionCategory, 'L4' | 'URLOP'> }> = [
-  { contains: 'l4', category: 'L4' },
-  { contains: 'chorob', category: 'L4' }, // "zwolnienie chorobowe" (sick leave)
-  { contains: 'urlop', category: 'URLOP' },
-]
-
 function mapLeaveTypeToExclusion(type: string): Extract<ExclusionCategory, 'L4' | 'URLOP'> | null {
-  const t = type.toLowerCase()
-  for (const entry of LEAVE_TYPE_EXCLUSION_MAP) {
-    if (t.includes(entry.contains)) return entry.category
-  }
+  const category = classifyLeaveType(type)
+  if (category === 'L4') return 'L4'
+  if (category === 'WYPOCZYNKOWY' || category === 'URLOP_INNY') return 'URLOP'
   return null
 }
 

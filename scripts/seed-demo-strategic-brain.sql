@@ -1,7 +1,8 @@
 -- ============================================================================================
 -- strategic-brain DEMO SEED (spec §9/§5, plan Task 11) — synthetic performance-trajectory data.
 --
--- WHAT IT SEEDS (all SYNTHETIC, `sb_`-prefixed ids — never collides with any anchor):
+-- WHAT IT SEEDS (all SYNTHETIC ids, reserved for this script — never collides with any anchor;
+--                see ID CONTRACT below for which tables use a slug and which must use a UUID):
 --   * A current-window operational backdrop: `work_order` (DONE) + `complaint` rows for EVERY
 --     employee, so the peer-normalised `performance` dimension (spec §14 M10) actually has a
 --     populated peer group to rank against. Six employees are tuned to a trajectory profile; the
@@ -24,13 +25,39 @@
 --   * Initial immutable `recruitment_recommendation` events (replaces_recommendation_id = NULL) so
 --     the recruitment feed shows WZNOW + WSTRZYMAJ + UTRZYMAJ immediately (no scheduler wait, B3).
 --
--- IDEMPOTENT: re-running deletes only its own `sb_`-prefixed rows first, then re-inserts. Synthetic
---   employees are kept via ON CONFLICT. Re-running also RESETS the demo (restores the baked snapshot
---   values, undoing any scheduler-recompute drift on the current window).
+-- IDEMPOTENT: re-running deletes only its own rows first, then re-inserts. Synthetic employees are
+--   kept via ON CONFLICT. Re-running also RESETS the demo (restores the baked snapshot values,
+--   undoing any scheduler-recompute drift on the current window).
+--
+-- >>> ID CONTRACT (fix I-01) <<<
+--   Every row whose primary key is reachable as an HTTP `:id` route param MUST carry a real UUID,
+--   because those controllers validate the param with Nest's `ParseUUIDPipe`. A readable
+--   `sb_*` slug in such a column is not a naming preference — it is a 400 on every request:
+--       GET  /strategic-brain/employee/:id            -> ParseUUIDPipe   (employees)
+--       POST /strategic-brain/recruitment/:id/ack...  -> ParseUUIDPipe   (recruitment_recommendation)
+--       GET  /wnioski/:id, POST /wnioski/:id/...      -> ParseUUIDPipe   (leave_requests)
+--       GET  /grafik/demands/:id                      -> ParseUUIDPipe   (shift_demands)
+--   Those four tables therefore use fixed UUIDs from the `a1d00000-0000-4000-8000-…` demo family
+--   (same convention as Katarzyna Zajac in seed-demo-m2-modules.sql), grouped by the `5b` = strategic
+--   brain infix; the trailing nibble group encodes the table (e=employee, c=recommendation,
+--   a=leave, d=demand). They are deliberately CONSTANT, so this script stays idempotent and a
+--   re-run is an UPSERT, never a duplicate:
+--       a1d00000-0000-4000-8000-00005b00e001  Tomasz Nowacki      (employees, "nowy rosnacy")
+--       a1d00000-0000-4000-8000-00005b00e002  Ewa Lewandowska     (employees, "nowy plaski")
+--       a1d00000-0000-4000-8000-00005b00c001  WZNOW      Region Centrum   (recruitment_recommendation)
+--       a1d00000-0000-4000-8000-00005b00c002  WSTRZYMAJ  Region Poludnie  (recruitment_recommendation)
+--       a1d00000-0000-4000-8000-00005b00c003  UTRZYMAJ   Region Polnoc    (recruitment_recommendation)
+--       a1d00000-0000-4000-8000-00005b00c004  WZNOW      lokalizacja      (recruitment_recommendation)
+--       a1d00000-0000-4000-8000-00005b00a001  L4 gwiazdy               (leave_requests)
+--       a1d00000-0000-4000-8000-00005b00d001  understaffed demand      (shift_demands)
+--   The remaining synthetic tables (`work_order`, `complaint`, `employee_performance_snapshot`) have
+--   NO id-by-route endpoint, so they keep their readable `sb_wo_` / `sb_cmp_` / `sb_sn_` prefixes —
+--   which is also what their `DELETE ... LIKE` idempotency step matches on.
+--   Pinned by apps/tenant-runtime/src/strategic-brain/seed-id-contract.spec.ts.
 --
 -- DOES NOT TOUCH ANCHORS: it only INSERTs new rows in its own/greenfield tables. It never UPDATEs or
 --   DELETEs any of the 36 anchor employees, the 832 anchor shifts, the anchor demands, or the
---   AI-Grafik APPROVED-leave anchors. The two `sb_emp_new*` rows are ADDITIVE synthetic employees
+--   AI-Grafik APPROVED-leave anchors. The two synthetic `…5b00e00*` rows are ADDITIVE employees
 --   (same precedent as Katarzyna Zajac in seed-demo-m2-modules.sql), needed because the "nowy"
 --   profiles require a recent hired_at that no anchor has and that we are forbidden to backfill.
 --
@@ -47,13 +74,40 @@ BEGIN;
 -- 0) Idempotency: clear only rows THIS script created (children -> parents). Synthetic employees
 --    are intentionally NOT deleted (kept stable via ON CONFLICT below).
 -- --------------------------------------------------------------------------------------------
+--    The four UUID-contract tables cannot be matched by an `sb_` prefix any more (see ID CONTRACT
+--    above), so they are cleared by their exact, constant ids — equally narrow, still only ever this
+--    script's own rows. The legacy `sb_rec_` / `sb_lr_` / `sb_sd_` slugs are listed alongside so a DB
+--    seeded before the fix is cleaned up too instead of ending up with both generations of the row.
 DELETE FROM complaint                       WHERE id LIKE 'sb_cmp_%';
 DELETE FROM work_order                      WHERE id LIKE 'sb_wo_%';
 DELETE FROM employee_performance_snapshot   WHERE id LIKE 'sb_sn_%';
-DELETE FROM recruitment_recommendation      WHERE id LIKE 'sb_rec_%';
 DELETE FROM shifts                          WHERE id LIKE 'sb_sh_%';
-DELETE FROM shift_demands                   WHERE id LIKE 'sb_sd_%';
-DELETE FROM leave_requests                  WHERE id LIKE 'sb_lr_%';
+DELETE FROM recruitment_recommendation      WHERE id IN (
+  'a1d00000-0000-4000-8000-00005b00c001', 'a1d00000-0000-4000-8000-00005b00c002',
+  'a1d00000-0000-4000-8000-00005b00c003', 'a1d00000-0000-4000-8000-00005b00c004') OR id LIKE 'sb_rec_%';
+DELETE FROM shift_demands                   WHERE id = 'a1d00000-0000-4000-8000-00005b00d001'
+                                               OR id LIKE 'sb_sd_%';
+DELETE FROM leave_requests                  WHERE id = 'a1d00000-0000-4000-8000-00005b00a001'
+                                               OR id LIKE 'sb_lr_%';
+
+-- --------------------------------------------------------------------------------------------
+-- 0b) IN-PLACE REPAIR of a DB seeded before the ID CONTRACT fix (I-01). The two synthetic employees
+--     were originally inserted with the slugs `sb_emp_new1` / `sb_emp_new2`, which `ParseUUIDPipe`
+--     rejects, so `/analiza` fired a 400 for each of them on every load. They are REKEYED, never
+--     deleted: every FK that points at `employees.id` is declared `ON UPDATE CASCADE` (see the
+--     20260709120000_grafik_core_schema / 20260714000000_strategic_brain migrations), so a plain
+--     UPDATE of the primary key carries every child row — shifts, leave_requests, work_order,
+--     complaint, employee_performance_snapshot, rcp_event, access_grant, generated_document — along
+--     with it. No history is lost and no employee row is dropped.
+--     The `NOT EXISTS` guard makes this a no-op on a fresh DB and on a second run.
+-- --------------------------------------------------------------------------------------------
+UPDATE employees SET id = 'a1d00000-0000-4000-8000-00005b00e001', updated_at = now()
+WHERE id = 'sb_emp_new1'
+  AND NOT EXISTS (SELECT 1 FROM employees e WHERE e.id = 'a1d00000-0000-4000-8000-00005b00e001');
+
+UPDATE employees SET id = 'a1d00000-0000-4000-8000-00005b00e002', updated_at = now()
+WHERE id = 'sb_emp_new2'
+  AND NOT EXISTS (SELECT 1 FROM employees e WHERE e.id = 'a1d00000-0000-4000-8000-00005b00e002');
 
 -- --------------------------------------------------------------------------------------------
 -- 1) Synthetic NEW-HIRE employees (additive, like Katarzyna Zajac). Recent hired_at (< the default
@@ -68,26 +122,30 @@ DELETE FROM leave_requests                  WHERE id LIKE 'sb_lr_%';
 INSERT INTO employees
   (id, user_id, first_name, last_name, pesel, pesel_hash, position, employment_type, hired_at,
    unit_id, home_address, home_lat, home_lng, etat, qualifications, created_at, updated_at)
-SELECT 'sb_emp_new1', NULL, 'Tomasz', 'Nowacki',
+SELECT 'a1d00000-0000-4000-8000-00005b00e001', NULL, 'Tomasz', 'Nowacki',
        'DEMO-PLACEHOLDER-UNENCRYPTED-PESEL-SB-NEW1',
        'demo-placeholder-pesel-hash-strategic-brain-new1',
        'Recepcjonista', 'UMOWA_O_PRACE'::"EmploymentType", (now() - interval '22 days'),
        ou.id, NULL, NULL, NULL, 1, ARRAY[]::text[], now(), now()
 FROM organizational_units ou
 WHERE ou.name = 'Region Centrum'
-  AND NOT EXISTS (SELECT 1 FROM employees WHERE id = 'sb_emp_new1');
+  AND NOT EXISTS (SELECT 1 FROM employees WHERE id = 'a1d00000-0000-4000-8000-00005b00e001')
+  AND NOT EXISTS (SELECT 1 FROM employees
+                  WHERE pesel_hash = 'demo-placeholder-pesel-hash-strategic-brain-new1');
 
 INSERT INTO employees
   (id, user_id, first_name, last_name, pesel, pesel_hash, position, employment_type, hired_at,
    unit_id, home_address, home_lat, home_lng, etat, qualifications, created_at, updated_at)
-SELECT 'sb_emp_new2', NULL, 'Ewa', 'Lewandowska',
+SELECT 'a1d00000-0000-4000-8000-00005b00e002', NULL, 'Ewa', 'Lewandowska',
        'DEMO-PLACEHOLDER-UNENCRYPTED-PESEL-SB-NEW2',
        'demo-placeholder-pesel-hash-strategic-brain-new2',
        'Recepcjonista', 'UMOWA_O_PRACE'::"EmploymentType", (now() - interval '19 days'),
        ou.id, NULL, NULL, NULL, 1, ARRAY[]::text[], now(), now()
 FROM organizational_units ou
 WHERE ou.name = 'Region Centrum'
-  AND NOT EXISTS (SELECT 1 FROM employees WHERE id = 'sb_emp_new2');
+  AND NOT EXISTS (SELECT 1 FROM employees WHERE id = 'a1d00000-0000-4000-8000-00005b00e002')
+  AND NOT EXISTS (SELECT 1 FROM employees
+                  WHERE pesel_hash = 'demo-placeholder-pesel-hash-strategic-brain-new2');
 
 -- --------------------------------------------------------------------------------------------
 -- 2) Context temp tables (dropped at COMMIT).
@@ -123,14 +181,18 @@ others AS (
   FROM employees e, centrum c
   WHERE e.unit_id = c.unit_id
     AND e.id <> COALESCE((SELECT id FROM anna), '')
-    AND e.id NOT LIKE 'sb_emp_%'
+    -- The two synthetic new hires are excluded by their exact ids. This used to read
+    -- `NOT LIKE 'sb_emp_%'`; once they became real UUIDs (ID CONTRACT above) a prefix test no longer
+    -- identifies them, and without this list they could be picked as the dobry/rosnacy/plaski anchor
+    -- profile — silently overwriting a "nowy" profile's snapshots and breaking the demo narrative.
+    AND e.id NOT IN ('a1d00000-0000-4000-8000-00005b00e001', 'a1d00000-0000-4000-8000-00005b00e002')
 )
 SELECT 'gwiazda'::text      AS profile, (SELECT id FROM anna)          AS emp_id
 UNION ALL SELECT 'dobry',        (SELECT id FROM others WHERE rn = 1)
 UNION ALL SELECT 'rosnacy',      (SELECT id FROM others WHERE rn = 2)
 UNION ALL SELECT 'plaski',       (SELECT id FROM others WHERE rn = 3)
-UNION ALL SELECT 'nowy_rosnacy', 'sb_emp_new1'
-UNION ALL SELECT 'nowy_plaski',  'sb_emp_new2';
+UNION ALL SELECT 'nowy_rosnacy', 'a1d00000-0000-4000-8000-00005b00e001'
+UNION ALL SELECT 'nowy_plaski',  'a1d00000-0000-4000-8000-00005b00e002';
 
 -- --------------------------------------------------------------------------------------------
 -- 3) Current-window WORK ORDERS (DONE) for EVERY employee + tuned counts for the six profiles.
@@ -168,9 +230,11 @@ SELECT e.id AS emp_id,
     ELSE 1
   END AS complaints
 FROM employees e
-WHERE e.id NOT LIKE 'sb_emp_%'
-UNION ALL SELECT 'sb_emp_new1', 5, 60, 1
-UNION ALL SELECT 'sb_emp_new2', 4, 50, 1;
+-- Same exact-id exclusion as in sb_pick (a prefix test stopped working when these became UUIDs):
+-- the two synthetic new hires get their tuned counts from the UNION below, not the neutral baseline.
+WHERE e.id NOT IN ('a1d00000-0000-4000-8000-00005b00e001', 'a1d00000-0000-4000-8000-00005b00e002')
+UNION ALL SELECT 'a1d00000-0000-4000-8000-00005b00e001', 5, 60, 1
+UNION ALL SELECT 'a1d00000-0000-4000-8000-00005b00e002', 4, 50, 1;
 
 INSERT INTO work_order
   (id, assigned_to_employee_id, assigned_by_operator_id, assigned_at, due_at, completed_at,
@@ -274,7 +338,7 @@ ON CONFLICT (employee_id, window_start, window_end) DO NOTHING;
 INSERT INTO leave_requests
   (id, employee_id, start_date, end_date, status, type, created_at, updated_at,
    decided_at, decided_by_user_id, reason)
-SELECT 'sb_lr_l4_gwiazda', p.emp_id,
+SELECT 'a1d00000-0000-4000-8000-00005b00a001', p.emp_id,
   (c.ws - interval '27 days')::date, (c.ws - interval '16 days')::date,
   'APPROVED'::"LeaveStatus", 'L4', now(), now(),
   (c.ws - interval '30 days')::timestamp,
@@ -293,7 +357,7 @@ ON CONFLICT (id) DO NOTHING;
 -- --------------------------------------------------------------------------------------------
 INSERT INTO shift_demands
   (id, lokalizacja_id, date, start, "end", required_role, required_count, source, created_at, updated_at)
-SELECT 'sb_sd_understaffed', (SELECT id FROM lokalizacje ORDER BY name LIMIT 1),
+SELECT 'a1d00000-0000-4000-8000-00005b00d001', (SELECT id FROM lokalizacje ORDER BY name LIMIT 1),
   (c.wk_start + interval '2 days')::date, '08:00', '16:00', 'Koordynator zmiany', 2,
   'MANUAL'::"DemandSource", now(), now()
 FROM sb_ctx c
@@ -320,7 +384,7 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO recruitment_recommendation
   (id, scope_type, scope_id, verdict, rationale, factors, replaces_recommendation_id,
    computed_at, acknowledged_by_user_id, acknowledged_at)
-SELECT 'sb_rec_centrum_wznow', 'UNIT'::"RecoScopeType", ur.unit_id, 'WZNOW'::"RecruitmentVerdict",
+SELECT 'a1d00000-0000-4000-8000-00005b00c001', 'UNIT'::"RecoScopeType", ur.unit_id, 'WZNOW'::"RecruitmentVerdict",
   'Luka kadrowa w Regionie Centrum wg zapotrzebowania grafiku (Koordynator zmiany: brak 2 osob w biezacym tygodniu). Zalecane wznowienie rekrutacji.',
   jsonb_build_object(
     'totalGap', 2,
@@ -341,7 +405,7 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO recruitment_recommendation
   (id, scope_type, scope_id, verdict, rationale, factors, replaces_recommendation_id,
    computed_at, acknowledged_by_user_id, acknowledged_at)
-SELECT 'sb_rec_poludnie_wstrzymaj', 'UNIT'::"RecoScopeType", ou.id, 'WSTRZYMAJ'::"RecruitmentVerdict",
+SELECT 'a1d00000-0000-4000-8000-00005b00c002', 'UNIT'::"RecoScopeType", ou.id, 'WSTRZYMAJ'::"RecruitmentVerdict",
   'Obsada w Regionie Poludnie pokryta (nadwyzka wzgledem zapotrzebowania) i metryki w normie. Zalecane wstrzymanie rekrutacji.',
   jsonb_build_object(
     'totalGap', -1,
@@ -359,7 +423,7 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO recruitment_recommendation
   (id, scope_type, scope_id, verdict, rationale, factors, replaces_recommendation_id,
    computed_at, acknowledged_by_user_id, acknowledged_at)
-SELECT 'sb_rec_polnoc_utrzymaj', 'UNIT'::"RecoScopeType", ou.id, 'UTRZYMAJ'::"RecruitmentVerdict",
+SELECT 'a1d00000-0000-4000-8000-00005b00c003', 'UNIT'::"RecoScopeType", ou.id, 'UTRZYMAJ'::"RecruitmentVerdict",
   'Obsada w Regionie Polnoc pokryta, ale ponizej celu (jakosc). Utrzymac stan, poprawic proces bez zwiekszania obsady.',
   jsonb_build_object(
     'totalGap', 0,
@@ -379,7 +443,7 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO recruitment_recommendation
   (id, scope_type, scope_id, verdict, rationale, factors, replaces_recommendation_id,
    computed_at, acknowledged_by_user_id, acknowledged_at)
-SELECT 'sb_rec_lok_wznow', 'LOKALIZACJA'::"RecoScopeType", (SELECT id FROM lokalizacje ORDER BY name LIMIT 1),
+SELECT 'a1d00000-0000-4000-8000-00005b00c004', 'LOKALIZACJA'::"RecoScopeType", (SELECT id FROM lokalizacje ORDER BY name LIMIT 1),
   'WZNOW'::"RecruitmentVerdict",
   'Luka kadrowa w lokalizacji wg zapotrzebowania grafiku (Koordynator zmiany: brak 2 osob). Zalecane wznowienie rekrutacji.',
   jsonb_build_object(

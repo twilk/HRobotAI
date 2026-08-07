@@ -20,11 +20,19 @@ const WEEKS = [
   '2026-09-07', '2026-09-14', '2026-09-21', '2026-09-28',
 ]
 
+// DEMO_ADMIN_PASSWORD is a credential and must not live in the repo (see scripts/demo-up.mjs /
+// docs/design/web-kit/start-live.mjs for the same rule). Rotate the old value
+// (demo-staging-2026) in Keycloak — it is already in git history.
 async function login() {
+  const password = process.env.DEMO_ADMIN_PASSWORD
+  if (!password) {
+    console.error('\n✗ Brak hasła konta demo. Ustaw zmienną środowiskową DEMO_ADMIN_PASSWORD przed uruchomieniem.\n')
+    process.exit(1)
+  }
   const res = await fetch(`${KC}/realms/hrobot-staging/protocol/openid-connect/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: 'hrobot-web', username: 'demo', password: 'demo-staging-2026', grant_type: 'password' }),
+    body: new URLSearchParams({ client_id: 'hrobot-web', username: 'demo', password, grant_type: 'password' }),
   })
   if (!res.ok) throw new Error(`login ${res.status}: ${await res.text()}`)
   return (await res.json()).access_token

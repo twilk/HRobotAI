@@ -10,7 +10,9 @@ import { HealthModule } from './health/health.module.js'
 import { AuthModule } from './auth/auth.module.js'
 import { TenantsModule } from './tenants/tenants.module.js'
 import { OutboxModule } from './outbox/outbox.module.js'
-import { ProvisioningModule } from './provisioning/provisioning.module.js'
+// N-1: ProvisioningModule is intentionally NOT imported here — see the note in main.ts.
+// `src/provisioning/` is a leftover copy of control-plane's provisioning pipeline; registering it
+// makes this app a second, claim-less consumer of the `tenant.provision` queue.
 import { EmployeesModule } from './employees/employees.module.js'
 import { OnboardingModule } from './onboarding/onboarding.module.js'
 import { GrafikModule } from './grafik/grafik.module.js'
@@ -24,6 +26,8 @@ import { UsersModule } from './users/users.module.js'
 import { StrategicBrainModule } from './strategic-brain/strategic-brain.module.js'
 import { DokumentyModule } from './dokumenty/dokumenty.module.js'
 import { AgentGlosowyModule } from './agent-glosowy/agent-glosowy.module.js'
+import { AnalitykModule } from './analityk/analityk.module.js'
+import { ZastepstwaModule } from './zastepstwa/zastepstwa.module.js'
 import { RedisService } from './common/redis/redis.service.js'
 
 @Module({
@@ -49,7 +53,6 @@ import { RedisService } from './common/redis/redis.service.js'
     AuthModule,
     TenantsModule,
     OutboxModule,
-    ProvisioningModule,
     EmployeesModule,
     OnboardingModule,
     GrafikModule,
@@ -63,6 +66,11 @@ import { RedisService } from './common/redis/redis.service.js'
     StrategicBrainModule,
     DokumentyModule,
     AgentGlosowyModule,
+    AnalitykModule,
+    // Tor F: silnik zastępstw. Moduł jest kompletny i przetestowany, ale plik app.module.ts ma
+    // jednego właściciela (integratora) wg protokołu plików współdzielonych — bez tej linii
+    // POST /api/zastepstwa nie jest osiągalne, mimo że kod istnieje.
+    ZastepstwaModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

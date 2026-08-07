@@ -37,11 +37,12 @@
 --   at APPLY TIME via JOINs against the live `employees` / `shifts` / `leave_requests` tables
 --   (mirrors scripts/seed-demo-strategic-brain.sql's `sb_pick` pattern):
 --     * normalny / ot50 / ot100_tydzien / noc_niedziela / niesparowane pick the 1st..5th employee by
---       (last_name, first_name), excluding the strategic-brain synthetic new-hire rows (`sb_emp_%`,
---       spec-irrelevant here);
+--       (last_name, first_name), excluding the two strategic-brain synthetic new-hire rows by their
+--       exact ids (spec-irrelevant here; see the [L-1] note at step 1 for why not by prefix);
 --     * zus_absencja prefers an APPROVED leave that overlaps the demo week 13-19 Jul 2026 (e.g. the
---       `lr-demo-dropout-1` leave from seed-demo-m2-modules.sql, if already applied) and falls back
---       to the earliest APPROVED leave anywhere on the tenant if none overlaps that week;
+--       drop-out leave `a1d00000-0000-4000-8000-000000000a04` from seed-demo-m2-modules.sql, if
+--       already applied) and falls back to the earliest APPROVED leave anywhere on the tenant if none
+--       overlaps that week;
 --     * brak_rcp picks the earliest (employee, date) with an anchor Shift in the demo week, excluding
 --       employees already used by the five ranked profiles above and by zus_absencja.
 --   If any pick resolves to NULL (e.g. the tenant has fewer than 5 employees, or no APPROVED leave /
@@ -80,18 +81,29 @@ DELETE FROM rcp_event WHERE id LIKE 'sb_rcp_%';
 
 -- --------------------------------------------------------------------------------------------
 -- 1) Resolve the 5 name-ranked profile employees (deterministic, stable across re-runs). Excludes
---    the strategic-brain synthetic new-hire rows (`sb_emp_%`) — recent placeholder hires with no
---    bearing on time-tracking demo scenarios.
+--    the strategic-brain synthetic new-hire rows — recent placeholder hires with no bearing on
+--    time-tracking demo scenarios.
+--
+--    [L-1] STALE FILTER, FIXED. These three exclusions (here and in steps 2 and 3) read
+--    `NOT LIKE 'sb_emp_%'`. The strategic-brain ID-CONTRACT fix rekeyed those two employees to real
+--    UUIDs, so the prefix test silently stopped matching ANYTHING — the filter looked present and
+--    did nothing, and the two synthetic hires became eligible for every pick below. Today they rank
+--    16th and 22nd by (last_name, first_name), so the top-5 selection happened to be unaffected;
+--    one more hire named before "Lewandowska" would have changed that without a word of warning.
+--    Replaced by their exact ids, mirroring scripts/seed-demo-strategic-brain.sql's `others` CTE.
 -- --------------------------------------------------------------------------------------------
 CREATE TEMP TABLE dok_ranked ON COMMIT DROP AS
 SELECT e.id, row_number() OVER (ORDER BY e.last_name, e.first_name) AS rn
 FROM employees e
-WHERE e.id NOT LIKE 'sb_emp_%';
+WHERE e.id NOT IN ('a1d00000-0000-4000-8000-00005b00e001', 'a1d00000-0000-4000-8000-00005b00e002');
 
 -- --------------------------------------------------------------------------------------------
 -- 2) Resolve the ZUS-case employee via an EXISTING APPROVED leave (never invented here). Priority 1:
---    an APPROVED leave overlapping the demo week 13-19 Jul 2026 (e.g. the `lr-demo-dropout-1` leave
---    seeded by seed-demo-m2-modules.sql, if already applied). Priority 2 (fallback): the earliest
+--    an APPROVED leave overlapping the demo week 13-19 Jul 2026 (e.g. the drop-out leave
+--    `a1d00000-0000-4000-8000-000000000a04` seeded by seed-demo-m2-modules.sql, if already applied).
+--    NB the tie-break is `ORDER BY lr.id`, so the [L-1] rekey could in principle move this pick;
+--    verified against the live demo tenant that it does not (3b67bc31-… stays first). Priority 2
+--    (fallback): the earliest
 --    APPROVED leave anywhere on the tenant, whatever its actual dates — the RCP_W_NIEOBECNOSCI event
 --    below is stamped on THAT leave's own start date, so the scenario is coherent even when it lands
 --    outside the demo week.
@@ -104,7 +116,7 @@ FROM (
     FROM leave_requests lr
     JOIN employees e ON e.id = lr.employee_id
     WHERE lr.status = 'APPROVED'::"LeaveStatus"
-      AND e.id NOT LIKE 'sb_emp_%'
+      AND e.id NOT IN ('a1d00000-0000-4000-8000-00005b00e001', 'a1d00000-0000-4000-8000-00005b00e002')
       AND lr.start_date <= DATE '2026-07-19'
       AND lr.end_date   >= DATE '2026-07-13'
     ORDER BY lr.id
@@ -116,7 +128,7 @@ FROM (
     FROM leave_requests lr
     JOIN employees e ON e.id = lr.employee_id
     WHERE lr.status = 'APPROVED'::"LeaveStatus"
-      AND e.id NOT LIKE 'sb_emp_%'
+      AND e.id NOT IN ('a1d00000-0000-4000-8000-00005b00e001', 'a1d00000-0000-4000-8000-00005b00e002')
     ORDER BY lr.start_date, lr.id
     LIMIT 1
   )
@@ -133,7 +145,7 @@ CREATE TEMP TABLE dok_shift_pick ON COMMIT DROP AS
 SELECT s.employee_id AS emp_id, s.date::date AS d
 FROM shifts s
 JOIN employees e ON e.id = s.employee_id
-WHERE e.id NOT LIKE 'sb_emp_%'
+WHERE e.id NOT IN ('a1d00000-0000-4000-8000-00005b00e001', 'a1d00000-0000-4000-8000-00005b00e002')
   AND s.date BETWEEN DATE '2026-07-13' AND DATE '2026-07-19'
   AND e.id NOT IN (SELECT id FROM dok_ranked WHERE rn <= 5)
   AND e.id <> COALESCE((SELECT emp_id FROM dok_leave_pick), '')

@@ -1,24 +1,39 @@
-import { BadRequestException } from '@nestjs/common'
+import { BadRequestException, ForbiddenException } from '@nestjs/common'
 import type { TenantClient } from '@hrobot/db'
 import { VoiceCommandService, type VoiceActor } from './voice-command.service.js'
 import { LeaveService } from '../leave/leave.service.js'
 import { GrafikService } from '../grafik/grafik.service.js'
 import { AuditService } from '../tenant-runtime/audit/audit.service.js'
+import { ShiftSwapService } from '../shift-swap/shift-swap.service.js'
+import { ZastepstwaService } from '../zastepstwa/zastepstwa.service.js'
+import { INTENT_CATALOG } from './intent.util.js'
 
 const TODAY = new Date('2026-07-29T00:00:00.000Z') // Wednesday
 
-const leave = { createRequest: jest.fn() }
+const leave = { createRequest: jest.fn(), list: jest.fn(), cancel: jest.fn() }
 const grafik = { listShifts: jest.fn() }
 const audit = { log: jest.fn() }
+const shiftSwap = { create: jest.fn(), submit: jest.fn() }
+const zastepstwa = { rozpocznij: jest.fn(), potwierdz: jest.fn() }
 
-const client = {} as unknown as TenantClient
+// Real client methods KTO_PRACUJE reads directly (own-identity + roster lookups), mirroring how
+// GrafikService/LeaveService/EmployeesService resolve "who am I" / unit scope inline. Everything
+// else on TenantClient is untouched by VoiceCommandService.
+const prismaClient = {
+  employee: { findFirst: jest.fn(), findMany: jest.fn() },
+  userRole: { findMany: jest.fn() },
+}
+const client = prismaClient as unknown as TenantClient
 const actor: VoiceActor = { userId: 'kc-emp-1', roles: ['PRACOWNIK'], ipAddress: '1.2.3.4' }
+const managerActor: VoiceActor = { userId: 'kc-mgr-1', roles: ['MANAGER'], ipAddress: '1.2.3.4' }
 
 function makeService(): VoiceCommandService {
   return new VoiceCommandService(
     leave as unknown as LeaveService,
     grafik as unknown as GrafikService,
     audit as unknown as AuditService,
+    shiftSwap as unknown as ShiftSwapService,
+    zastepstwa as unknown as ZastepstwaService,
   )
 }
 
@@ -27,6 +42,9 @@ describe('VoiceCommandService', () => {
   beforeEach(() => {
     svc = makeService()
     jest.clearAllMocks()
+    prismaClient.userRole.findMany.mockResolvedValue([])
+    prismaClient.employee.findFirst.mockResolvedValue(null)
+    prismaClient.employee.findMany.mockResolvedValue([])
   })
 
   describe('interpret — describes, NEVER executes', () => {
@@ -59,6 +77,91 @@ describe('VoiceCommandService', () => {
       const r = svc.interpret('chcę wziąć urlop', TODAY, actor)
       expect(r.fallbackToForm).toBe(true)
       expect(r.requiresConfirmation).toBe(false)
+    })
+
+    it('SALDO_URLOPU (read) does NOT require confirmation', () => {
+      const r = svc.interpret('ile mam dni urlopu', TODAY, actor)
+      expect(r.intent).toBe('SALDO_URLOPU')
+      expect(r.requiresConfirmation).toBe(false)
+      expect(r.fallbackToForm).toBe(false)
+      expect(r.proposedAction.kind).toBe('READ_LEAVE_BALANCE')
+    })
+
+    it('STATUS_WNIOSKU (read) does NOT require confirmation', () => {
+      const r = svc.interpret('co z moim wnioskiem', TODAY, actor)
+      expect(r.intent).toBe('STATUS_WNIOSKU')
+      expect(r.requiresConfirmation).toBe(false)
+      expect(r.fallbackToForm).toBe(false)
+      expect(r.proposedAction.kind).toBe('READ_LEAVE_STATUS')
+    })
+
+    it('POMOC (read) is SELF-UPDATING from INTENT_CATALOG — never a hand-copied string', () => {
+      const r = svc.interpret('pomoc', TODAY, actor)
+      expect(r.intent).toBe('POMOC')
+      expect(r.requiresConfirmation).toBe(false)
+      expect(r.fallbackToForm).toBe(false)
+      expect(r.proposedAction.kind).toBe('READ_HELP')
+      // every catalog entry (bar POMOC itself) must appear — this reads INTENT_CATALOG at TEST-RUN
+      // TIME, so a future intent added to the catalog is asserted here automatically, with no edit
+      // to this test required; a hand-copied help string would drift and fail this loop.
+      const rest = INTENT_CATALOG.filter((e) => e.intent !== 'POMOC')
+      for (const entry of rest) {
+        expect(r.humanReadable).toContain(entry.opis)
+      }
+      // exact count: catches both a stray hardcoded extra line AND a silently dropped entry.
+      const lines = r.humanReadable.split('\n').filter((l) => l.startsWith('- '))
+      expect(lines.length).toBe(rest.length)
+    })
+
+    it('KTO_PRACUJE (read) does NOT require confirmation', () => {
+      const r = svc.interpret('kto dzisiaj pracuje', TODAY, actor)
+      expect(r.intent).toBe('KTO_PRACUJE')
+      expect(r.requiresConfirmation).toBe(false)
+      expect(r.fallbackToForm).toBe(false)
+      expect(r.proposedAction.kind).toBe('READ_WHO_WORKS')
+    })
+
+    it('NASTEPNA_ZMIANA (read) does NOT require confirmation', () => {
+      const r = svc.interpret('kiedy mam następną zmianę', TODAY, actor)
+      expect(r.intent).toBe('NASTEPNA_ZMIANA')
+      expect(r.requiresConfirmation).toBe(false)
+      expect(r.fallbackToForm).toBe(false)
+      expect(r.proposedAction.kind).toBe('READ_NEXT_SHIFT')
+    })
+
+    it('MOJA_EWIDENCJA (read) does NOT require confirmation', () => {
+      const r = svc.interpret('ile przepracowałem godzin w tym tygodniu', TODAY, actor)
+      expect(r.intent).toBe('MOJA_EWIDENCJA')
+      expect(r.requiresConfirmation).toBe(false)
+      expect(r.fallbackToForm).toBe(false)
+      expect(r.proposedAction.kind).toBe('READ_TIMESHEET')
+    })
+
+    it('ANULUJ_WNIOSEK (write) requires confirmation', () => {
+      const r = svc.interpret('anuluj mój wniosek urlopowy', TODAY, actor)
+      expect(r.intent).toBe('ANULUJ_WNIOSEK')
+      expect(r.requiresConfirmation).toBe(true)
+      expect(r.fallbackToForm).toBe(false)
+      expect(r.proposedAction.kind).toBe('CANCEL_LEAVE')
+      expect(leave.cancel).not.toHaveBeenCalled()
+    })
+
+    it('ZAMIANA_ZMIANY (write) requires confirmation and proposes a CREATE_SHIFT_SWAP action', () => {
+      const r = svc.interpret('chcę oddać zmianę w piątek', TODAY, actor)
+      expect(r.intent).toBe('ZAMIANA_ZMIANY')
+      expect(r.requiresConfirmation).toBe(true)
+      expect(r.fallbackToForm).toBe(false)
+      expect(r.proposedAction.kind).toBe('CREATE_SHIFT_SWAP')
+      expect(shiftSwap.create).not.toHaveBeenCalled()
+    })
+
+    it('ZNAJDZ_ZASTEPSTWO (write) requires confirmation and proposes a START_REPLACEMENT_SEARCH action', () => {
+      const r = svc.interpret('potrzebuję zastępstwa na moją zmianę w piątek', TODAY, actor)
+      expect(r.intent).toBe('ZNAJDZ_ZASTEPSTWO')
+      expect(r.requiresConfirmation).toBe(true)
+      expect(r.fallbackToForm).toBe(false)
+      expect(r.proposedAction.kind).toBe('START_REPLACEMENT_SEARCH')
+      expect(zastepstwa.rozpocznij).not.toHaveBeenCalled()
     })
 
     it('carries an EU AI Act transparency notice on every interpretation', () => {
@@ -133,6 +236,299 @@ describe('VoiceCommandService', () => {
       // a read must never fall through to a write
       expect(leave.createRequest).not.toHaveBeenCalled()
       expect(audit.log).toHaveBeenCalledTimes(1)
+    })
+
+    it('computes the leave balance via the REAL LeaveService (mine + APPROVED), no confirm needed', async () => {
+      leave.list.mockResolvedValue([
+        { employeeId: 'emp-1', startDate: new Date('2026-01-05T00:00:00.000Z'), endDate: new Date('2026-01-09T00:00:00.000Z'), type: 'URLOP_WYPOCZYNKOWY', status: 'APPROVED' },
+      ])
+      const res = await svc.execute(client, actor, { intent: 'SALDO_URLOPU', entities: {}, confirm: false }, TODAY)
+      expect(leave.list).toHaveBeenCalledWith(client, actor, { mine: true, state: 'APPROVED' })
+      expect(res.executed).toBe(true)
+      expect(res.result).toEqual({ wymiarDni: 20, wykorzystaneDni: 5, pozostaleDni: 15 })
+      expect(leave.createRequest).not.toHaveBeenCalled()
+      expect(audit.log).toHaveBeenCalledTimes(1)
+    })
+
+    it('returns the most recent own leave request via the REAL LeaveService (mine), no confirm needed', async () => {
+      leave.list.mockResolvedValue([
+        { id: 'lr-9', status: 'PENDING', type: 'URLOP_WYPOCZYNKOWY', startDate: new Date('2026-08-10T00:00:00.000Z'), endDate: new Date('2026-08-12T00:00:00.000Z'), createdAt: new Date('2026-07-20T00:00:00.000Z') },
+      ])
+      const res = await svc.execute(client, actor, { intent: 'STATUS_WNIOSKU', entities: {}, confirm: false }, TODAY)
+      expect(leave.list).toHaveBeenCalledWith(client, actor, { mine: true })
+      expect(res.executed).toBe(true)
+      expect(res.result).toEqual({ id: 'lr-9', status: 'PENDING', type: 'URLOP_WYPOCZYNKOWY', startDate: '2026-08-10', endDate: '2026-08-12' })
+      expect(audit.log).toHaveBeenCalledTimes(1)
+    })
+
+    it('reports no requests when the caller has filed none', async () => {
+      leave.list.mockResolvedValue([])
+      const res = await svc.execute(client, actor, { intent: 'STATUS_WNIOSKU', entities: {}, confirm: false }, TODAY)
+      expect(res.executed).toBe(true)
+      expect(res.result).toBeNull()
+      expect(res.humanReadable).toMatch(/nie złożyłeś|brak wniosk/i)
+    })
+
+    it('runs POMOC directly (read, no confirm) and audits it', async () => {
+      const res = await svc.execute(client, actor, { intent: 'POMOC', entities: {}, confirm: false }, TODAY)
+      expect(res.executed).toBe(true)
+      expect(res.fallbackToForm).toBe(false)
+      expect(res.humanReadable).toContain(INTENT_CATALOG.find((e) => e.intent === 'URLOP')!.opis)
+      expect(audit.log).toHaveBeenCalledTimes(1)
+    })
+
+    describe('KTO_PRACUJE — scoped roster read', () => {
+      it('MANAGER sees the roster of their managed unit(s), split into working/absent', async () => {
+        prismaClient.userRole.findMany.mockResolvedValue([{ unitId: 'unit-1' }])
+        prismaClient.employee.findMany.mockResolvedValue([
+          { id: 'emp-A', firstName: 'Anna', lastName: 'Nowak' },
+          { id: 'emp-B', firstName: 'Bartek', lastName: 'Kowal' },
+        ])
+        grafik.listShifts.mockResolvedValue([
+          { employeeId: 'emp-A', date: new Date('2026-07-29T00:00:00.000Z') },
+        ])
+        leave.list.mockResolvedValue([
+          { employeeId: 'emp-B', startDate: new Date('2026-07-28T00:00:00.000Z'), endDate: new Date('2026-07-30T00:00:00.000Z') },
+        ])
+
+        const res = await svc.execute(client, managerActor, { intent: 'KTO_PRACUJE', entities: { dateFrom: '2026-07-29' }, confirm: false }, TODAY)
+
+        expect(leave.list).toHaveBeenCalledWith(client, managerActor, { state: 'APPROVED' })
+        expect(res.executed).toBe(true)
+        expect(res.result).toEqual({ date: '2026-07-29', pracujacy: ['Anna Nowak'], nieobecni: ['Bartek Kowal'] })
+        expect(audit.log).toHaveBeenCalledTimes(1)
+      })
+
+      it('[SZCZELNOŚĆ] a plain PRACOWNIK never triggers a roster query and never sees another employee — even if the underlying mocks hand back foreign data', async () => {
+        // actor has NO managed units (userRole.findMany → []); this is what makes them "plain".
+        prismaClient.employee.findFirst.mockResolvedValue({ id: 'emp-self' })
+        // Simulate a hypothetically-buggy GrafikService/LeaveService handing back OTHER people's
+        // rows too — VoiceCommandService itself must still never surface them for a plain employee.
+        grafik.listShifts.mockResolvedValue([
+          { employeeId: 'emp-self', date: new Date('2026-07-29T00:00:00.000Z') },
+          { employeeId: 'emp-OTHER', date: new Date('2026-07-29T00:00:00.000Z') },
+        ])
+        leave.list.mockResolvedValue([])
+
+        const res = await svc.execute(client, actor, { intent: 'KTO_PRACUJE', entities: { dateFrom: '2026-07-29' }, confirm: false }, TODAY)
+
+        // no unit-wide roster lookup at all for a plain employee
+        expect(prismaClient.employee.findMany).not.toHaveBeenCalled()
+        expect(leave.list).toHaveBeenCalledWith(client, actor, { mine: true, state: 'APPROVED' })
+        expect(res.result).toEqual({ date: '2026-07-29', self: { working: true, onApprovedLeave: false } })
+        expect(JSON.stringify(res.result)).not.toMatch(/emp-OTHER/)
+        expect(JSON.stringify(res.humanReadable)).not.toMatch(/emp-OTHER/)
+      })
+    })
+
+    describe('NASTEPNA_ZMIANA — earliest upcoming own shift', () => {
+      it('picks the earliest FUTURE shift (skipping a past one and picking over a later one), scoped to own employeeId', async () => {
+        prismaClient.employee.findFirst.mockResolvedValue({ id: 'emp-self' })
+        grafik.listShifts.mockResolvedValue([
+          { id: 's-past', employeeId: 'emp-self', date: new Date('2026-07-28T00:00:00.000Z'), start: '08:00', end: '16:00' },
+          { id: 's-later', employeeId: 'emp-self', date: new Date('2026-08-02T00:00:00.000Z'), start: '08:00', end: '16:00' },
+          { id: 's-next', employeeId: 'emp-self', date: new Date('2026-07-30T00:00:00.000Z'), start: '08:00', end: '16:00' },
+          { id: 's-other', employeeId: 'emp-OTHER', date: new Date('2026-07-29T00:00:00.000Z'), start: '08:00', end: '16:00' },
+        ])
+
+        const res = await svc.execute(client, actor, { intent: 'NASTEPNA_ZMIANA', entities: {}, confirm: false }, TODAY)
+
+        expect(grafik.listShifts).toHaveBeenCalledWith(client, actor)
+        expect(res.executed).toBe(true)
+        expect((res.result as { id: string }).id).toBe('s-next')
+        expect(res.humanReadable).toMatch(/2026-07-30/)
+      })
+
+      it('a dateless "no upcoming shifts" answers in Polish — never an empty result or a thrown exception', async () => {
+        prismaClient.employee.findFirst.mockResolvedValue({ id: 'emp-self' })
+        grafik.listShifts.mockResolvedValue([])
+
+        const res = await svc.execute(client, actor, { intent: 'NASTEPNA_ZMIANA', entities: {}, confirm: false }, TODAY)
+
+        expect(res.executed).toBe(true)
+        expect(res.result).toBeNull()
+        expect(res.humanReadable).toMatch(/nie masz.{0,40}zmian/i)
+      })
+    })
+
+    describe('MOJA_EWIDENCJA — worked hours vs weekly norm, own shifts only', () => {
+      const PERIOD = { dateFrom: '2026-07-27', dateTo: '2026-08-02' } // Mon..Sun, 5 business days
+
+      it('sums own shift hours in the period against the weekly norm, and never labels the excess "nadgodziny"', async () => {
+        prismaClient.employee.findFirst.mockResolvedValue({ id: 'emp-self', etat: 1 })
+        grafik.listShifts.mockResolvedValue([
+          { employeeId: 'emp-self', date: new Date('2026-07-27T00:00:00.000Z'), start: '08:00', end: '16:00' }, // 8h, Mon
+          { employeeId: 'emp-self', date: new Date('2026-07-28T00:00:00.000Z'), start: '08:00', end: '16:00' }, // 8h, Tue
+          { employeeId: 'emp-self', date: new Date('2026-07-29T00:00:00.000Z'), start: '08:00', end: '16:00' }, // 8h, Wed
+          { employeeId: 'emp-self', date: new Date('2026-07-30T00:00:00.000Z'), start: '08:00', end: '16:00' }, // 8h, Thu
+          { employeeId: 'emp-self', date: new Date('2026-07-31T00:00:00.000Z'), start: '08:00', end: '16:00' }, // 8h, Fri
+          { employeeId: 'emp-self', date: new Date('2026-08-01T00:00:00.000Z'), start: '08:00', end: '16:00' }, // 8h, Sat (outside 5 biz days)
+          { employeeId: 'emp-OTHER', date: new Date('2026-07-27T00:00:00.000Z'), start: '08:00', end: '16:00' }, // must be excluded (not mine)
+          { employeeId: 'emp-self', date: new Date('2026-08-10T00:00:00.000Z'), start: '08:00', end: '16:00' }, // must be excluded (outside period)
+        ])
+
+        const res = await svc.execute(client, actor, { intent: 'MOJA_EWIDENCJA', entities: PERIOD, confirm: false }, TODAY)
+
+        expect(grafik.listShifts).toHaveBeenCalledWith(client, actor)
+        const result = res.result as { sumaGodzin: number; normaGodzin: number; nadwyzkaPonadNorme: number; niedoborDoNormy: number }
+        expect(result.sumaGodzin).toBe(48)
+        expect(result.normaGodzin).toBe(40) // etat 1 × 8h × 5 business days
+        expect(result.nadwyzkaPonadNorme).toBe(8)
+        expect(result.niedoborDoNormy).toBe(0)
+        // naming discipline: must not brand the excess "nadgodziny" (KP overtime) — see analityk's
+        // identical disclaimer for `nadwyzkaPonadNorme`.
+        expect(res.humanReadable).not.toMatch(/twoje nadgodziny/i)
+        expect(res.humanReadable).toMatch(/nadwyżk[ae]/i)
+        expect(res.humanReadable).toMatch(/nie są nadgodzin/i)
+      })
+    })
+
+    describe('ANULUJ_WNIOSEK — human-in-the-loop write gate', () => {
+      it('REFUSES without confirm === true and NEVER calls LeaveService.cancel', async () => {
+        await expect(
+          svc.execute(client, actor, { intent: 'ANULUJ_WNIOSEK', entities: {}, confirm: false }, TODAY),
+        ).rejects.toBeInstanceOf(BadRequestException)
+        expect(leave.cancel).not.toHaveBeenCalled()
+        expect(audit.log).not.toHaveBeenCalled()
+      })
+
+      it('cancels the most recent PENDING request via the REAL LeaveService when confirmed', async () => {
+        leave.list.mockResolvedValue([
+          { id: 'lr-latest', type: 'URLOP_WYPOCZYNKOWY', startDate: new Date('2026-08-10T00:00:00.000Z'), endDate: new Date('2026-08-12T00:00:00.000Z') },
+        ])
+        leave.cancel.mockResolvedValue({ id: 'lr-latest', type: 'URLOP_WYPOCZYNKOWY', startDate: new Date('2026-08-10T00:00:00.000Z'), endDate: new Date('2026-08-12T00:00:00.000Z'), status: 'CANCELLED' })
+
+        const res = await svc.execute(client, actor, { intent: 'ANULUJ_WNIOSEK', entities: {}, confirm: true }, TODAY)
+
+        expect(leave.list).toHaveBeenCalledWith(client, actor, { mine: true, state: 'PENDING' })
+        expect(leave.cancel).toHaveBeenCalledWith(client, actor, 'lr-latest')
+        expect(res.executed).toBe(true)
+        expect(res.confirmedByHuman).toBe(true)
+        expect(audit.log).toHaveBeenCalledTimes(1)
+      })
+
+      it('reports gracefully when there is nothing pending to cancel — no exception', async () => {
+        leave.list.mockResolvedValue([])
+        const res = await svc.execute(client, actor, { intent: 'ANULUJ_WNIOSEK', entities: {}, confirm: true }, TODAY)
+        expect(res.executed).toBe(false)
+        expect(leave.cancel).not.toHaveBeenCalled()
+        expect(res.humanReadable).toMatch(/nie masz.{0,30}wniosk/i)
+      })
+    })
+
+    describe('ZAMIANA_ZMIANY — human-in-the-loop write gate', () => {
+      const ENTITIES = { dateFrom: '2026-07-31', dateTo: '2026-07-31' } // Friday
+
+      it('REFUSES without confirm === true and NEVER calls ShiftSwapService.create', async () => {
+        await expect(
+          svc.execute(client, actor, { intent: 'ZAMIANA_ZMIANY', entities: ENTITIES, confirm: false }, TODAY),
+        ).rejects.toBeInstanceOf(BadRequestException)
+        expect(shiftSwap.create).not.toHaveBeenCalled()
+        expect(audit.log).not.toHaveBeenCalled()
+      })
+
+      it('creates + submits a give-away swap for the caller\'s OWN shift on the day, via the REAL ShiftSwapService', async () => {
+        prismaClient.employee.findFirst.mockResolvedValue({ id: 'emp-self' })
+        grafik.listShifts.mockResolvedValue([
+          { id: 's-other-day', employeeId: 'emp-self', date: new Date('2026-08-01T00:00:00.000Z'), start: '08:00', end: '16:00' },
+          { id: 's-target', employeeId: 'emp-self', date: new Date('2026-07-31T00:00:00.000Z'), start: '08:00', end: '16:00' },
+          { id: 's-not-mine', employeeId: 'emp-OTHER', date: new Date('2026-07-31T00:00:00.000Z'), start: '08:00', end: '16:00' },
+        ])
+        shiftSwap.create.mockResolvedValue({ id: 'swap-1', state: 'DRAFT' })
+        shiftSwap.submit.mockResolvedValue({ id: 'swap-1', state: 'PENDING_PEER' })
+
+        const res = await svc.execute(client, actor, { intent: 'ZAMIANA_ZMIANY', entities: ENTITIES, confirm: true }, TODAY)
+
+        expect(shiftSwap.create).toHaveBeenCalledWith(client, { userId: actor.userId, roles: actor.roles }, { requesterShiftId: 's-target' })
+        expect(shiftSwap.submit).toHaveBeenCalledWith(client, 'swap-1')
+        expect(res.executed).toBe(true)
+        expect(res.confirmedByHuman).toBe(true)
+        expect(res.result).toEqual({ id: 'swap-1', state: 'PENDING_PEER' })
+        expect(audit.log).toHaveBeenCalledTimes(1)
+      })
+
+      it('reports gracefully when the caller has no shift that day — no exception, no swap created', async () => {
+        prismaClient.employee.findFirst.mockResolvedValue({ id: 'emp-self' })
+        grafik.listShifts.mockResolvedValue([])
+
+        const res = await svc.execute(client, actor, { intent: 'ZAMIANA_ZMIANY', entities: ENTITIES, confirm: true }, TODAY)
+
+        expect(res.executed).toBe(false)
+        expect(shiftSwap.create).not.toHaveBeenCalled()
+        expect(res.humanReadable).toMatch(/nie masz.{0,30}zmian/i)
+      })
+    })
+
+    describe('ZNAJDZ_ZASTEPSTWO — human-in-the-loop write gate + kadrowy-only RBAC', () => {
+      const ENTITIES = { dateFrom: '2026-07-31', dateTo: '2026-07-31' } // Friday, week Mon 07-27..Sun 08-02
+
+      it('REFUSES without confirm === true and NEVER calls ZastepstwaService.rozpocznij', async () => {
+        await expect(
+          svc.execute(client, managerActor, { intent: 'ZNAJDZ_ZASTEPSTWO', entities: ENTITIES, confirm: false }, TODAY),
+        ).rejects.toBeInstanceOf(BadRequestException)
+        expect(zastepstwa.rozpocznij).not.toHaveBeenCalled()
+      })
+
+      it('[RBAC] a plain PRACOWNIK is REJECTED even with confirm === true — a fail-fast precheck here (imported from ZastepstwaService\'s own KADROWY_ROLES, single source of truth) stops it before any candidate roster is built or the service is even called', async () => {
+        await expect(
+          svc.execute(client, actor, { intent: 'ZNAJDZ_ZASTEPSTWO', entities: ENTITIES, confirm: true }, TODAY),
+        ).rejects.toBeInstanceOf(ForbiddenException)
+        expect(zastepstwa.rozpocznij).not.toHaveBeenCalled()
+      })
+
+      it('a MANAGER starts a search over their managed-unit roster, and NEVER itself grants anything (never calls potwierdz)', async () => {
+        prismaClient.userRole.findMany.mockResolvedValue([{ unitId: 'unit-1' }])
+        prismaClient.employee.findFirst.mockResolvedValue({ id: 'emp-mgr' })
+        prismaClient.employee.findMany.mockResolvedValue([
+          { id: 'emp-mgr', firstName: 'Maria', lastName: 'Manager', etat: 1, qualifications: ['NURSE'] },
+          { id: 'emp-cand1', firstName: 'Anna', lastName: 'Nowak', etat: 1, qualifications: ['NURSE'] }, // busy that day
+          { id: 'emp-cand2', firstName: 'Bartek', lastName: 'Kowal', etat: 1, qualifications: [] }, // free, wrong qualification
+          { id: 'emp-cand3', firstName: 'Celina', lastName: 'Wolf', etat: 1, qualifications: ['NURSE'] }, // free, qualified
+        ])
+        grafik.listShifts.mockResolvedValue([
+          { id: 'shift-target', employeeId: 'emp-mgr', date: new Date('2026-07-31T00:00:00.000Z'), start: '08:00', end: '16:00', role: 'NURSE' },
+          { id: 'shift-cand1', employeeId: 'emp-cand1', date: new Date('2026-07-31T00:00:00.000Z'), start: '08:00', end: '16:00', role: 'NURSE' },
+          { id: 'shift-cand3', employeeId: 'emp-cand3', date: new Date('2026-07-28T00:00:00.000Z'), start: '08:00', end: '16:00', role: 'NURSE' },
+        ])
+        leave.list.mockResolvedValue([])
+        zastepstwa.rozpocznij.mockResolvedValue({ id: 'proces-1', stan: 'OCZEKIWANIE' })
+
+        const res = await svc.execute(client, managerActor, { intent: 'ZNAJDZ_ZASTEPSTWO', entities: ENTITIES, confirm: true }, TODAY)
+
+        expect(zastepstwa.rozpocznij).toHaveBeenCalledTimes(1)
+        expect(zastepstwa.rozpocznij.mock.calls[0][0]).toEqual({ userId: managerActor.userId, roles: managerActor.roles })
+        const dto = zastepstwa.rozpocznij.mock.calls[0][1]
+        expect(dto.shiftId).toBe('shift-target')
+        expect(dto.nieobecnyId).toBe('emp-mgr')
+        expect(dto.kandydaci).toHaveLength(3) // manager excluded from their own candidate pool
+        expect(dto.kandydaci).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ pracownikId: 'emp-cand1', dostepny: false, wykonalnaZamiana: false, obciazenieTygodnioweGodz: 8 }),
+            expect.objectContaining({ pracownikId: 'emp-cand2', dostepny: true, wykonalnaZamiana: false, obciazenieTygodnioweGodz: 0 }),
+            expect.objectContaining({ pracownikId: 'emp-cand3', dostepny: true, wykonalnaZamiana: true, obciazenieTygodnioweGodz: 8 }),
+          ]),
+        )
+        expect(res.executed).toBe(true)
+        expect(res.confirmedByHuman).toBe(true)
+        expect(res.result).toEqual({ id: 'proces-1', stan: 'OCZEKIWANIE' })
+        // [GRANICA ZGODNOŚCI] the agent STARTS the search and asks candidates — it never itself
+        // grants the leave or reassigns the shift; only an explicit manager action on the REAL
+        // ZastepstwaController (`POST /zastepstwa/:id/potwierdz`) can do that.
+        expect(zastepstwa.potwierdz).not.toHaveBeenCalled()
+        expect(audit.log).toHaveBeenCalledTimes(1)
+      })
+
+      it('reports gracefully when the manager has no shift that day — no exception, no search started', async () => {
+        prismaClient.userRole.findMany.mockResolvedValue([{ unitId: 'unit-1' }])
+        prismaClient.employee.findFirst.mockResolvedValue({ id: 'emp-mgr' })
+        grafik.listShifts.mockResolvedValue([])
+
+        const res = await svc.execute(client, managerActor, { intent: 'ZNAJDZ_ZASTEPSTWO', entities: ENTITIES, confirm: true }, TODAY)
+
+        expect(res.executed).toBe(false)
+        expect(zastepstwa.rozpocznij).not.toHaveBeenCalled()
+        expect(res.humanReadable).toMatch(/nie masz.{0,30}zmian/i)
+      })
     })
 
     it('NIEZNANE never executes — returns a fallback-to-form result', async () => {

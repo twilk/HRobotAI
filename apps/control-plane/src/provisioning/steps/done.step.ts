@@ -10,9 +10,18 @@ export class DoneStep implements ProvisioningStepHandler {
   constructor(private readonly prisma: ControlPlanePrismaService) {}
 
   async execute(job: { id: string; tenantId: string; step: string; attemptCount: number }): Promise<void> {
+    const tenant = await this.prisma.tenant.findUniqueOrThrow({ where: { id: job.tenantId } })
+
     await this.prisma.tenant.update({
       where: { id: job.tenantId },
-      data: { status: TenantStatus.ACTIVE, provisionedAt: new Date() },
+      data: {
+        status: TenantStatus.ACTIVE,
+        // G-1: keep the FIRST provisioning timestamp. A redelivered message re-runs this step
+        // (its own step stays DONE, so it is the one step that is legitimately re-entered), and
+        // overwriting provisionedAt would silently move the tenant's activation date forward —
+        // it feeds billing/trial windows and the audit trail.
+        ...(tenant.provisionedAt ? {} : { provisionedAt: new Date() }),
+      },
     })
 
     await this.prisma.provisioningJob.update({
