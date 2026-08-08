@@ -32,6 +32,21 @@ async function getJson<T>(url: string): Promise<T> {
   return (await res.json()) as T
 }
 
+/**
+ * Like {@link getJson} but treats 404 as "there is no such record", not as a failure.
+ *
+ * An ADMIN_KLIENTA or HR account often has no `Employee` row — it is a login, not a person on the
+ * roster (the demo admin is exactly this shape, and known-limitations.md already records it). Before
+ * this, such an account got "Brak połączenia. Sprawdź internet." on a working connection, which is
+ * both wrong and the sort of message that sends somebody debugging their wifi.
+ */
+async function getJsonOrNull<T>(url: string): Promise<T | null> {
+  const res = await fetch(url, { cache: 'no-store' })
+  if (res.status === 404) return null
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return (await res.json()) as T
+}
+
 const STATUS_LABEL: Record<string, string> = {
   PENDING: 'Oczekuje',
   APPROVED: 'Zatwierdzony',
@@ -49,7 +64,7 @@ const STATUS_TONE: Record<string, string> = {
 export function MobileWeek() {
   const [days, setDays] = useState<DayGroup[] | null>(null)
   const [leaves, setLeaves] = useState<LeaveRow[]>([])
-  const [me, setMe] = useState<MeResponse | null>(null)
+  const [me, setMe] = useState<MeResponse | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const cancelled = useRef(false)
@@ -58,7 +73,7 @@ export function MobileWeek() {
     try {
       const today = todayIso()
       const [meRes, shifts, leaveRows] = await Promise.all([
-        getJson<MeResponse>('/api/employees/me'),
+        getJsonOrNull<MeResponse>('/api/employees/me'),
         getJson<WeekShift[]>('/api/grafik/shifts'),
         getJson<LeaveRow[]>('/api/wnioski'),
       ])
@@ -97,11 +112,18 @@ export function MobileWeek() {
   return (
     <div className="space-y-6">
       <header>
+        {/* The heading renders unconditionally. It used to depend on `me`, so an account with no
+            Employee row produced a page with no heading at all — which is also what broke the
+            evidence capture, since its acceptance check is "a heading is visible". */}
         <h1 className="font-display text-2xl font-extrabold tracking-tighter2 text-navy">
           {me?.firstName ? `Cześć, ${me.firstName}` : 'Twój tydzień'}
         </h1>
         <p className="mt-1 text-[13px] text-muted">
-          {hours === 0 ? 'W tym tygodniu nie masz zaplanowanych zmian.' : `Masz ${hours} zaplanowanych zmian.`}
+          {me === null
+            ? 'To konto nie ma kartoteki pracownika, więc nie ma własnego grafiku ani wniosków.'
+            : hours === 0
+              ? 'W tym tygodniu nie masz zaplanowanych zmian.'
+              : `Masz ${hours} zaplanowanych zmian.`}
         </p>
       </header>
 

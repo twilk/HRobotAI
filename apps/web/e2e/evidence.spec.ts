@@ -20,10 +20,20 @@ import { expect, test } from '@playwright/test'
 
 const USERNAME = process.env.E2E_USERNAME ?? 'manager.demo'
 const PASSWORD = process.env.E2E_PASSWORD ?? 'Manager!2026'
-const EVIDENCE_DIR = path.resolve(__dirname, '..', '..', '..', '..', 'data', 'm2-evidence', 'screenshots')
+/**
+ * THREE levels up, not four: `apps/web/e2e` -> `apps/web` -> `apps` -> repo root.
+ *
+ * This was `'..' x 4` until 2026-08-08, correct back when the file lived at
+ * `docs/design/web-kit/e2e/`. The `git mv` to `apps/web/e2e/` made it one level too many, and the
+ * capture spent that whole time writing into `WORKSPACE/data/m2-evidence/screenshots` — OUTSIDE the
+ * repository, invisible to git — while the pack inside the repo silently kept older files. The run
+ * passed, the screenshots existed, and the evidence pack was stale anyway. Pinned below.
+ */
+const REPO_ROOT = path.resolve(__dirname, '..', '..', '..')
+const EVIDENCE_DIR = path.resolve(REPO_ROOT, 'data', 'm2-evidence', 'screenshots')
 
 /** Screens to capture, in the order a demo walks them. `heading` is the acceptance check. */
-const EKRANY: ReadonlyArray<{ sciezka: string; plik: string; naglowek: RegExp }> = [
+const EKRANY: ReadonlyArray<{ sciezka: string; plik: string; naglowek: RegExp; mobile?: boolean }> = [
   { sciezka: '/dashboard', plik: 'j0-pulpit', naglowek: /Pulpit/i },
   { sciezka: '/pracownicy', plik: 'j1-pracownicy', naglowek: /Pracownic/i },
   { sciezka: '/grafik', plik: 'j2-grafik', naglowek: /Grafik/i },
@@ -38,6 +48,10 @@ const EKRANY: ReadonlyArray<{ sciezka: string; plik: string; naglowek: RegExp }>
   // kadrowy". Asserting on the route name instead of the rendered heading is exactly how a capture
   // silently degrades into a screenshot of nothing.
   { sciezka: '/analiza', plik: 'm3-analiza', naglowek: /Strategiczny mózg/i },
+  // The employee's phone route. Captured at 375x812 (see the mobile block below) rather than at the
+  // desktop viewport — a screenshot of it stretched to 1280px would misrepresent the one screen in
+  // the product that exists specifically for a phone.
+  { sciezka: '/moj-tydzien', plik: 'm3-moj-tydzien-mobile', naglowek: /Cześć|Twój tydzień/i, mobile: true },
 ]
 
 test('materiał dowodowy — zrzut każdego ekranu najemcy', async ({ page }) => {
@@ -45,6 +59,13 @@ test('materiał dowodowy — zrzut każdego ekranu najemcy', async ({ page }) =>
   // measured ~8 s to first paint on the demo dataset (39 employees, 833 shifts). A 5 s wait
   // screenshots a spinner, which is exactly the misleading artefact this file exists to prevent.
   test.setTimeout(180_000)
+
+  // The capture must land INSIDE the repo, or the pack silently keeps whatever was there before.
+  // A relative-path regression is invisible otherwise: the run still passes and files still appear.
+  const { existsSync } = await import('node:fs')
+  expect(existsSync(path.join(REPO_ROOT, 'pnpm-workspace.yaml')), `EVIDENCE_DIR escaped the repo: ${EVIDENCE_DIR}`).toBe(
+    true,
+  )
 
   await page.goto('/login', { waitUntil: 'domcontentloaded' })
   await page.locator('input[name="login"]').fill(USERNAME)
@@ -55,6 +76,9 @@ test('materiał dowodowy — zrzut każdego ekranu najemcy', async ({ page }) =>
   const pominiete: string[] = []
 
   for (const ekran of EKRANY) {
+    // A phone screen has to be photographed on a phone; the rest stay at the desktop viewport the
+    // rest of the pack uses, so the two are not silently mixed.
+    await page.setViewportSize(ekran.mobile ? { width: 375, height: 812 } : { width: 1280, height: 900 })
     await page.goto(ekran.sciezka, { waitUntil: 'domcontentloaded' })
 
     // A role this account cannot reach redirects rather than rendering — record it and move on
