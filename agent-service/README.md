@@ -27,6 +27,14 @@ services communicate only over the FROZEN `POST /solve` contract.
 | `app/env.py` — `GrafikSchedulingEnv` | `gymnasium`, `numpy` | No. A scaffold; no RL algorithm trains against it |
 | `app/train_bc.py` — offline BC CLI | `imitation` (→ `torch`/SB3) | No. Trains, but the API never loads its artifact (Q8) |
 
+**This table is enforced, not asserted.** `tests/test_serving_path_purity.py` walks the static import
+graph from `app.main` and fails if any module the API can reach imports `gymnasium`,
+`stable_baselines3`, `torch` or `imitation`. Without it the paragraph above is prose that one careless
+import silently turns into a false claim — inside the document the milestone evidence pack points an
+auditor at. Verified negatively: adding `import gymnasium` to `app/policy.py` fails the test with
+`{'policy': ['gymnasium']}`. Reachable from `app.main` today: 18 modules, none of them heavy; outside
+it: `env`, `rollout`, `sample`, `train_bc`.
+
 ## Increment history
 
 - **M2-C1 phase B** (merged, PR #20): the Gymnasium + `imitation` skeleton — `python:3.12-slim` image,
