@@ -217,6 +217,30 @@ describeIntegration('analityk over two DISJOINT windows (real Postgres)', () => 
         },
       })
     }
+
+    /**
+     * AN APPROVED ABSENCE THAT FALLS IN THE PREVIOUS WINDOW ONLY (Wed–Fri 2026-03-04..06, three
+     * business days). Until this row existed, every seeded leave sat in April — outside BOTH
+     * windows — so `absencje` returned 0 for both and the mocked lane's "same rows for every query"
+     * blindness was invisible on the single most prominent KPI on the screen ("Wskaźnik absencji").
+     *
+     * FILED AND DECIDED IN JANUARY on purpose: `absencje` selects on startDate/endDate overlap, while
+     * `wnioski` selects on createdAt/decidedAt. Keeping the decision outside both windows means this
+     * row drives the absence assertions without moving the queue-drain and median-to-decision
+     * numbers the existing tests pin.
+     */
+    await client.leaveRequest.create({
+      data: {
+        employeeId: employeeIds[0] as string,
+        startDate: d('2026-03-04'),
+        endDate: d('2026-03-06'),
+        status: LeaveStatus.APPROVED,
+        type: 'URLOP_WYPOCZYNKOWY',
+        createdAt: at('2026-01-05T09:00:00.000Z'),
+        decidedAt: at('2026-01-10T09:00:00.000Z'),
+        decidedByUserId: null,
+      },
+    })
   })
 
   afterAll(async () => {
@@ -319,5 +343,68 @@ describeIntegration('analityk over two DISJOINT windows (real Postgres)', () => 
         await client.employee.update({ where: { id: employeeId }, data: { userId: user?.id as string } })
       }
     }
+  })
+
+  // --- absencje / urlopy: the two aggregates the real-DB lane did not reach -------------------------
+
+  it('reports absence in the window it falls in, and zero in the other one', async () => {
+    // "Wskaźnik absencji" is the second tile on the dashboard. The mocked lane hands back the same
+    // leave rows for every query, so it can never tell these two windows apart; a regression that
+    // dropped the startDate/endDate overlap filter would pass there and be invisible here too until
+    // a leave row actually landed inside one window. Directional on purpose.
+    const poprzednie = await service.absencje(client, null, POPRZEDNIE)
+    const biezace = await service.absencje(client, null, BIEZACE)
+
+    // Not null: null means "no denominator" (nobody employed), which is a different answer from 0.
+    expect(poprzednie.wskaznik).not.toBeNull()
+    expect(biezace.wskaznik).not.toBeNull()
+    expect(poprzednie.wskaznik as number).toBeGreaterThan(0)
+    expect(biezace.wskaznik as number).toBe(0)
+    expect(poprzednie.dniNieobecnosci).toBeGreaterThan(biezace.dniNieobecnosci)
+  })
+
+  it('counts absence in business days and clips it to the range', async () => {
+    // The window runs Mon 2026-03-02 .. Sun 2026-03-15, so 03-12 is Thu and 03-14/15 the weekend.
+    // A leave of Thu 12 -> Mon 16 must add exactly TWO days to this window: Thu + Fri. A calendar
+    // count would add four (12,13,14,15); an unclipped count would add three (12,13,16).
+    const before = await service.absencje(client, null, POPRZEDNIE)
+    const weekendSpanning = await client.leaveRequest.create({
+      data: {
+        employeeId: employeeIds[1] as string,
+        startDate: d('2026-03-12'),
+        endDate: d('2026-03-16'),
+        status: LeaveStatus.APPROVED,
+        type: 'URLOP_WYPOCZYNKOWY',
+        createdAt: at('2026-01-05T09:00:00.000Z'),
+        decidedAt: at('2026-01-10T09:00:00.000Z'),
+        decidedByUserId: null,
+      },
+    })
+    try {
+      const after = await service.absencje(client, null, POPRZEDNIE)
+      expect(after.dniNieobecnosci - before.dniNieobecnosci).toBe(2)
+    } finally {
+      await client.leaveRequest.delete({ where: { id: weekendSpanning.id } })
+    }
+  })
+
+  it('derives annual leave used from real approved rows, and ignores the undecided one', async () => {
+    // `urlopy` is year-scoped rather than window-scoped, so the two-window trick does not apply — but
+    // it still reads rows a mock would invent, and it scopes to CURRENTLY ACTIVE employees (three of
+    // the six here; the other three were deactivated in the seed). A leave balance for somebody
+    // whose account is off is not actionable, so that scoping is deliberate — pinned here because it
+    // makes every figure on this aggregate differ from the headcount ones, which is surprising.
+    //
+    // 2026 arithmetic over the three active employees:
+    //   3 APPROVED April requests (Mon 04-06 .. Fri 04-10) x 5 business days = 15
+    // + 1 APPROVED March request  (Wed 03-04 .. Fri 03-06) x 3 business days =  3
+    //                                                                   total = 18
+    // The 7th April request belongs to an active employee and is PENDING. If the `status: APPROVED`
+    // filter were ever dropped this reads 23 — exactly the silent widening the mocked lane misses.
+    const r = await service.urlopy(client, null, POPRZEDNIE)
+
+    expect(r.liczbaPracownikow).toBe(3)
+    expect(r.wykorzystaneDni).toBe(18)
+    expect(r.rok).toBe(2026)
   })
 })
