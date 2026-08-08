@@ -28,6 +28,7 @@ import { DokumentyModule } from './dokumenty/dokumenty.module.js'
 import { AgentGlosowyModule } from './agent-glosowy/agent-glosowy.module.js'
 import { AnalitykModule } from './analityk/analityk.module.js'
 import { ZastepstwaModule } from './zastepstwa/zastepstwa.module.js'
+import { UsageModule } from './usage/usage.module.js'
 import { RedisService } from './common/redis/redis.service.js'
 
 @Module({
@@ -71,6 +72,7 @@ import { RedisService } from './common/redis/redis.service.js'
     // jednego właściciela (integratora) wg protokołu plików współdzielonych — bez tej linii
     // POST /api/zastepstwa nie jest osiągalne, mimo że kod istnieje.
     ZastepstwaModule,
+    UsageModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
