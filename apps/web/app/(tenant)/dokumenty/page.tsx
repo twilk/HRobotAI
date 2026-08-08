@@ -3,6 +3,7 @@ import { DokumentyRodoBanner } from '@/components/dokumenty/rodo-banner'
 import { DokumentyScreen } from '@/components/dokumenty/dokumenty-screen'
 import { MojaEwidencjaScreen } from '@/components/dokumenty/moja-ewidencja-screen'
 import type { Role } from '@/lib/nav'
+import { getTenant } from '@/lib/tenant'
 import { getSession } from '@/lib/session'
 
 /**
@@ -23,7 +24,7 @@ import { getSession } from '@/lib/session'
  */
 export default async function DokumentyPage() {
   const session = await getSession()
-  const tenant = { name: '4Mobility sp. z o.o.', slug: '4mobility.hrobot.ai' }
+  const tenant = await getTenant()
   const user = session?.user ?? { name: 'Użytkownik', role: '—', initials: '?' }
   const roles: Role[] = session?.roles ?? []
   const firstName = user.name.split(' ')[0]

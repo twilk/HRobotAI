@@ -2,6 +2,7 @@ import { AppShell } from '@/components/layout/app-shell'
 import { AiNoticeBanner } from '@/components/asystent/ai-notice-banner'
 import { AsystentScreen } from '@/components/asystent/asystent-screen'
 import type { Role } from '@/lib/nav'
+import { getTenant } from '@/lib/tenant'
 import { getSession } from '@/lib/session'
 
 /**
@@ -16,7 +17,7 @@ import { getSession } from '@/lib/session'
  */
 export default async function AsystentPage() {
   const session = await getSession()
-  const tenant = { name: '4Mobility sp. z o.o.', slug: '4mobility.hrobot.ai' }
+  const tenant = await getTenant()
   const user = session?.user ?? { name: 'Użytkownik', role: '—', initials: '?' }
   const roles: Role[] = session?.roles ?? []
   const firstName = user.name.split(' ')[0]

@@ -1,9 +1,14 @@
 import './globals.css'
 import type { ReactNode, CSSProperties } from 'react'
 
+// These strings are the product's public identity: browser tab, bookmark, and every screenshot that
+// goes into the milestone evidence pack. They previously still described the design-system preview
+// this app grew out of ("System projektowy" / "Runnable reference app for the HRobot design system"),
+// so the delivered product introduced itself to the customer as a reference app.
 export const metadata = {
-  title: 'HRobot · System projektowy',
-  description: 'Runnable reference app for the HRobot design system.',
+  title: 'HRobot · System kadrowy',
+  description:
+    'HRobot — system kadrowy z grafikiem, wnioskami i asystentem AI. Dane pracowników przetwarzane zgodnie z RODO.',
 }
 
 // Preview app loads the Fontshare + Google fonts via CDN and maps them to the

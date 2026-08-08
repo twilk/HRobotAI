@@ -5,6 +5,7 @@ import { CostPanel } from '@/components/ai-grafik/cost-panel'
 import { EmptyState } from '@/components/ui/empty-state'
 import { IconLock } from '@/components/icons'
 import type { Role } from '@/lib/nav'
+import { getTenant } from '@/lib/tenant'
 import { getSession } from '@/lib/session'
 
 // Server shell (identity/AppShell); the config editor + manager proposal inbox are Client Components
@@ -26,7 +27,7 @@ import { getSession } from '@/lib/session'
 // (components/ai-grafik/ai-consent-section.tsx). Identity comes from the real Keycloak session.
 export default async function AiGrafikManagerPage() {
   const session = await getSession()
-  const tenant = { name: '4Mobility sp. z o.o.', slug: '4mobility.hrobot.ai' }
+  const tenant = await getTenant()
   const user = session?.user ?? { name: 'Użytkownik', role: '—', initials: '?' }
   const roles: Role[] = session?.roles ?? []
   const canManage = roles.some((r) => r === 'MANAGER' || r === 'HR' || r === 'ADMIN_KLIENTA')

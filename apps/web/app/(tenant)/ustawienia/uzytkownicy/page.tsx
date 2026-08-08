@@ -3,6 +3,7 @@ import { UsersScreen } from '@/components/users/users-screen'
 import { EmptyState } from '@/components/ui/empty-state'
 import { IconLock } from '@/components/icons'
 import type { Role } from '@/lib/nav'
+import { getTenant } from '@/lib/tenant'
 import { getSession } from '@/lib/session'
 
 // Server shell (identity/AppShell) + ADMIN_KLIENTA gate — mirrors app/(tenant)/ai-grafik-manager/
@@ -12,7 +13,7 @@ import { getSession } from '@/lib/session'
 // ADMIN_KLIENTA-only for EVERY route — see users.controller.ts's class-level @TenantRoute).
 export default async function UzytkownicyPage() {
   const session = await getSession()
-  const tenant = { name: '4Mobility sp. z o.o.', slug: '4mobility.hrobot.ai' }
+  const tenant = await getTenant()
   const user = session?.user ?? { name: 'Użytkownik', role: '—', initials: '?' }
   const roles: Role[] = session?.roles ?? []
   const isAdmin = roles.includes('ADMIN_KLIENTA')

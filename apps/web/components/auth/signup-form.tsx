@@ -23,7 +23,13 @@ export function SignupForm() {
       })
       if (res.status === 202) {
         const { jobId } = (await res.json()) as { jobId: string }
-        window.location.assign(`/signup/status?job=${jobId}`)
+        // Carry the chosen slug so the status page can name THIS tenant's address. Without it that
+        // page fell back to a hardcoded address and told every new customer their workspace was
+        // being created at the pilot customer's domain. See lib/tenant.ts for the same class of bug
+        // on the authenticated side.
+        const slug = typeof payload.slug_normalized === 'string' ? payload.slug_normalized : ''
+        const q = new URLSearchParams({ job: jobId, ...(slug ? { slug } : {}) })
+        window.location.assign(`/signup/status?${q}`)
         return
       }
       if (res.status === 409) {

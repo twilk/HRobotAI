@@ -1,6 +1,7 @@
 import { AppShell } from '@/components/layout/app-shell'
 import { WnioskiScreen } from '@/components/wnioski/wnioski-screen'
 import type { Role } from '@/lib/nav'
+import { getTenant } from '@/lib/tenant'
 import { getSession } from '@/lib/session'
 
 // Server shell (identity/AppShell); the leave-request workflow is a Client Component that reads/
@@ -10,7 +11,7 @@ import { getSession } from '@/lib/session'
 // MANAGER/HR/ADMIN_KLIENTA-only "Do akceptacji" inbox internally.
 export default async function WnioskiPage() {
   const session = await getSession()
-  const tenant = { name: '4Mobility sp. z o.o.', slug: '4mobility.hrobot.ai' }
+  const tenant = await getTenant()
   const user = session?.user ?? { name: 'Użytkownik', role: '—', initials: '?' }
   const roles: Role[] = session?.roles ?? []
 

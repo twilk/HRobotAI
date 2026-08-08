@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { AppShell } from '@/components/layout/app-shell'
 import { SecuredChip } from '@/components/ui/secured-chip'
 import { IconCalendar, IconFileText, IconMessageCircle, IconShieldCheck } from '@/components/icons'
+import { getTenant } from '@/lib/tenant'
 import { getSession } from '@/lib/session'
 import type { Role } from '@/lib/nav'
 
@@ -25,7 +26,7 @@ const QUICK_LINKS = [
 
 export default async function ProfilPage() {
   const session = await getSession()
-  const tenant = { name: '4Mobility sp. z o.o.', slug: '4mobility.hrobot.ai' }
+  const tenant = await getTenant()
   const user = session?.user ?? { name: 'Użytkownik', role: '—', initials: '?' }
   const roles: Role[] = session?.roles ?? []
   const username = session?.username ?? ''

@@ -3,6 +3,7 @@ import { AnalitykDashboard } from '@/components/analityk/dashboard'
 import { EmptyState } from '@/components/ui/empty-state'
 import { IconLock } from '@/components/icons'
 import type { Role } from '@/lib/nav'
+import { getTenant } from '@/lib/tenant'
 import { getSession } from '@/lib/session'
 
 /**
@@ -20,7 +21,7 @@ import { getSession } from '@/lib/session'
  */
 export default async function AnalitykPage() {
   const session = await getSession()
-  const tenant = { name: '4Mobility sp. z o.o.', slug: '4mobility.hrobot.ai' }
+  const tenant = await getTenant()
   const user = session?.user ?? { name: 'Użytkownik', role: '—', initials: '?' }
   const roles: Role[] = session?.roles ?? []
   const firstName = user.name.split(' ')[0]

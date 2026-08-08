@@ -3,6 +3,7 @@ import { DostepyScreen } from '@/components/dostepy/dostepy-screen'
 import { EmptyState } from '@/components/ui/empty-state'
 import { IconLock } from '@/components/icons'
 import type { Role } from '@/lib/nav'
+import { getTenant } from '@/lib/tenant'
 import { getSession } from '@/lib/session'
 
 // Server shell (identity/AppShell); the access-grant workspace is a Client Component that reads/
@@ -12,7 +13,7 @@ import { getSession } from '@/lib/session'
 // app/(tenant)/ai-grafik-manager/page.tsx's EmptyState+IconLock gate.
 export default async function DostepyPage() {
   const session = await getSession()
-  const tenant = { name: '4Mobility sp. z o.o.', slug: '4mobility.hrobot.ai' }
+  const tenant = await getTenant()
   const user = session?.user ?? { name: 'Użytkownik', role: '—', initials: '?' }
   const roles: Role[] = session?.roles ?? []
   const canManage = roles.some((r) => r === 'MANAGER' || r === 'HR' || r === 'ADMIN_KLIENTA')

@@ -3,6 +3,7 @@ import { UstawieniaScreen } from '@/components/ustawienia/ustawienia-screen'
 import { EmptyState } from '@/components/ui/empty-state'
 import { IconLock } from '@/components/icons'
 import type { Role } from '@/lib/nav'
+import { getTenant } from '@/lib/tenant'
 import { getSession } from '@/lib/session'
 
 // Server shell (identity/AppShell); the company-settings + org-unit editor is a Client Component that
@@ -15,7 +16,7 @@ import { getSession } from '@/lib/session'
 // direct navigation — deny gracefully instead of building a second (unrequested) read-only surface.
 export default async function UstawieniaPage() {
   const session = await getSession()
-  const tenant = { name: '4Mobility sp. z o.o.', slug: '4mobility.hrobot.ai' }
+  const tenant = await getTenant()
   const user = session?.user ?? { name: 'Użytkownik', role: '—', initials: '?' }
   const roles: Role[] = session?.roles ?? []
   const canEdit = roles.includes('ADMIN_KLIENTA')

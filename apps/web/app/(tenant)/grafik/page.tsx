@@ -1,6 +1,7 @@
 import { AppShell } from '@/components/layout/app-shell'
 import { GrafikScreen } from '@/components/grafik/grafik-screen'
 import type { Role } from '@/lib/nav'
+import { getTenant } from '@/lib/tenant'
 import { getSession } from '@/lib/session'
 
 // Server shell (identity/AppShell); the grid itself is a Client Component that fetches the weekly
@@ -9,7 +10,7 @@ import { getSession } from '@/lib/session'
 // Keycloak session (lib/session).
 export default async function GrafikPage() {
   const session = await getSession()
-  const tenant = { name: '4Mobility sp. z o.o.', slug: '4mobility.hrobot.ai' }
+  const tenant = await getTenant()
   const user = session?.user ?? { name: 'Użytkownik', role: '—', initials: '?' }
   const roles: Role[] = session?.roles ?? []
   // Scheduling roles get generate + manual CRUD; a plain PRACOWNIK gets a read-only own-schedule view.

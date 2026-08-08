@@ -5,9 +5,12 @@ import { ProvisioningStatus } from '@/components/auth/provisioning-status'
 export default async function ProvisioningStatusPage({
   searchParams,
 }: {
-  searchParams: Promise<{ job?: string }>
+  searchParams: Promise<{ job?: string; slug?: string }>
 }) {
-  const { job } = await searchParams
+  const { job, slug } = await searchParams
+  // The slug the visitor just chose, carried through by the signup form. Falls back to a neutral
+  // placeholder — never to another tenant's address.
+  const adres = slug ? `${slug}.hrobot.ai` : 'Twoja-firma.hrobot.ai'
 
   return (
     <div className="motif-navy min-h-screen flex items-center justify-center bg-navy p-4">
@@ -19,7 +22,7 @@ export default async function ProvisioningStatusPage({
           </div>
           <h1 className="font-display font-extrabold text-xl tracking-tightish text-navy mt-3.5">Tworzymy Twoją przestrzeń roboczą</h1>
           <p className="text-muted text-[13px] mt-1">
-            Zaraz będzie gotowa pod adresem <span className="font-mono text-accent-ink">4mobility.hrobot.ai</span>
+            Zaraz będzie gotowa pod adresem <span className="font-mono text-accent-ink">{adres}</span>
           </p>
         </div>
 
