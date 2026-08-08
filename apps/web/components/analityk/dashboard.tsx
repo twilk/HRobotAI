@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BarChart, ChartLegend, ColumnChart, RatioGauge, Sparkline, StackedBar } from '@/components/analityk/charts'
 import { IconCalendar, IconRequests, IconSparkles, IconUsers } from '@/components/icons'
+import { PROWIENIENCJA, opisOkna, opisProwieniencji } from '@/lib/analityk-provenance'
 import {
   analitykApi,
   absenceTone,
@@ -71,6 +72,12 @@ function Panel({ title, children, className = '' }: { title: string; children: R
 }
 
 /** One headline KPI: the value, what it is, and how it moved against the previous window. */
+/**
+ * A KPI tile ALWAYS carries its provenance line. Not optional: the failure this screen is recovering
+ * from was four numbers presented with the same confidence as the correct ones, so "where did this
+ * come from" is part of the number, not a decoration. A label with no entry in PROWIENIENCJA renders
+ * a visible marker rather than silently dropping the line — and analityk-provenance.test.ts fails.
+ */
 function KpiTile({
   label,
   value,
@@ -84,6 +91,7 @@ function KpiTile({
   deltaLabel?: string
   valueTone?: string
 }) {
+  const prov = PROWIENIENCJA[label]
   return (
     <div className="rounded-lg border border-line bg-card p-3.5">
       <p className="text-[11.5px] uppercase tracking-wide text-muted-2">{label}</p>
@@ -93,6 +101,22 @@ function KpiTile({
           {delta} <span className="text-muted-2">wobec poprz. okresu</span>
         </p>
       ) : null}
+      <p
+        className="mt-1.5 border-t border-line pt-1.5 text-[11px] leading-snug text-muted-2"
+        title={prov ? prov.uwaga : undefined}
+      >
+        {prov ? (
+          <>
+            {opisProwieniencji(prov)}
+            {prov.rodzaj !== 'liczone' ? (
+              // A number that is reconstructed or planned reads as measured unless it is marked.
+              <span className="ml-1 cursor-help underline decoration-dotted underline-offset-2">?</span>
+            ) : null}
+          </>
+        ) : (
+          <span className="text-error">brak opisu źródła</span>
+        )}
+      </p>
     </div>
   )
 }
@@ -304,6 +328,9 @@ export function AnalitykDashboard() {
           ) : null}
 
           {/* --- KPI row --------------------------------------------------------------------- */}
+          {/* The window is stated ONCE, explicitly, above the row: every figure below is scoped to
+              it and a period-over-period delta means nothing without knowing what "period" is. */}
+          <p className="text-[12px] text-muted-2">{opisOkna(data.meta.od, data.meta.do, data.meta.dniRobocze)}</p>
           <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <KpiTile
               label="Stan zatrudnienia"
