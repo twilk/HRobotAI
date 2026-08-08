@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { apiRequestIsAllowed, isApiPath } from '@/lib/api-gate'
+import { buildUsageEvent, logUsageEvent } from '@/lib/usage-log'
 
 // Session gate for BOTH halves of the app:
 //
@@ -46,9 +47,23 @@ const SESSION_COOKIE = 'hrobot_token'
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
+  const token = req.cookies.get(SESSION_COOKIE)?.value
+
+  // Usage instrumentation. This gate is the ONLY place that sees both page navigations and BFF
+  // calls, which is why the event is emitted here rather than in tenant-runtime (which never sees a
+  // screen) or in an analytics SDK (which would mean a new data processor for an HR product). The
+  // event carries the tenant realm and the roles, never a person — see lib/usage-log.ts.
+  const record = (status: number) =>
+    logUsageEvent(buildUsageEvent({ pathname, method: req.method, status, token, now: new Date() }))
 
   if (isApiPath(pathname)) {
-    if (apiRequestIsAllowed(pathname, req)) return NextResponse.next()
+    if (apiRequestIsAllowed(pathname, req)) {
+      // 0 = "the gate let it through". The real status is the backend's and this layer never sees
+      // it; claiming 200 here would be a number we did not measure.
+      record(0)
+      return NextResponse.next()
+    }
+    record(401)
     return NextResponse.json(
       {
         error: 'unauthenticated',
@@ -58,9 +73,12 @@ export function middleware(req: NextRequest) {
     )
   }
 
-  const token = req.cookies.get(SESSION_COOKIE)?.value
-  if (token) return NextResponse.next()
+  if (token) {
+    record(0)
+    return NextResponse.next()
+  }
 
+  record(307)
   const url = req.nextUrl.clone()
   url.pathname = '/login'
   return NextResponse.redirect(url)
