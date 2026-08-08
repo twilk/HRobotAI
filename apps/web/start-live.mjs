@@ -24,7 +24,11 @@ if (!process.env.KEYCLOAK_PASSWORD && !existsSync(join(dir, '.env.local'))) {
   process.exit(1)
 }
 
-const child = spawn(process.execPath, [nextBin, 'dev', '-p', '5601'], {
+// Port comes from PORT when set, so this launcher can run alongside another worktree's dev server
+// (they all default to 5601 and would otherwise collide). Default unchanged for existing runbooks.
+const port = process.env.PORT ?? '5601'
+
+const child = spawn(process.execPath, [nextBin, 'dev', '-p', port], {
   cwd: dir,
   stdio: 'inherit',
   env: {

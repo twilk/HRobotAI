@@ -35,6 +35,9 @@ export interface UsageEvent {
   status: number
 }
 
+/** The application's own RBAC roles. Mirrors KNOWN_ROLES in lib/session.ts. */
+const APP_ROLES = new Set(['PRACOWNIK', 'MANAGER', 'HR', 'ADMIN_KLIENTA'])
+
 /** Segments that are identifiers rather than route structure. */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const NUMERIC = /^\d+$/
@@ -101,8 +104,11 @@ export function buildUsageEvent(input: {
   const claims = input.token ? decodePayload(input.token) : null
   const iss = typeof claims?.iss === 'string' ? claims.iss : undefined
   const realm = iss ? /\/realms\/([^/?#]+)/.exec(iss)?.[1] ?? null : null
+  // Filtered to the app's OWN roles. Live traffic showed the `hrobot_roles` claim also carries
+  // Keycloak's built-ins (`default-roles-<realm>`, `offline_access`, `uma_authorization`), which are
+  // noise in a usage metric and data we have no reason to keep. Same allowlist as lib/session.ts.
   const roles = Array.isArray(claims?.hrobot_roles)
-    ? (claims.hrobot_roles as unknown[]).filter((r): r is string => typeof r === 'string')
+    ? (claims.hrobot_roles as unknown[]).filter((r): r is string => typeof r === 'string' && APP_ROLES.has(r))
     : []
 
   return {

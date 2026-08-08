@@ -140,4 +140,17 @@ describe('buildUsageEvent', () => {
     expect(buildUsageEvent({ pathname: '/x', method: 'GET', status: 200, token: weird, now: NOW }).roles).toEqual([])
     expect(buildUsageEvent({ pathname: '/x', method: 'GET', status: 200, token: mixed, now: NOW }).roles).toEqual(['HR'])
   })
+
+  it("drops Keycloak's built-in roles and keeps only the app's own", () => {
+    // Observed on the live stack: the hrobot_roles claim carries realm built-ins alongside the app
+    // roles. They say nothing about who is using a screen and are data we have no reason to retain.
+    const realistic = tokenWith({
+      iss: 'http://keycloak:8080/realms/hrobot-staging',
+      hrobot_roles: ['default-roles-hrobot-staging', 'offline_access', 'PRACOWNIK', 'uma_authorization'],
+    })
+
+    const evt = buildUsageEvent({ pathname: '/moj-tydzien', method: 'GET', status: 0, token: realistic, now: NOW })
+
+    expect(evt.roles).toEqual(['PRACOWNIK'])
+  })
 })

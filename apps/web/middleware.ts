@@ -118,6 +118,9 @@ export const config = {
     // własną kartę. Scalanie gałęzi zgubiło ten ekran po cichu (patrz commit scalający), więc wpis
     // wyglądał na osierocony; jest prawidłowy.
     '/analityk/:path*',
+    // Widok mobilny pracownika — jego grafik i jego wnioski, czyli dane osobowe jak każdy inny
+    // ekran najemcy. To, że jest lżejszy i bez AppShella, nie zmienia niczego w kwestii sesji.
+    '/moj-tydzien/:path*',
     // Profil pracownika — dane osobowe zalogowanego (imię, nazwisko, jednostka, historia zmian).
     // Ekran powstał na gałęzi produktowej JUŻ PO tym, jak gałąź integracyjna zamknęła trzy luki M3,
     // więc nie było go w żadnym z tamtych przeglądów i wszedł tu z tą samą wadą: renderował pełny
