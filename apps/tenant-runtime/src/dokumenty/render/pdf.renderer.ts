@@ -51,7 +51,8 @@
  * source element yields full per-page coverage with no risk of two overlapping instances at
  * different angles (the bug this rewrite fixes).
  */
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { spawn, type ChildProcessByStdio } from 'node:child_process'
+import type { Readable } from 'node:stream'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { get as httpGet } from 'node:http'
 import { createServer } from 'node:net'
@@ -469,7 +470,28 @@ function getLoopbackJson<T>(port: number, path: string): Promise<T> {
   })
 }
 
-async function waitForDevtoolsPageWs(port: number, timeoutMs = 15_000): Promise<string> {
+/**
+ * Default wait for Chrome's DevTools endpoint.
+ *
+ * 15 s was enough on a warm developer machine and NOT enough on a cold CI runner, where the first
+ * Chrome launch also builds a font cache and a fresh profile. Overridable so a slow environment can
+ * raise it without a code change.
+ */
+const DEVTOOLS_TIMEOUT_MS = Number(process.env.HROBOT_PDF_CHROME_TIMEOUT_MS ?? 45_000)
+
+/**
+ * Wait for Chrome to expose a debuggable page.
+ *
+ * Takes the process so a failure can say WHY. This used to throw a bare "endpoint did not answer in
+ * 15000ms" with `stdio: 'ignore'` on the spawn, which discarded Chrome's own explanation — a
+ * missing shared library, a sandbox refusal, an unwritable profile directory all produced the same
+ * uninformative timeout. Chrome's stderr and exit status are now part of the error.
+ */
+async function waitForDevtoolsPageWs(
+  port: number,
+  chrome?: { exitCode: number | null; signalCode: NodeJS.Signals | null; stderr?: () => string },
+  timeoutMs = DEVTOOLS_TIMEOUT_MS,
+): Promise<string> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     try {
@@ -479,9 +501,19 @@ async function waitForDevtoolsPageWs(port: number, timeoutMs = 15_000): Promise<
     } catch {
       // Chrome not listening yet — retry.
     }
+    // Chrome already died: waiting out the remaining seconds cannot help and only delays the report.
+    if (chrome && (chrome.exitCode !== null || chrome.signalCode !== null)) {
+      throw new Error(
+        `Chrome zakończył się przed wystawieniem DevTools (exit=${chrome.exitCode}, signal=${chrome.signalCode}). ` +
+          `stderr: ${chrome.stderr?.() || '(brak — sprawdź, czy spawn nie ma stdio: ignore)'}`,
+      )
+    }
     await new Promise((r) => setTimeout(r, 150))
   }
-  throw new Error('Chrome DevTools endpoint nie odpowiedział w czasie ' + timeoutMs + 'ms')
+  throw new Error(
+    `Chrome DevTools endpoint nie odpowiedział w czasie ${timeoutMs}ms. ` +
+      `stderr: ${chrome?.stderr?.() || '(brak)'}`,
+  )
 }
 
 let rpcIdCounter = 0
@@ -536,7 +568,9 @@ async function renderHtmlToPdfBuffer(html: string): Promise<Buffer> {
   const port = await getFreePort()
   const fileUrl = 'file:///' + htmlPath.replace(/\\/g, '/')
 
-  let chrome: ChildProcessWithoutNullStreams | undefined
+  // stdio is ['ignore','ignore','pipe'] below, so ONLY stderr is a stream — the type says so
+  // rather than being cast away, which is what let the old `as` hide the shape change.
+  let chrome: ChildProcessByStdio<null, null, Readable> | undefined
   let ws: WebSocket | undefined
   try {
     chrome = spawn(
@@ -561,10 +595,26 @@ async function renderHtmlToPdfBuffer(html: string): Promise<Buffer> {
         // load event is guaranteed to be observed every time.
         'about:blank',
       ],
-      { stdio: 'ignore' },
-    ) as ChildProcessWithoutNullStreams
+      // stderr is PIPED, not ignored: it is the only place Chrome explains a failed start, and
+      // discarding it is what made a failed launch indistinguishable from a slow one. Capped so a
+      // chatty Chrome cannot grow this buffer without bound over a long render.
+      { stdio: ['ignore', 'ignore', 'pipe'] },
+    )
 
-    const wsUrl = await waitForDevtoolsPageWs(port)
+    let stderrTail = ''
+    chrome.stderr?.on('data', (chunk: Buffer) => {
+      stderrTail = (stderrTail + chunk.toString('utf8')).slice(-4_000)
+    })
+
+    const wsUrl = await waitForDevtoolsPageWs(port, {
+      get exitCode() {
+        return chrome!.exitCode
+      },
+      get signalCode() {
+        return chrome!.signalCode
+      },
+      stderr: () => stderrTail.trim(),
+    })
     ws = new WebSocket(wsUrl)
     await new Promise<void>((resolve, reject) => {
       ws!.addEventListener('open', () => resolve())
