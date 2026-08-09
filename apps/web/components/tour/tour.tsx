@@ -12,7 +12,7 @@
  * Wpięcie: wyrenderuj `<TourTrigger />` w topbarze; przycisk montuje `<Tour />` na żądanie.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/cn'
 import { TOUR_STEPS, type TourStep } from './tour.data'
 import { nextIndex, isLast } from './tour.logic'

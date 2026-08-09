@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { Card } from '@/components/ui/card'
 import { IconCalendar, IconRequests, IconArrowRight } from '@/components/icons'
 import {
-  shiftHours,
   weekRange,
   upcomingShifts,
   hoursInRange,

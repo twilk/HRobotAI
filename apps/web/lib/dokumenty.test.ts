@@ -15,7 +15,6 @@ import {
   DOCUMENT_FORMATS,
   DOC_SCOPE_TYPES,
   type DocumentType,
-  type DocumentFormat,
   type DocumentStatus,
   type DocScopeType,
   type DocumentComputedFacts,

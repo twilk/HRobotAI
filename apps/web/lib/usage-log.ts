@@ -129,6 +129,11 @@ export function buildUsageEvent(input: {
  */
 export function logUsageEvent(event: UsageEvent): void {
   try {
+    // stdout IS the transport here. The whole design of this module is "one JSON line to stdout,
+    // which Docker already collects", chosen over an analytics SDK so an HR product gains no
+    // third-party data processor. warn/error would misreport a routine event as a problem and
+    // pollute real error alerting.
+    // eslint-disable-next-line no-console
     console.log(JSON.stringify(event))
   } catch {
     /* metrics are best-effort; a request must never fail because of them */

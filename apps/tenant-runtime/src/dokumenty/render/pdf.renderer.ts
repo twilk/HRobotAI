@@ -620,7 +620,26 @@ async function renderHtmlToPdfBuffer(html: string): Promise<Buffer> {
     }
     // `maxRetries`/`retryDelay`: Windows can keep a transient lock on files (AV scan, delayed
     // handle release) even after the owning process has exited — Node's documented mitigation.
-    rmSync(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    //
+    // BEST-EFFORT, AND THAT IS THE POINT. This runs in `finally`, so anything thrown here REPLACES
+    // the successful return and destroys an already-rendered PDF. That is not hypothetical: CI on
+    // ubuntu-latest failed with `ENOTEMPTY: rmdir '<workDir>/chrome-profile/Default'` while the
+    // document itself had rendered fine. Waiting for the parent's `exit` event is not enough on
+    // Linux — Chrome's zygote/renderer children outlive it briefly and keep writing into the
+    // profile directory, so files reappear between `rmSync`'s readdir and its rmdir.
+    //
+    // A leftover directory under the OS temp dir is housekeeping; a lost PDF is a failed document.
+    // The temp dir is reclaimed by the OS regardless.
+    try {
+      rmSync(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    } catch (err) {
+      // console, not a Nest Logger: this module is deliberately framework-free (plain node builtins
+      // only), so it stays usable from a CLI/script as well as from the service.
+      console.warn(
+        `pdf.renderer: nie udalo sie usunac katalogu roboczego Chrome (${workDir}); ` +
+          `PDF wyrenderowany poprawnie. ${String(err)}`,
+      )
+    }
   }
 }
 

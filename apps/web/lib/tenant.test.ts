@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { FALLBACK_TENANT_NAME, slugFromIssuer, tenantDisplayName } from './tenant'
 
 /**

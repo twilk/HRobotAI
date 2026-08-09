@@ -198,37 +198,13 @@ jobs:
       - name: pytest
         run: python -m pytest -q
 
-  # web-kit — vitest unit tests (520 specs). web-kit is a standalone pnpm project OUTSIDE the
-  # root workspace (own package.json + own pnpm-workspace.yaml), so it is not reached by the
-  # root `pnpm turbo run test` in the `ci` job above — hence its own install + own job here.
-  # [H3: previously written but never wired into any workflow — 520 tests were not gating.]
-  web-kit:
-    name: web-kit
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: docs/design/web-kit
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-          cache-dependency-path: docs/design/web-kit/pnpm-lock.yaml
-
-      # Own lockfile, own workspace — install here, not at the repo root.
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: vitest
-        run: pnpm test
+  # web-kit — LANE USUNIĘTY 2026-08-08. Job instalował i testował `docs/design/web-kit` jako
+  # samodzielny projekt pnpm poza głównym workspace. Commit 373d310 (`git mv web-kit -> apps/web`)
+  # unieważnił to założenie: aplikacja jest teraz pakietem `@hrobot/web` WEWNĄTRZ workspace, więc
+  # `pnpm turbo run test` w jobie `ci` powyżej i tak uruchamia jej suitę (`@hrobot/web#test`, 588
+  # testów), a `turbo run lint typecheck` obejmuje ją tak samo. Job dalej wskazywał starą ścieżkę,
+  # więc `cache-dependency-path: docs/design/web-kit/pnpm-lock.yaml` przestał się rozwiązywać i lane
+  # padał na każdym przebiegu — czerwony na coś, co było już pokryte gdzie indziej.
 
   # stt-service — pytest + ruff, mirroring the py-optimizer / py-agent lanes above.
   # faster-whisper is a real dependency (pip-installed), but the ~490 MB PL model it wraps is

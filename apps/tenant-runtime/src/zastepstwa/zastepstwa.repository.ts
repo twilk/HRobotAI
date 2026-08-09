@@ -64,7 +64,11 @@ export class InMemoryZastepstwaRepository implements ZastepstwaRepository {
     return wpis.proces
   }
 
-  async zwolnij(procesId: string, now: Date): Promise<void> {
+  // `_now` jest przyjmowane, ale nieużywane: sygnatura celowo pozostaje symetryczna do
+  // `przejmijDoPrzetworzenia(procesId, now)`, żeby wywołujący podawał czas tak samo po obu stronach
+  // dzierżawy, a implementacja mogła zacząć go używać bez zmiany żadnego wywołania. Podkreślnik to
+  // konwencja reguły no-unused-vars w tym repo.
+  async zwolnij(procesId: string, _now: Date): Promise<void> {
     const wpis = this.store.get(procesId)
     if (!wpis) return
     // Zwolnienie jest samo w sobie warunkowe w duchu CAS: nie nadpisujemy dzierżawy, którą ktoś już

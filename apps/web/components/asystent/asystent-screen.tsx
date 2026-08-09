@@ -111,7 +111,6 @@ function useOpoznionaAnonsacjaPostepu(
       mowRef.current(komunikat)
     }, PROG_DELAY_MS)
     return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aktywny, komunikat])
 
   return trwaDlugo
