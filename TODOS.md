@@ -207,13 +207,13 @@ sprawny i uczciwie opisany w `docs/demo/2026-08-10-demo-4mobility-parp.md`), a p
 
 ### AI Grafik Manager
 
-- [ ] **P1 — Ekran zgody pracownika renderuje surowe dane techniczne.** Pracownik widzi `9c90b5b8` zamiast
-      daty/godzin/roli oraz string `leave 31964458-…-… approved` zamiast powodu po polsku. Przyczyna: payload
-      propozycji nie zawiera skrótu zmiany, a pracownik z zasady (RBAC self-scoping) nie widzi cudzych zmian,
-      więc frontend NIE MA z czego zbudować etykiety — to luka backendu, nie mapowania na kliencie.
-      Dowód: `GET /api/ai-grafik/proposals?mine=true` zwraca `shiftId` bez obiektu `shift`.
-      **Blokuje pokazanie pełnego łańcucha AI → zgoda pracownika → decyzja managera na demo.**
-      Szac. 1–1,5 h: dodać projekcję zmiany (data, godziny, rola, lokalizacja) do DTO propozycji.
+- [x] **P1 — Ekran zgody pracownika renderował surowe dane techniczne. NAPRAWIONE 2026-08-10** (`021054b`).
+      Pracownik widział `9c90b5b8` zamiast daty/godzin/roli oraz `leave 31964458-…-… approved` zamiast powodu
+      po polsku — prosiliśmy człowieka o zgodę, nie mówiąc mu kiedy ani gdzie. Przyczyna NIE była w mapowaniu
+      na kliencie: `GET /grafik/shifts` jest scope'owane do WŁASNYCH zmian, a proponowana zmiana z definicji
+      należy do kogoś innego, więc kandydat fizycznie nie mógł jej dociągnąć. `PROPOSAL_INCLUDE` niesie teraz
+      skrót zmiany (bez PII, przypięte testem odrzucającym `employee`/`pesel`/`homeAddress`), a
+      `proposalReasonLabel` tłumaczy token audytowy na polskie zdanie bez ruszania wartości w bazie.
 - [ ] **P1 — Propozycje w stanie `ESKALOWANA` to ślepy zaułek.** Kolumna „Decyzja" pokazuje „—" i manager nie
       ma żadnej ścieżki wyjścia; obecnie 4 takie wiersze siedzą w skrzynce decyzyjnej. Potrzebna akcja
       (odrzuć / obsłuż ręcznie w Grafiku / poproś innego kandydata) albo wyprowadzenie ich poza skrzynkę.
@@ -295,6 +295,10 @@ sprawny i uczciwie opisany w `docs/demo/2026-08-10-demo-4mobility-parp.md`), a p
 - [ ] **P3 — Martwa trasa `/analiza`** obok żywej `/analityk` (`apps/web/app/(tenant)/analiza/`) — pozostałość
       po zmianie nazwy modułu i źródło błędnego selektora w przewodniku. Do usunięcia po weryfikacji,
       że nic do niej nie linkuje.
+- [ ] **P3 — Strona AI Grafik Manager nie ma nagłówka `<h1>` dla roli MANAGER.** Tytuł niesie panel
+      konfiguracji, a ten renderuje się wyłącznie dla HR/ADMIN_KLIENTA (`canEditConfig`), więc manager
+      ogląda moduł bez tytułu w treści — jest tylko w topbarze. Znalezione 2026-08-10 przy pisaniu
+      `demo-path.spec.ts`, którego asercja musiała celować w „Koszty grafiku / Propozycje AI".
 
 ### Spójność dokumentacji grantowej (KM1–KM3) — decyzje, nie zadania programistyczne
 
