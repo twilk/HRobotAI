@@ -47,10 +47,12 @@ Zaloguj jako `demo`.
 
 ### 2e. ⭐ Strategiczny mózg kadrowy — moduł rozliczany w KM3 (3 min)
 
-> ⚠️ **Wpisz adres ręcznie: `http://localhost:8080/analiza`.** Tego ekranu NIE MA w menu, a to właśnie
-> on jest modułem „Analityk HR" opisanym w KM3 §3.2 (backend `strategic-brain`, kryteria AN-1..AN-13,
-> 134 testy). Pozycja „Analityk HR" w nawigacji prowadzi do operacyjnego pulpitu KPI, czyli czegoś innego.
-> Ekran liczy ~8 s przy pierwszym wejściu — **otwórz go w drugiej karcie przed demo**, żeby nie czekać na oczach odbiorcy.
+Menu → **„Analiza rozwoju"** (pozycja z tagiem AI, dodana 10.08 — wcześniej ekran był osiągalny
+wyłącznie przez ręczne wpisanie adresu).
+
+> To jest moduł opisany w KM3 §3.2 jako „Analityk HR" (backend `strategic-brain`, kryteria AN-1..AN-13,
+> 134 testy). Pozycja **„Analityk HR"** wyżej w menu prowadzi do operacyjnego pulpitu KPI — to co innego.
+> Ekran liczy ~8 s przy pierwszym wejściu, więc **otwórz go w drugiej karcie przed demo**.
 
 Trzy rzeczy do pokazania, w tej kolejności:
 
@@ -63,6 +65,12 @@ Trzy rzeczy do pokazania, w tej kolejności:
 **Puenta o granicy AI** — pokaż podpis pod przyciskiem: *„Zaakceptuj rekomendację · Rejestruje decyzję — nie wykonuje działań kadrowych"*.
 
 > *„Przycisk nie zatrudnia i nikogo nie zwalnia. Rejestruje, że człowiek podjął decyzję. To jest art. 22 RODO wymuszony architekturą, nie regulaminem."*
+
+**Mocna wisienka, jeśli starczy czasu (30 s):** wejdź na ten sam ekran jako `pracownik.demo`. Anna widzi
+**wyłącznie własną kartę** — wynik 84, cztery wymiary, trajektoria — i **ani jednego cudzego nazwiska**
+(zweryfikowane 10.08). Ta sama trasa, ten sam moduł, trzy różne zakresy danych zależnie od roli.
+
+> *„To nie jest inny ekran dla pracownika. To ten sam moduł — tyle że serwer nie wysyła mu danych, których nie ma prawa zobaczyć."*
 
 ---
 

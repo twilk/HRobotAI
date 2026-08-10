@@ -66,6 +66,19 @@ export const NAV: NavGroup[] = [
       // M3 Analityk HR: aggregate workforce analytics, so a plain PRACOWNIK never sees the entry
       // (the tenant-runtime @Roles gate answers them with a 403 regardless).
       { label: 'Analityk HR', href: '/analityk', icon: IconChart, roles: ['MANAGER', 'HR', 'ADMIN_KLIENTA'] },
+      // „Strategiczny mózg kadrowy” (backend `strategic-brain`) — moduł opisany w KM3 §3.2 jako
+      // Analityk HR: cztery wymiary oceny, trajektoria rozwoju, sygnały retencji i rekomendacje
+      // rekrutacji, każda z twardą granicą art. 22 RODO.
+      //
+      // DLACZEGO DOPISANE. Do 2026-08-10 ta trasa NIE MIAŁA pozycji w menu i była osiągalna wyłącznie
+      // przez ręczne wpisanie adresu — czyli moduł rozliczany w grancie był praktycznie niewidoczny,
+      // a pozycja „Analityk HR” powyżej prowadzi do INNEGO ekranu (operacyjnego pulpitu KPI).
+      //
+      // Etykieta celowo równa tytułowi, który strona ustawia w topbarze (`title="Analiza rozwoju"`),
+      // żeby menu i nagłówek mówiły to samo. BEZ ograniczenia ról: każda rola ma tu sensowny widok —
+      // HR/ADMIN pełny przegląd, MANAGER zawężony do swoich jednostek, a PRACOWNIK WYŁĄCZNIE własną
+      // kartę (`SelfCard` przez `/employee/me`), nigdy cudzą. Scoping egzekwuje backend, nie to menu.
+      { label: 'Analiza rozwoju', href: '/analiza', icon: IconSparkles, tag: 'AI' },
     ],
   },
   {
