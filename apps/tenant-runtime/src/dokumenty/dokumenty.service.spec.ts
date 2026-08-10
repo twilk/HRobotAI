@@ -94,7 +94,45 @@ describe('DokumentyService', () => {
       expect(encryption.decrypt).toHaveBeenCalledTimes(1)
       const peselAudit = audit.log.mock.calls.map((c) => c[0] as { action: string; payload: Record<string, unknown> }).find((a) => a.action === 'dokumenty.zus.pesel-decrypt')
       expect(peselAudit).toBeDefined()
-      expect(peselAudit!.payload).toEqual({ documentId: expect.any(String), employeeIds: ['emp-1'] })
+      expect(peselAudit!.payload).toEqual({
+        documentId: expect.any(String),
+        employeeIds: ['emp-1'],
+        decryptedEmployeeIds: ['emp-1'],
+        failedEmployeeIds: [],
+      })
+    })
+
+    it('excludes an employee whose PESEL fails to decrypt instead of failing the whole export', async () => {
+      // Regression: a company-wide ZUS export 500'd because ONE employee (of many) had unreadable
+      // ciphertext (found live: a leftover unencrypted placeholder seed row). The other employees'
+      // payroll must still generate.
+      client.employee.findMany.mockResolvedValue([
+        { id: 'emp-1', firstName: EMP.firstName, lastName: EMP.lastName, position: EMP.position, unitId: EMP.unitId, etat: EMP.etat, pesel: 'cipher-blob' },
+        { id: 'emp-2', firstName: 'Zofia', lastName: 'Placeholder', position: EMP.position, unitId: EMP.unitId, etat: EMP.etat, pesel: 'DEMO-PLACEHOLDER-UNENCRYPTED-PESEL' },
+      ])
+      encryption.decrypt.mockImplementation((cipher: string) => {
+        if (cipher === 'DEMO-PLACEHOLDER-UNENCRYPTED-PESEL') throw new Error('decrypt: unknown key version 12 — wrong keyring or corrupt payload')
+        return FAKE_PESEL
+      })
+
+      await service.generuj(asClient(client), ACTOR, input({ type: DocumentType.ZUS_KEDU, format: DocumentFormat.XML_KEDU, scopeType: DocScopeType.ALL, employeeId: undefined }), null, 'tenant-1')
+
+      const peselAudit = audit.log.mock.calls.map((c) => c[0] as { action: string; payload: Record<string, unknown> }).find((a) => a.action === 'dokumenty.zus.pesel-decrypt')
+      expect(peselAudit!.payload).toEqual({
+        documentId: expect.any(String),
+        employeeIds: ['emp-1', 'emp-2'],
+        decryptedEmployeeIds: ['emp-1'],
+        failedEmployeeIds: ['emp-2'],
+      })
+    })
+
+    it('fails loudly (400, not 500) only when EVERY employee in scope is unreadable', async () => {
+      client.employee.findMany.mockResolvedValue([{ id: 'emp-2', firstName: 'Zofia', lastName: 'Placeholder', pesel: 'DEMO-PLACEHOLDER-UNENCRYPTED-PESEL' }])
+      encryption.decrypt.mockImplementation(() => {
+        throw new Error('decrypt: unknown key version 12 — wrong keyring or corrupt payload')
+      })
+
+      await expect(service.generuj(asClient(client), ACTOR, input({ type: DocumentType.ZUS_KEDU, format: DocumentFormat.XML_KEDU }), null, 'tenant-1')).rejects.toThrow(BadRequestException)
     })
   })
 

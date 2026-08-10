@@ -518,12 +518,22 @@ export class DokumentyService {
       select: { id: true, firstName: true, lastName: true, pesel: true },
     })) as Array<{ id: string; firstName: string; lastName: string; pesel: string }>
 
-    const kedu: KeduEmployeeInput[] = rows.map((r) => ({
-      employeeId: r.id,
-      pesel: decryptEmployeePesel(this.encryption, tenantId, r.pesel),
-      imie: r.firstName,
-      nazwisko: r.lastName,
-    }))
+    // A single unreadable PESEL (corrupt ciphertext, stale key version, a legacy unencrypted seed
+    // row) must not fail a whole-company export for every OTHER employee whose payroll is due on
+    // time — found live 2026-08-10 generating a "Cała firma" ZUS export against a seed containing 3
+    // placeholder rows. Skip the unreadable ones, decrypt the rest, and audit both outcomes (ids
+    // only — the failure log never carries the ciphertext or the decrypt error's internals, which
+    // could themselves leak key material).
+    const kedu: KeduEmployeeInput[] = []
+    const failedEmployeeIds: string[] = []
+    for (const r of rows) {
+      try {
+        kedu.push({ employeeId: r.id, pesel: decryptEmployeePesel(this.encryption, tenantId, r.pesel), imie: r.firstName, nazwisko: r.lastName })
+      } catch (err) {
+        this.logger.warn(`PESEL decrypt failed for employee ${r.id}, excluded from ZUS export: ${err instanceof Error ? err.message : String(err)}`)
+        failedEmployeeIds.push(r.id)
+      }
+    }
 
     await this.audit.log({
       tenantClient: client,
@@ -531,9 +541,13 @@ export class DokumentyService {
       action: 'dokumenty.zus.pesel-decrypt',
       entityType: 'GeneratedDocument',
       entityId: documentId,
-      payload: { documentId, employeeIds: empIds },
+      payload: { documentId, employeeIds: empIds, decryptedEmployeeIds: kedu.map((k) => k.employeeId), failedEmployeeIds },
       ipAddress: actor.ipAddress,
     })
+
+    if (kedu.length === 0 && rows.length > 0) {
+      throw new BadRequestException('Nie udało się odczytać danych PESEL żadnego pracownika w tym zakresie.')
+    }
 
     return kedu
   }
