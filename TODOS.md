@@ -292,9 +292,24 @@ sprawny i uczciwie opisany w `docs/demo/2026-08-10-demo-4mobility-parp.md`), a p
 - [ ] **P2 — Brak widocznego focusa klawiaturowego** na komórkach zmian (`outline: none`, `boxShadow: none`)
       przy około 270 klikalnych komórkach w siatce — WCAG 2.4.7.
 - [ ] **P3 — Polska fleksja**: karta pracownika pokazuje „1 etatu" zamiast „1 etat".
-- [ ] **P3 — Martwa trasa `/analiza`** obok żywej `/analityk` (`apps/web/app/(tenant)/analiza/`) — pozostałość
-      po zmianie nazwy modułu i źródło błędnego selektora w przewodniku. Do usunięcia po weryfikacji,
-      że nic do niej nie linkuje.
+- [ ] **P1 — `/analiza` to DELIVERABLE KM3, którego NIE MA W NAWIGACJI. NIE USUWAĆ.**
+      ⚠️ Wcześniejszy zapis w tym pliku nazywał `/analiza` „martwą trasą do usunięcia" — to był BŁĄD,
+      skasowanie jej usunęłoby moduł rozliczany w grancie. Zweryfikowane 2026-08-10 na żywo.
+
+      Istnieją DWA różne ekrany analityczne i tylko jeden jest w menu:
+      - `/analityk` — pozycja „Analityk HR" w nawigacji. Operacyjny pulpit KPI: absencje, kolejka
+        wniosków, mediana decyzji, proweniencja liczb.
+      - `/analiza` — **„Strategiczny mózg kadrowy", czyli moduł opisany w KM3 §3.2 jako „Analityk HR"**
+        (backend `strategic-brain`, kryteria AN-1..AN-13, 134 testy). Zawiera to, co raport obiecuje
+        odbiorcy: cztery wymiary oceny (Wydajność/Terminowość/Jakość/Rozwój), trajektorię rozwoju,
+        sygnały retencji (`UTRZYMAC`/`OBSERWOWAC`/`RYZYKO`/`INWESTOWAC`) i rekomendacje rekrutacji
+        per jednostka i lokalizacja (`WZNOW`/`WSTRZYMAJ`/`UTRZYMAJ`), każda z uzasadnieniem i twardą
+        granicą art. 22 („Rejestruje decyzję — nie wykonuje działań kadrowych"). Ekran działa w pełni.
+
+      **Ryzyko odbiorowe:** jeśli ktoś z PARP poprosi o pokazanie Analityka HR z trajektorią i
+      rekomendacjami, kliknięcie „Analityk HR" w menu pokaże INNY ekran, a rozliczany moduł jest
+      osiągalny wyłącznie przez wpisanie adresu. Do decyzji: dodać pozycję w `lib/nav.ts`, scalić oba
+      ekrany, albo świadomie zostawić i wpisać adres ręcznie na demo (tak robi obecny skrypt demo).
 - [ ] **P3 — Strona AI Grafik Manager nie ma nagłówka `<h1>` dla roli MANAGER.** Tytuł niesie panel
       konfiguracji, a ten renderuje się wyłącznie dla HR/ADMIN_KLIENTA (`canEditConfig`), więc manager
       ogląda moduł bez tytułu w treści — jest tylko w topbarze. Znalezione 2026-08-10 przy pisaniu

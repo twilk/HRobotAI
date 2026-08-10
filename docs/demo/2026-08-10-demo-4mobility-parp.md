@@ -15,6 +15,7 @@
 
 - Stack żyje (`docker compose -p hrobot --profile full up -d`, 10 kontenerów `healthy`, `restart: unless-stopped` — auto-heal, gdyby coś padło w trakcie).
 - Otwórz zakładkę `http://localhost:8080/login`.
+- **Otwórz `http://localhost:8080/analiza` w drugiej karcie** — ten ekran liczy ~8 s przy pierwszym wejściu (sekcja 2e).
 - **Sprawdź stan danych do sekcji 3** (jedna komenda):
   ```
   docker exec -i hrobot-postgres-1 psql -U postgres -d hrobot_t_900d948b -c "SELECT state, count(*) FROM ai_proposal GROUP BY state;"
@@ -43,6 +44,25 @@ Zaloguj jako `demo`.
 - **Grafik** (`/grafik`) — bieżący tydzień: 52 zmiany / 38 zapotrzebowań, siatka pracownik × dzień, filtr jednostek. *Talking point:* solver CP-SAT pilnuje twardo pokrycia, braku nakładania, urlopów i 11 h odpoczynku dobowego (K.p. art. 132).
 - **Analityk HR** (`/analityk`) — sekcja „Na co zwrócić uwagę": skok absencji (+4,1 p.p.) i rosnąca kolejka wniosków, liczone na żywych danych, z proweniencją przy każdej liczbie („liczone" vs „planowane?"). Zjedź niżej — wykres nadwyżek pokazuje **imiona i nazwiska**, więc widać z kim rozmawiać.
 - **Dokumenty** (`/dokumenty`) — Ewidencja czasu pracy, Anna Kowalska, 13–19.07.2026 → **Generuj dokument** → nowy wpis „DO ZATWIERDZENIA". *Talking point:* „HRobot liczy ewidencję, nadgodziny i szkielet ZUS, ale niczego nie wysyła — każdy dokument o skutku prawnym zatwierdza człowiek (RODO art. 22)."
+
+### 2e. ⭐ Strategiczny mózg kadrowy — moduł rozliczany w KM3 (3 min)
+
+> ⚠️ **Wpisz adres ręcznie: `http://localhost:8080/analiza`.** Tego ekranu NIE MA w menu, a to właśnie
+> on jest modułem „Analityk HR" opisanym w KM3 §3.2 (backend `strategic-brain`, kryteria AN-1..AN-13,
+> 134 testy). Pozycja „Analityk HR" w nawigacji prowadzi do operacyjnego pulpitu KPI, czyli czegoś innego.
+> Ekran liczy ~8 s przy pierwszym wejściu — **otwórz go w drugiej karcie przed demo**, żeby nie czekać na oczach odbiorcy.
+
+Trzy rzeczy do pokazania, w tej kolejności:
+
+1. **Sygnały retencji** — gotowe wnioski, nie tabelki: *Andrzej Kowalczyk — „Dobry wynik, ale trend spadkowy — ryzyko odejścia"*, *Marcin Dąbrowski — „Słabszy wynik, ale rośnie — warto zainwestować"*.
+2. **Mapa wydajności i rozwoju** — cztery wymiary (Wydajność, Terminowość, Jakość, Rozwój) plus trajektoria ze strzałką i wynik zbiorczy. Pokaż kontrast: **Anna Kowalska 84 ↑ „Utrzymać"** obok **Rafał Adamczyk 66 ↓ −6,70 „Ryzyko"** — wysoki wynik, ale trend spadkowy.
+3. **Rekomendacje rekrutacji** per jednostka i lokalizacja, każda z uzasadnieniem liczbowym: *„Luka kadrowa w Regionie Centrum wg zapotrzebowania grafiku (Koordynator zmiany: brak 2 osób w bieżącym tygodniu). Zalecane wznowienie rekrutacji."*
+
+> *„To jest różnica między raportem a analitykiem. Raport pokazałby, że Rafał ma wynik 66. Ten moduł mówi: wynik jest dobry, ale trend spadkowy, więc to ryzyko odejścia — i sam z siebie, bez pytania, proponuje wznowienie rekrutacji tam, gdzie z grafiku wynika luka."*
+
+**Puenta o granicy AI** — pokaż podpis pod przyciskiem: *„Zaakceptuj rekomendację · Rejestruje decyzję — nie wykonuje działań kadrowych"*.
+
+> *„Przycisk nie zatrudnia i nikogo nie zwalnia. Rejestruje, że człowiek podjął decyzję. To jest art. 22 RODO wymuszony architekturą, nie regulaminem."*
 
 ---
 
