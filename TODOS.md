@@ -171,3 +171,128 @@ review report, not here.
       `runWithConcurrency` limit<1 guard; `parseEnv` URL-scheme validation; `audit_log` BEFORE TRUNCATE trigger;
       enum-parity guard test; barrel curation; docker port 5433↔.env fix; `postinstall` db:generate.
       **42 unit tests green (was 17).** Stacked PR rebase tracked above.
+
+## Poziom Enterprise dla 3 widoków AI: Grafik Manager, Asystent, Analityk HR (2026-08-10)
+
+Backlog zebrany podczas przygotowań do demo 4Mobility/PARP. **Każda pozycja została zmierzona na żywym
+stacku** (`docker compose -p hrobot --profile full`, tenant `hrobot_t_900d948b`), nie wywnioskowana z
+lektury kodu — przy każdej podano dowód. Szacunki czasu są SZACUNKAMI, nie pomiarami.
+
+**Sekwencja:** te pozycje świadomie NIE weszły przed demo. Rekomendacja: odbiór na obecnym stanie (jest
+sprawny i uczciwie opisany w `docs/demo/2026-08-10-demo-4mobility-parp.md`), a potem `/spec` albo
+`/autoplan` na tym backlogu — już z komentarzami odbiorcy zebranymi na żywo.
+
+### Naprawione 2026-08-10 — kontekst, NIE robić ponownie
+
+- [x] **`/moj-tydzien` gubił wszystkie zmiany** (`apps/web/lib/moj-tydzien.ts`): API zwraca `date` jako pełny
+      ISO-timestamp, a kod porównywał go z gołym `YYYY-MM-DD`, więc każda zmiana odpadała — dla każdego
+      pracownika, w każdym tygodniu. Fix + test regresyjny zweryfikowany negatywnie (cofnięty fix = czerwony test).
+- [x] **Eksport ZUS/KEDU „Cała firma" zwracał HTTP 500** (`apps/tenant-runtime/src/dokumenty/dokumenty.service.ts`):
+      3 rekordy z placeholderem `DEMO-PLACEHOLDER-UNENCRYPTED-PESEL-*` wywracały cały eksport firmowy.
+      Teraz nieczytelny PESEL wyklucza JEDNEGO pracownika (audyt zapisuje `failedEmployeeIds`), a błąd 400
+      leci dopiero gdy nieczytelni są wszyscy. 3 testy regresyjne.
+- [x] **Przewodnik: 8 z 8 kroków zepsutych** (`apps/web/components/tour/`): dymek renderował się wewnątrz
+      `<header>` z `position:sticky; z-10`, co tworzy własny kontekst stakowania — `z-[80]` dymka przegrywało
+      ze sticky kolumną grafiku. Fix: `createPortal` do `document.body`. Do tego 2 martwe selektory
+      (`[data-tour="dashboard"]` nie istnieje nigdzie w `apps/web`; `/analiza` zamiast `/analityk`) oraz
+      zaszyta stała 220 px przy realnej wysokości dymka 268 px. Dołożony test pilnujący zgodności selektorów
+      przewodnika z `lib/nav.ts`.
+- [x] **Analityk HR pokazywał 9 surowych identyfikatorów zamiast nazwisk** (`apps/web/lib/analityk.ts`,
+      funkcja `employeeLabel`). Rozwiązanych 8 z 9; pozostały to `managerUserId` — patrz pozycja otwarta niżej.
+- [x] **Duplikaty wniosków urlopowych** (2 wiersze: Adamczyk, Dąbrowski) usunięte z `leave_requests`.
+      ⚠️ **Do sprawdzenia:** czy `scripts/seed-demo-m2-modules.sql` odtworzy je przy kolejnym seedzie.
+- [x] **Auto-heal stacku**: `restart: unless-stopped` + healthcheck na wszystkich 10 usługach
+      (`docker-compose.yml`). Zweryfikowane realnym zabiciem procesu: `RestartCount` 0 → 1, powrót w ~5 s.
+      Uwaga metodyczna: `docker kill` NIE testuje auto-healu (Docker traktuje to jako zatrzymanie celowe).
+
+### AI Grafik Manager
+
+- [ ] **P1 — Ekran zgody pracownika renderuje surowe dane techniczne.** Pracownik widzi `9c90b5b8` zamiast
+      daty/godzin/roli oraz string `leave 31964458-…-… approved` zamiast powodu po polsku. Przyczyna: payload
+      propozycji nie zawiera skrótu zmiany, a pracownik z zasady (RBAC self-scoping) nie widzi cudzych zmian,
+      więc frontend NIE MA z czego zbudować etykiety — to luka backendu, nie mapowania na kliencie.
+      Dowód: `GET /api/ai-grafik/proposals?mine=true` zwraca `shiftId` bez obiektu `shift`.
+      **Blokuje pokazanie pełnego łańcucha AI → zgoda pracownika → decyzja managera na demo.**
+      Szac. 1–1,5 h: dodać projekcję zmiany (data, godziny, rola, lokalizacja) do DTO propozycji.
+- [ ] **P1 — Propozycje w stanie `ESKALOWANA` to ślepy zaułek.** Kolumna „Decyzja" pokazuje „—" i manager nie
+      ma żadnej ścieżki wyjścia; obecnie 4 takie wiersze siedzą w skrzynce decyzyjnej. Potrzebna akcja
+      (odrzuć / obsłuż ręcznie w Grafiku / poproś innego kandydata) albo wyprowadzenie ich poza skrzynkę.
+- [ ] **P2 — Backend nie rozróżnia trzech przyczyn braku wyceny.** `estimatedCost = null` znaczy jednocześnie
+      „brak stawki godzinowej", „kandydat nieosiągalny (brak konta do zapytania o zgodę)" i „brak kandydata".
+      2026-08-10 wdrożono wyłącznie OBEJŚCIE tekstowe (`costCellText` → „Brak wyceny — sprawdź kandydata"),
+      bo mylący komunikat „brak stawki" wysyłał managera po stawkę, która już istniała. Właściwa naprawa:
+      kolumna `escalation_reason` na `ai_proposal`, zapisywana we WSZYSTKICH ścieżkach eskalacji
+      (`EMPLOYEE_UNREACHABLE`, `ALL_CANDIDATES_DECLINED`, `CONSENT_TTL_EXPIRED`, `NO_FEASIBLE_CANDIDATE`)
+      plus rozróżnienie komunikatów w UI. Szac. 2,5–3,5 h. Kontekst: `ai-proposal.service.ts:150-174`.
+- [ ] **P2 — Uzasadnienia kandydatów nie mają jakości produktowej.** Mieszanka polskiego i angielskiego z
+      surowymi UUID, np. `1 of 1 slot(s) for role 'KOORDYNATOR' at '14bcfad7-661a-…' uncoverable under H1-H4`
+      oraz `H-TRAVEL: szacunkowy dojazd ~287 min przekracza limit 120 min`. To jest NAJMOCNIEJSZY dowód
+      wyjaśnialności AI w całym produkcie, a wygląda jak wpis do logu. Do przepisania na PL z nazwami lokalizacji.
+- [ ] **P3 — Skrzynka bez filtrowania, sortowania i akcji masowych.** Przy realnym wolumenie (setki propozycji
+      miesięcznie) lista bez filtrów po jednostce/statusie/dacie przestaje być użyteczna operacyjnie.
+
+### Asystent (Agent Głosowy)
+
+- [ ] **P1 — Wielodniowy zakres dat kolapsuje do jednego dnia.** „od 20 sierpnia do 21 sierpnia" daje
+      potwierdzenie `od 2026-08-20 do 2026-08-20` przy **90% pewności** — wygląda wiarygodnie i jest błędne.
+      Zmierzone na żywo 2026-08-10. Do czasu naprawy demo wyłącznie na datach jednodniowych (odnotowane
+      w skrypcie demo jako ryzyko #1).
+- [ ] **P2 — Brak kontekstu rozmowy.** Każde polecenie jest bezstanowe, nie da się doprecyzować poprzedniego
+      („a jednak od piątku"), co przy poleceniach głosowych jest naturalnym odruchem użytkownika.
+- [ ] **P3 — Wąski zestaw intencji** (wnioski urlopowe + pytania o własny grafik). Rozszerzenie o pytania
+      o obsadę jest w KM3 opisane jako zakres przyszły — granicę trzymać świadomie, nie przez zaniedbanie.
+- [ ] **P3 — Ścieżka głosowa nieprzetestowana w warunkach sali.** Usługa `stt` (faster-whisper, port 8011)
+      odpowiada na `/health` kodem 200, ale nagrywanie z mikrofonu w przeglądarce nie było walidowane
+      end-to-end na sprzęcie demo ani w akustyce sali.
+
+### Analityk HR
+
+- [ ] **P2 — `managerUserId` nierozwiązywalny do nazwiska.** Konto `manager.demo` (`8ce7b92f`) istnieje
+      w tabeli `users`, ale **nie ma rekordu w `employees`** — powiązanie ma tylko 2 z 4 użytkowników.
+      To luka modelu danych, nie warstwy wyświetlania: `/api/employees` fizycznie nie ma czego zwrócić,
+      a projekcja `SAFE_SELECT` nie wystawia `userId`. Wymaga decyzji produktowej: czy konto operacyjne
+      ma mieć kartotekę pracownika, czy w tym miejscu pokazywać roli/e-mail zamiast nazwiska.
+- [ ] **P2 — Brak drill-downu z sygnału do danych źródłowych.** „Skok absencji +4,1 p.p." nie prowadzi do
+      listy wniosków ani osób, które ten skok tworzą — manager musi szukać ręcznie w innym module, co
+      niweczy sens sekcji „Na co zwrócić uwagę".
+- [ ] **P3 — Zdanie o RODO zmienione 2026-08-10, wymaga akceptacji właściciela produktu.** Było:
+      „Identyfikatory zamiast nazwisk — moduł analityczny nie przetwarza danych osobowych" (nieścisłe:
+      pseudonimizowany identyfikator to nadal dana osobowa, RODO motyw 26). Jest: „Do wyliczeń i scoringu
+      trafiają wyłącznie identyfikatory i liczby — nigdy dane osobowe. Nazwiska podstawiane są dopiero
+      w przeglądarce, dla uprawnionej roli." Sam scoring pozostał bez zmian (nadal ids-only) — zmieniono
+      wyłącznie warstwę prezentacji i jej opis.
+
+### Przekrojowe — dostępność i UX siatki (znalezione na Grafiku, dotyczą jakości „enterprise")
+
+- [ ] **P1 — Kontrast poniżej WCAG AA.** Etykieta stanowiska pod nazwiskiem: `rgb(138,151,168)` na białym tle
+      = **2,97:1** przy wymaganych 4,5:1 (zmierzone przez `getComputedStyle`, nie oszacowane na oko).
+      Dotyczy systemowo wszystkich 39 wierszy. Uwaga wdrożeniowa: token koloru jest współdzielony, więc
+      zmiana wymaga przejrzenia pozostałych użyć.
+- [ ] **P1 — Pół tygodnia ukryte za scrollem bez wskazówki.** Siatka wymaga `scrollWidth 1589 px`
+      w kontenerze `clientWidth 905 px` (ekran 1280 px): widać PON–ŚR, a PT/SOB/NDZ wymagają przewinięcia
+      w poziomie, przy czym jedynym sygnałem jest cienki natywny scrollbar. Opcje: węższa kolumna dnia,
+      widoczny cień/strzałka przy krawędzi, albo przełącznik zakresu („cały tydzień / dziś + 3 dni").
+- [ ] **P2 — Brak widocznego focusa klawiaturowego** na komórkach zmian (`outline: none`, `boxShadow: none`)
+      przy około 270 klikalnych komórkach w siatce — WCAG 2.4.7.
+- [ ] **P3 — Polska fleksja**: karta pracownika pokazuje „1 etatu" zamiast „1 etat".
+- [ ] **P3 — Martwa trasa `/analiza`** obok żywej `/analityk` (`apps/web/app/(tenant)/analiza/`) — pozostałość
+      po zmianie nazwy modułu i źródło błędnego selektora w przewodniku. Do usunięcia po weryfikacji,
+      że nic do niej nie linkuje.
+
+### Spójność dokumentacji grantowej (KM1–KM3) — decyzje, nie zadania programistyczne
+
+- [ ] **KM2 cytuje liczbę, którą własny audyt zespołu podważył.** Raport podaje, że liczba korekt „spada
+      **monotonicznie** z 50 do 0 w 6 rundach", natomiast `data/m2-evidence/known-limitations.md` (03.08,
+      czyli PO złożeniu KM2) stwierdza wprost, że tej krzywej NIE należy cytować jako dowodu uczenia się
+      preferencji — wzorzec „decyzji managera" był generowany tą samą funkcją, której używa agent, więc
+      zbieżność wynikała częściowo z konstrukcji testu. Uczciwy pomiar niezależny: **96 → 0 w 17 rundach,
+      niemonotonicznie**, przy idealnie płaskiej próbie kontrolnej bez feedbacku, powtórzone dla 6 różnych
+      profili managera. **Decyzja podjęta 2026-08-10: prezentować OBIE liczby i nazwać autokorektę**
+      (slajd 9 w `docs/demo/HRobot-demo-4Mobility-PARP-v3.pptx`). Dowody: `agent-service/evidence/ag2_independent_*`,
+      `hon2_controls_run.txt`.
+- [ ] **KM1 używa sformułowania „uczenie ze wzmocnieniem" (RL), a implementacja RL-em nie jest**
+      (`stable_baselines3` ani `torch` nie są importowane przez żaden moduł repozytorium). Ryzyko ograniczone:
+      KM1 sam zastrzega, że moduły AI opisuje „wyłącznie jako kontekst architektoniczny i zakres przyszły",
+      a KM2 — właściwy raport odbiorczy tego modułu — nigdzie RL nie deklaruje.
+      **Zasada na prezentacje i rozmowy z odbiorcą: nie używać słowa „RL"; mówić „agent samouczący się",
+      tak jak KM2.**
