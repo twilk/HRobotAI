@@ -173,6 +173,22 @@ const PL_LETTER = 'a-ząćęłńóśźż'
 
 const ISO_RE = /\d{4}-\d{2}-\d{2}/g
 const MONTH_RANGE_RE = new RegExp(`(\\d{1,2})\\s*(?:do|-|–|—)\\s*(\\d{1,2})\\s+(${MONTH_ALT})`)
+/**
+ * Zakres, w którym miesiąc pada PRZY PIERWSZEJ dacie: „20 sierpnia do 21 sierpnia”, „20 sierpnia do 21”,
+ * „30 sierpnia do 2 września”. Drugi miesiąc jest opcjonalny — bez niego dziedziczy pierwszy.
+ *
+ * DLACZEGO OSOBNY WZORZEC. `MONTH_RANGE_RE` obsługuje wyłącznie formę z miesiącem RAZ, na końcu
+ * („od 1 do 5 sierpnia”). Przy naturalniejszej wypowiedzi „od 20 sierpnia do 21 sierpnia” nie pasował,
+ * więc tekst spadał do `MONTH_SINGLE_RE`, ten łapał TYLKO pierwszą datę i ustawiał `dateTo = dateFrom`.
+ * Efekt: system potwierdzał jednodniowy urlop przy 90% pewności — wyglądało wiarygodnie i było błędne.
+ * Zmierzone na żywo 2026-08-10 („od 20 sierpnia do 21 sierpnia” → 2026-08-20…2026-08-20).
+ *
+ * Przełom roku obsługuje samo `monthDate` (data przed „dziś” przechodzi na kolejny rok), więc
+ * „od 30 grudnia do 2 stycznia” daje poprawny czterodniowy zakres bez dodatkowych reguł.
+ */
+const MONTH_FULL_RANGE_RE = new RegExp(
+  `(\\d{1,2})\\s+(${MONTH_ALT})\\s*(?:do|-|–|—)\\s*(\\d{1,2})(?:\\s+(${MONTH_ALT}))?`,
+)
 const MONTH_SINGLE_RE = new RegExp(`(\\d{1,2})\\s+(${MONTH_ALT})`)
 const DAY_TOKEN_RE = new RegExp(`(?<![${PL_LETTER}])(${DAY_TOKEN_ALT})(?![${PL_LETTER}])`, 'g')
 
@@ -202,6 +218,18 @@ function extractDates(text: string, today: Date): { dateFrom?: string; dateTo?: 
     return {
       dateFrom: toISO(monthDate(today, month, Number(mr[1]))),
       dateTo: toISO(monthDate(today, month, Number(mr[2]))),
+    }
+  }
+
+  // 2b. "20 sierpnia do 21 sierpnia" / "20 sierpnia do 21" / "30 sierpnia do 2 września".
+  // MUSI być przed wzorcem pojedynczej daty — inaczej ten złapie samą pierwszą datę i zgubi zakres.
+  const mfr = text.match(MONTH_FULL_RANGE_RE)
+  if (mfr) {
+    const monthFrom = MONTHS[mfr[2] ?? ''] ?? 0
+    const monthTo = mfr[4] != null ? MONTHS[mfr[4]] ?? monthFrom : monthFrom
+    return {
+      dateFrom: toISO(monthDate(today, monthFrom, Number(mfr[1]))),
+      dateTo: toISO(monthDate(today, monthTo, Number(mfr[3]))),
     }
   }
 

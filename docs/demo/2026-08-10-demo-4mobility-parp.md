@@ -22,7 +22,7 @@
   Potrzebujesz **co najmniej 1 × `PENDING_EMPLOYEE_CONSENT`** (do zaakceptowania przez pracownicę).
   Stan na 10.08: 1 × `PENDING_EMPLOYEE_CONSENT` + 1 × `PENDING_MANAGER` (rezerwa). Jak odtworzyć — patrz koniec dokumentu.
 - **NIE klikaj wielokrotnie „Generuj grafik"** — re-solve może skasować zaseedowaną zamianę demo.
-- **Asystent: tylko jednodniowe daty** (znany bug — patrz Ryzyka).
+- **Asystent obsługuje już zakresy wielodniowe** (naprawione 10.08) — możesz spokojnie powiedzieć „od 20 sierpnia do 21 sierpnia".
 - **⚠ ROZGRZEJ MODEL MOWY, jeśli planujesz demo głosem.** Model ładuje się dopiero przy pierwszym użyciu: pierwsza transkrypcja trwa **13 s**, każda kolejna **7–8 s** (zmierzone 10.08). Jedna komenda oszczędza 5 sekund ciszy przed odbiorcą:
   ```
   curl -s http://localhost:8011/health
@@ -167,7 +167,7 @@ Zaloguj jako **`manager.demo`**.
 
 ## Ryzyka demo + mitygacje (przeczytaj przed startem)
 
-1. **Asystent: wielodniowy zakres dat kolapsuje do jednego dnia** („od 20 do 21 sierpnia" → potwierdza tylko 20 sierpnia, przy 90 % pewności — wygląda przekonująco i jest błędne). **Mitygacja: wyłącznie daty jednodniowe.**
+1. ~~**Asystent: wielodniowy zakres dat kolapsuje do jednego dnia.**~~ **NAPRAWIONE 10.08.** Forma z powtórzonym miesiącem („od 20 sierpnia do 21 sierpnia") nie pasowała do wzorca zakresu, więc parser brał tylko pierwszą datę. Działają teraz wszystkie warianty — powtórzony miesiąc, miesiąc tylko przy pierwszej dacie („od 20 sierpnia do 25"), przełom miesiąca („od 30 sierpnia do 2 września") i przełom roku („od 30 grudnia do 2 stycznia"). Zweryfikowane na żywym systemie.
 2. **Asystent nie odpowiada na pytania otwarte** — to zamierzone (wąski parser intencji, nie ogólny czat) i w sekcji 4 jest użyte jako atut. Nie improwizuj innych pytań.
 3. **Nie klikaj „Generuj grafik" wielokrotnie** — re-solve może skasować zaseedowaną zamianę demo (J5).
 4. **Sekcja 3 zużywa dane.** Po próbie generalnej odtwórz je (instrukcja niżej), inaczej ekran zgody będzie pusty.

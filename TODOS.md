@@ -233,10 +233,15 @@ sprawny i uczciwie opisany w `docs/demo/2026-08-10-demo-4mobility-parp.md`), a p
 
 ### Asystent (Agent Głosowy)
 
-- [ ] **P1 — Wielodniowy zakres dat kolapsuje do jednego dnia.** „od 20 sierpnia do 21 sierpnia" daje
-      potwierdzenie `od 2026-08-20 do 2026-08-20` przy **90% pewności** — wygląda wiarygodnie i jest błędne.
-      Zmierzone na żywo 2026-08-10. Do czasu naprawy demo wyłącznie na datach jednodniowych (odnotowane
-      w skrypcie demo jako ryzyko #1).
+- [x] **P1 — Wielodniowy zakres dat kolapsował do jednego dnia. NAPRAWIONE 2026-08-10.**
+      „od 20 sierpnia do 21 sierpnia" dawało `od 2026-08-20 do 2026-08-20` przy **90% pewności** —
+      wyglądało wiarygodnie i było błędne. Przyczyna: `MONTH_RANGE_RE` obsługiwał wyłącznie formę
+      z miesiącem RAZ, na końcu („od 1 do 5 sierpnia"), więc naturalniejsza wypowiedź z powtórzonym
+      miesiącem spadała do wzorca pojedynczej daty, ten brał tylko pierwszą i ustawiał `dateTo = dateFrom`.
+      Dodany `MONTH_FULL_RANGE_RE` (drugi miesiąc opcjonalny, dziedziczy pierwszy). Obsłużone warianty:
+      powtórzony miesiąc, miesiąc tylko przy pierwszej dacie, przełom miesiąca i przełom roku
+      (ten ostatni wychodzi sam z `monthDate`). 5 testów, zweryfikowane negatywnie; potwierdzone na żywym
+      systemie. Ograniczenie zdjęte ze skryptu demo.
 - [ ] **P2 — Brak kontekstu rozmowy.** Każde polecenie jest bezstanowe, nie da się doprecyzować poprzedniego
       („a jednak od piątku"), co przy poleceniach głosowych jest naturalnym odruchem użytkownika.
 - [ ] **P3 — Wąski zestaw intencji** (wnioski urlopowe + pytania o własny grafik). Rozszerzenie o pytania

@@ -20,6 +20,44 @@ describe('parseIntent — closed PL command set (K1 urlop / K2 L4 / K3 mój graf
       expect(r.entities.dateFrom).toBe('2026-08-01')
       expect(r.entities.dateTo).toBe('2026-08-05')
     })
+
+    // Regresja 2026-08-10, zmierzona na żywo. Forma z POWTÓRZONYM miesiącem jest tym, co ludzie mówią
+    // naturalnie, a wcześniej nie pasowała do wzorca zakresu (ten wymagał miesiąca RAZ, na końcu).
+    // Tekst spadał więc do wzorca pojedynczej daty, który brał tylko pierwszą i ustawiał dateTo =
+    // dateFrom: system potwierdzał JEDNODNIOWY urlop przy 90% pewności. Wyglądało wiarygodnie i było
+    // błędne — najgorszy możliwy rodzaj usterki w module o skutkach kadrowych.
+    it('parses a repeated-month range "od 20 sierpnia do 21 sierpnia" as TWO days, not one', () => {
+      const r = parseIntent('chcę wziąć urlop wypoczynkowy od 20 sierpnia do 21 sierpnia', TODAY)
+      expect(r.intent).toBe('URLOP')
+      expect(r.entities.dateFrom).toBe('2026-08-20')
+      expect(r.entities.dateTo).toBe('2026-08-21')
+    })
+
+    it('inherits the month when the second date omits it ("od 20 sierpnia do 25")', () => {
+      const r = parseIntent('chcę urlop od 20 sierpnia do 25', TODAY)
+      expect(r.entities.dateFrom).toBe('2026-08-20')
+      expect(r.entities.dateTo).toBe('2026-08-25')
+    })
+
+    it('spans a month boundary ("od 30 sierpnia do 2 września")', () => {
+      const r = parseIntent('chcę urlop od 30 sierpnia do 2 września', TODAY)
+      expect(r.entities.dateFrom).toBe('2026-08-30')
+      expect(r.entities.dateTo).toBe('2026-09-02')
+    })
+
+    it('spans the YEAR boundary without inverting the range ("od 30 grudnia do 2 stycznia")', () => {
+      // `monthDate` przenosi datę wcześniejszą niż „dziś” na kolejny rok, więc styczeń musi wypaść
+      // PO grudniu. Gdyby ta reguła zniknęła, powstałby zakres cofnięty o rok — cicho i bez błędu.
+      const r = parseIntent('chcę urlop od 30 grudnia do 2 stycznia', TODAY)
+      expect(r.entities.dateFrom).toBe('2026-12-30')
+      expect(r.entities.dateTo).toBe('2027-01-02')
+    })
+
+    it('still treats a single date as one day ("urlop 20 sierpnia")', () => {
+      const r = parseIntent('chcę urlop 20 sierpnia', TODAY)
+      expect(r.entities.dateFrom).toBe('2026-08-20')
+      expect(r.entities.dateTo).toBe('2026-08-20')
+    })
   })
 
   describe('K2 — L4 (sick leave, write)', () => {
