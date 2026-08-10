@@ -15,6 +15,7 @@ import {
   formatHours,
   formatNumber,
   formatPercent,
+  employeeLabel,
   leaveTypeLabel,
   monthLabel,
   monthToDateRange,
@@ -31,6 +32,13 @@ import {
   type UnitBreakdown,
 } from '@/lib/analityk'
 import { ustawieniaApi } from '@/lib/ustawienia'
+
+/** Minimalna projekcja z `GET /api/employees` (SAFE_SELECT — bez PESEL i adresu). */
+interface ApiEmployeeName {
+  id: string
+  firstName: string
+  lastName: string
+}
 
 /**
  * The Analityk HR dashboard (M3). A CLIENT component: it loads the summary + the period-over-period
@@ -135,6 +143,10 @@ export function AnalitykDashboard() {
   // still says WHOSE numbers these are. A failure here must not blank the dashboard the user came
   // for — the export just falls back to no tenant line (podsumowanieToCsv treats it as optional).
   const [companyName, setCompanyName] = useState<string | null>(null)
+  // Mapa id→"Imię Nazwisko" dla wierszy, które backend zwraca jako IDS-ONLY. Best-effort tak samo jak
+  // `companyName`: gdy `/api/employees` padnie lub odpowie 403, ekran działa dalej, tylko z krótkim
+  // `#id` (patrz `employeeLabel`). Nigdy nie blokuje danych, po które użytkownik tu przyszedł.
+  const [empNames, setEmpNames] = useState<Map<string, string>>(new Map())
 
   const cancelledRef = useRef(false)
 
@@ -147,6 +159,25 @@ export function AnalitykDashboard() {
       })
       .catch(() => {
         /* export still works without the tenant name — see podsumowanieToCsv's optional opts */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Nazwiska pobierane RAZ (nie per zmiana zakresu — kartoteka nie zależy od okna analitycznego),
+  // dokładnie tym samym idiomem, co `strategic-brain/overview.tsx`.
+  useEffect(() => {
+    let cancelled = false
+    void fetch('/api/employees', { cache: 'no-store' })
+      .then((r) => (r.ok ? (r.json() as Promise<ApiEmployeeName[]>) : []))
+      .then((rows) => {
+        if (!cancelled && Array.isArray(rows)) {
+          setEmpNames(new Map(rows.map((e) => [e.id, `${e.firstName} ${e.lastName}`.trim()])))
+        }
+      })
+      .catch(() => {
+        /* zostaje `#id` — patrz employeeLabel */
       })
     return () => {
       cancelled = true
@@ -507,12 +538,16 @@ export function AnalitykDashboard() {
               {data.czasPracy.topNadwyzka.length > 0 ? (
                 <Panel title="Największa nadwyżka ponad normę tygodniową" className="lg:col-span-2">
                   <BarChart
-                    data={data.czasPracy.topNadwyzka.map((e) => ({ label: shortId(e.employeeId), value: e.nadwyzka }))}
+                    data={data.czasPracy.topNadwyzka.map((e) => ({
+                      label: employeeLabel(empNames, e.employeeId),
+                      value: e.nadwyzka,
+                    }))}
                     valueFormat={(v) => formatHours(v)}
                     barClass="bg-warn"
                   />
                   <p className="mt-2 text-[11.5px] text-muted-2">
-                    Identyfikatory zamiast nazwisk — moduł analityczny nie przetwarza danych osobowych.
+                    Do wyliczeń i scoringu trafiają wyłącznie identyfikatory i liczby — nigdy dane osobowe. Nazwiska
+                    podstawiane są dopiero w przeglądarce, dla uprawnionej roli.
                   </p>
                 </Panel>
               ) : null}
@@ -576,7 +611,7 @@ export function AnalitykDashboard() {
                       <tbody className="divide-y divide-line">
                         {data.urlopy.ryzykoPrzepadniecia.map((r) => (
                           <tr key={r.employeeId} className="text-[13px]">
-                            <td className="px-2 py-1.5 font-medium text-navy">{shortId(r.employeeId)}</td>
+                            <td className="px-2 py-1.5 font-medium text-navy">{employeeLabel(empNames, r.employeeId)}</td>
                             <td className="px-2 py-1.5 text-right font-semibold tabular-nums text-warn">{r.saldo} dni</td>
                             <td className="px-2 py-1.5 text-right tabular-nums text-muted">{r.wykorzystane} dni</td>
                           </tr>

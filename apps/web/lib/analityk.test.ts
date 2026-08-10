@@ -17,6 +17,7 @@ import {
   monthLabel,
   monthToDateRange,
   podsumowanieToCsv,
+  employeeLabel,
   shortId,
   stackOffsets,
   toCsv,
@@ -165,6 +166,26 @@ describe('monthLabel / leaveTypeLabel / shortId', () => {
 
   it('shortens an id into a stable handle (the payload carries no names)', () => {
     expect(shortId('e1a2b3c4-5678-90ab-cdef-1234567890ab')).toBe('#e1a2b3c4')
+  })
+})
+
+// Regresja 2026-08-10: `/analityk` pokazywał 9 surowych identyfikatorów (m.in. `#839275ec`) zamiast
+// nazwisk — w tym w tabeli z nagłówkiem „Pracownik", przez co lista osób zagrożonych przepadnięciem
+// urlopu była nieużywalna: nie dało się odczytać, z kim porozmawiać.
+describe('employeeLabel', () => {
+  const ID = '839275ec-cf4b-5217-82db-cddcdd450d3f'
+
+  it('pokazuje imię i nazwisko, gdy kartoteka je zna', () => {
+    expect(employeeLabel(new Map([[ID, 'Krzysztof Lewandowski']]), ID)).toBe('Krzysztof Lewandowski')
+  })
+
+  it('spada do krótkiego #id, gdy nazwiska brak (np. /api/employees zwróciło 403)', () => {
+    expect(employeeLabel(new Map(), ID)).toBe('#839275ec')
+  })
+
+  it('traktuje pusty/whitespace wpis jak brak nazwiska, nie renderuje pustej komórki', () => {
+    expect(employeeLabel(new Map([[ID, '   ']]), ID)).toBe('#839275ec')
+    expect(employeeLabel(new Map([[ID, '']]), ID)).toBe('#839275ec')
   })
 })
 

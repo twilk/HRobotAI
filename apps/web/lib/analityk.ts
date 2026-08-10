@@ -337,6 +337,23 @@ export function shortId(id: string): string {
   return `#${id.slice(0, 8)}`
 }
 
+/**
+ * Imię i nazwisko pracownika, a `#e1a2b3c4` dopiero gdy nazwiska naprawdę nie ma.
+ *
+ * Analityk dostaje z backendu wiersze IDS-ONLY (`snapshot.service.ts` — do scoringu świadomie NIE
+ * trafia żadne PII, żeby cecha chroniona nie mogła wpłynąć na ocenę). To ograniczenie dotyczy
+ * SCORINGU i dziennika audytu, nie warstwy prezentacji: manager widzi tych samych ludzi po nazwisku
+ * w Grafiku, Pracownikach i Wnioskach, więc pokazywanie mu `#839275ec` niczego nie chroniło — jedynie
+ * uniemożliwiało odczytanie własnego raportu. Nazwiska dociągamy z `/api/employees` (projekcja
+ * SAFE_SELECT, bez PESEL i adresu) i łączymy po id dopiero w przeglądarce.
+ *
+ * Zgłoszone 2026-08-10: na `/analityk` widocznych było 9 surowych identyfikatorów zamiast nazwisk.
+ */
+export function employeeLabel(names: Map<string, string>, id: string): string {
+  const name = names.get(id)
+  return name && name.trim() !== '' ? name : shortId(id)
+}
+
 // --- pure chart geometry --------------------------------------------------------------------------
 //
 // The web-kit ships NO charting library (see package.json), and this module deliberately adds none.
