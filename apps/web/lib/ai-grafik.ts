@@ -208,6 +208,13 @@ export interface AiProposal {
   createdAt: string
   updatedAt: string
   candidates: AiProposalCandidate[]
+  /**
+   * Skrót wakującej zmiany dołożony przez backend (`PROPOSAL_INCLUDE`). Opcjonalny, bo starsze
+   * odpowiedzi go nie mają — enrichment degraduje wtedy do mapy z `/api/grafik/shifts`, a na końcu do
+   * krótkiego id. KLUCZOWY dla ekranu zgody: kandydat nie widzi cudzych zmian, więc bez tego pola nie
+   * ma jak dowiedzieć się, na co właściwie się zgadza.
+   */
+  shift?: ShiftLite | null
 }
 
 /** {@link AiProposalCandidate} projected onto the UI with the candidate's resolved employee name. */
@@ -416,13 +423,14 @@ interface EmployeeLite {
   firstName: string
   lastName: string
 }
-interface ShiftLite {
+/** Eksportowany, bo `AiProposal.shift` (payload backendu) używa tego samego kształtu. */
+export interface ShiftLite {
   id: string
   date: string
   start: string
   end: string
   role: string
-  lokalizacjaId?: string
+  lokalizacjaId?: string | null
 }
 
 export interface ProposalEnrichMaps {
@@ -432,6 +440,10 @@ export interface ProposalEnrichMaps {
    *  fails or the id is unknown) — feeds the candidate consent screen's "location" line (2026-07-14
    *  spec §12 Etap 3). Never PII: a lokalizacja name, not an employee's home address. */
   shiftLocation: Map<string, string>
+  /** lokalizacjaId → nazwa. Osobna od `shiftLocation` (kluczowanej po shiftId), bo zmiana dołożona do
+   *  payloadu propozycji niesie `lokalizacjaId`, a nie swoje id w rosterze odbiorcy. Katalog lokalizacji
+   *  jest czytelny dla PRACOWNIKA (`grafik.controller.ts` READ_ROLES), więc kandydat rozwiąże nazwę. */
+  locationName: Map<string, string>
 }
 
 const WEEKDAY_SHORT_PL = ['nd', 'pon', 'wt', 'śr', 'czw', 'pt', 'sob'] as const
@@ -441,6 +453,30 @@ const WEEKDAY_SHORT_PL = ['nd', 'pon', 'wt', 'śr', 'czw', 'pt', 'sob'] as const
  * callers with an inline shift shape (e.g. {@link VacatedShift}, which already carries date/start/
  * end/role — no id lookup needed) can reuse the exact same formatting instead of re-deriving it.
  */
+/**
+ * Powód powstania propozycji, po polsku i bez identyfikatorów.
+ *
+ * `AiProposal.reason` bywa TOKENEM MASZYNOWYM, a nie zdaniem: `leave.service.ts` przy zatwierdzeniu
+ * urlopu zapisuje `leave <uuid> approved`, żeby dało się później powiązać propozycję z wnioskiem.
+ * To wartość audytowa i celowo jej NIE zmieniamy w bazie — tłumaczymy dopiero przy wyświetlaniu.
+ * Znalezione na żywo 2026-08-10: kandydat proszony o zgodę widział dosłownie
+ * `leave 31964458-94c8-4898-a15b-83f3d4755cea approved`.
+ *
+ * Powód wpisany ręcznie przez managera (pole `reason` w DTO) jest zwykłym tekstem i przechodzi bez
+ * zmian. Nieznany token z UUID-em degraduje do ogólnego zdania — lepiej powiedzieć mniej niż pokazać
+ * człowiekowi wewnętrzny identyfikator.
+ */
+const LEAVE_REASON_RE = /^leave\s+[0-9a-f-]{36}\s+approved$/i
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+
+export function proposalReasonLabel(reason: string | null | undefined): string {
+  const text = (reason ?? '').trim()
+  if (text === '') return 'Propozycja AI'
+  if (LEAVE_REASON_RE.test(text)) return 'Zastępstwo za zatwierdzony urlop'
+  if (UUID_RE.test(text)) return 'Propozycja AI'
+  return text
+}
+
 export function shiftLabelOf(s: ShiftLite): string {
   const iso = s.date.slice(0, 10)
   const d = new Date(`${iso}T00:00:00.000Z`)
@@ -471,7 +507,8 @@ export async function buildProposalEnrichMaps(): Promise<ProposalEnrichMaps> {
     shiftLabel.set(s.id, shiftLabelOf(s))
     if (s.lokalizacjaId) shiftLocation.set(s.id, locationNames[s.lokalizacjaId] ?? s.lokalizacjaId)
   }
-  return { empName, shiftLabel, shiftLocation }
+  const locationName = new Map<string, string>(Object.entries(locationNames))
+  return { empName, shiftLabel, shiftLocation, locationName }
 }
 
 /** Project a raw backend proposal row onto the {@link EnrichedProposal} shape the UI renders. */
@@ -488,8 +525,14 @@ function enrichProposal(row: AiProposal, maps: ProposalEnrichMaps): EnrichedProp
         : maps.empName.get(c.employeeId) ?? c.employeeId.slice(0, 8),
     })),
     vacatedEmployeeName: maps.empName.get(row.vacatedEmployeeId) ?? row.vacatedEmployeeId.slice(0, 8),
-    shiftLabel: maps.shiftLabel.get(row.shiftId) ?? row.shiftId.slice(0, 8),
-    shiftLocation: maps.shiftLocation.get(row.shiftId) ?? '',
+    // Kolejność jak przy `employeeName` wyżej: najpierw zmiana z payloadu (jedyne źródło, które działa
+    // dla KANDYDATA — jego `/grafik/shifts` nie zawiera cudzej zmiany), potem mapa z rostera managera,
+    // na końcu surowe id. Bez pierwszego kroku ekran zgody pokazywał `9c90b5b8`.
+    shiftLabel: (row.shift ? shiftLabelOf(row.shift) : undefined) ?? maps.shiftLabel.get(row.shiftId) ?? row.shiftId.slice(0, 8),
+    shiftLocation:
+      (row.shift?.lokalizacjaId ? maps.locationName.get(row.shift.lokalizacjaId) : undefined) ??
+      maps.shiftLocation.get(row.shiftId) ??
+      '',
   }
 }
 

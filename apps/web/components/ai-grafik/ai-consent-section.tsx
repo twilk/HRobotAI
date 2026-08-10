@@ -15,6 +15,7 @@ import {
   buildProposalEnrichMaps,
   enrichProposalsWith,
   myTravelText,
+  proposalReasonLabel,
   AiGrafikApiError,
   type EnrichedProposal,
   type AiProposalState,
@@ -172,7 +173,7 @@ export function AiConsentSection() {
               return (
                 <tr key={p.id}>
                   <Td>
-                    <ShiftCell label={p.shiftLabel} sub={p.reason ?? 'Propozycja AI'} />
+                    <ShiftCell label={p.shiftLabel} sub={proposalReasonLabel(p.reason)} />
                   </Td>
                   <Td>
                     <div className="text-[13px]">{p.shiftLocation || '—'}</div>

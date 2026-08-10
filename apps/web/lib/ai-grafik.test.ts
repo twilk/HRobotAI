@@ -11,8 +11,11 @@ import {
   costBreakdownText,
   costCellText,
   myTravelText,
+  proposalReasonLabel,
+  enrichProposalsWith,
   NO_CANDIDATE_MESSAGE,
   type AiProposal,
+  type ProposalEnrichMaps,
   type AiProposalState,
 } from './ai-grafik'
 
@@ -148,6 +151,79 @@ describe('shiftLabelOf', () => {
         role: 'RECEPCJA',
       }),
     ).toBe('pon 13.07 · 06:00–14:00 · RECEPCJA')
+  })
+})
+
+// Regresja 2026-08-10 — ekran zgody pracownika. Kandydat proszony o objęcie cudzej zmiany widział
+// `9c90b5b8` zamiast daty i godzin oraz surowy token `leave <uuid> approved` zamiast powodu. Przyczyna
+// nie była w mapowaniu: `/grafik/shifts` jest scope'owane do WŁASNYCH zmian, więc kandydat fizycznie
+// nie mógł dociągnąć tej zmiany. Backend dokłada ją teraz do payloadu (`PROPOSAL_INCLUDE`).
+describe('enrichProposalsWith — etykieta wakującej zmiany', () => {
+  const EMPTY_MAPS: ProposalEnrichMaps = {
+    empName: new Map(),
+    shiftLabel: new Map(),
+    shiftLocation: new Map(),
+    locationName: new Map([['lok-1', 'Lotnisko Chopina — Warszawa']]),
+  }
+
+  function row(over: Partial<AiProposal> = {}): AiProposal {
+    return {
+      id: 'p-1',
+      type: 'REPLACEMENT',
+      state: 'PENDING_EMPLOYEE_CONSENT',
+      shiftId: '9c90b5b8-d9cd-4bc9-9de5-8fd84bafe414',
+      vacatedEmployeeId: 'emp-vac',
+      activeCandidateId: null,
+      createdAt: '2026-08-10T00:00:00.000Z',
+      updatedAt: '2026-08-10T00:00:00.000Z',
+      candidates: [],
+      ...over,
+    }
+  }
+
+  it('używa zmiany z payloadu, gdy roster kandydata jej NIE zawiera (istota błędu)', () => {
+    const [p] = enrichProposalsWith(
+      [row({ shift: { id: 'sh-1', date: '2026-08-20', start: '14:00', end: '22:00', role: 'KOORDYNATOR', lokalizacjaId: 'lok-1' } })],
+      EMPTY_MAPS,
+    )
+    expect(p!.shiftLabel).toBe('czw 20.08 · 14:00–22:00 · KOORDYNATOR')
+    expect(p!.shiftLocation).toBe('Lotnisko Chopina — Warszawa')
+  })
+
+  it('nadal spada do krótkiego id, gdy backend nie dołożył zmiany (starsza odpowiedź)', () => {
+    const [p] = enrichProposalsWith([row()], EMPTY_MAPS)
+    expect(p!.shiftLabel).toBe('9c90b5b8')
+  })
+
+  it('mapa z rostera nadal działa dla managera, który tę zmianę widzi', () => {
+    const maps: ProposalEnrichMaps = {
+      ...EMPTY_MAPS,
+      shiftLabel: new Map([['9c90b5b8-d9cd-4bc9-9de5-8fd84bafe414', 'czw 20.08 · 14:00–22:00 · KOORDYNATOR']]),
+    }
+    expect(enrichProposalsWith([row()], maps)[0]!.shiftLabel).toBe('czw 20.08 · 14:00–22:00 · KOORDYNATOR')
+  })
+})
+
+describe('proposalReasonLabel', () => {
+  it('tłumaczy token maszynowy z leave.service na polskie zdanie', () => {
+    expect(proposalReasonLabel('leave 31964458-94c8-4898-a15b-83f3d4755cea approved')).toBe(
+      'Zastępstwo za zatwierdzony urlop',
+    )
+  })
+
+  it('NIGDY nie pokazuje surowego UUID, nawet w nieznanym tokenie', () => {
+    const out = proposalReasonLabel('swap 31964458-94c8-4898-a15b-83f3d4755cea cancelled')
+    expect(out).toBe('Propozycja AI')
+    expect(out).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}/i)
+  })
+
+  it('przepuszcza bez zmian powód wpisany ręcznie przez managera', () => {
+    expect(proposalReasonLabel('Pilne — awaria na stacji')).toBe('Pilne — awaria na stacji')
+  })
+
+  it('daje sensowny domyślny tekst dla braku powodu', () => {
+    expect(proposalReasonLabel(null)).toBe('Propozycja AI')
+    expect(proposalReasonLabel('   ')).toBe('Propozycja AI')
   })
 })
 

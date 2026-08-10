@@ -32,8 +32,21 @@ import { ReplacementService, type RankedCandidate } from './replacement.service.
  *  name (firstName/lastName). The NAME is not sensitive PII (never PESEL/home) and lets the web-kit
  *  label a CROSS-UNIT candidate the manager cannot resolve from their own unit-scoped /api/employees
  *  roster (2026-07-14 spec — cross-unit name enrichment). Audit payloads stay IDs-only regardless. */
-const PROPOSAL_INCLUDE = {
+/**
+ * Eksportowane, żeby testy scopingu RBAC odwoływały się do TEJ stałej zamiast powtarzać jej literał.
+ * Zanim to zrobiliśmy, każde legalne rozszerzenie projekcji (np. dołożenie `shift`) wywracało dwa
+ * testy, które w rzeczywistości sprawdzają klauzulę WHERE, a nie kształt `include`.
+ */
+export const PROPOSAL_INCLUDE = {
   candidates: { include: { employee: { select: { firstName: true, lastName: true } } } },
+  // Skrót WAKUJĄCEJ zmiany jedzie w payloadzie, bo odbiorca propozycji nie ma jak go sobie dociągnąć:
+  // `GET /grafik/shifts` jest scope'owane do WŁASNYCH zmian pracownika (grafik.service.ts listShifts),
+  // a proponowana zmiana z definicji należy do kogoś innego. Bez tego ekran zgody pokazywał kandydatowi
+  // `9c90b5b8` zamiast „czw 20.08 · 14:00–22:00 · KOORDYNATOR” — czyli prosiliśmy człowieka o zgodę na
+  // objęcie zmiany, nie mówiąc mu kiedy ani gdzie (znalezione na żywo 2026-08-10).
+  // RODO: sama zmiana (data/godziny/rola/lokalizacja) nie jest daną osobową kandydata, a jest mu
+  // niezbędna do podjęcia decyzji. Nazwisko nieobecnego NIE jest tu dodawane.
+  shift: { select: { id: true, date: true, start: true, end: true, role: true, lokalizacjaId: true } },
 } as const
 
 /** A persisted AiProposal with its ranked candidate rows (each carrying its employee's display name). */

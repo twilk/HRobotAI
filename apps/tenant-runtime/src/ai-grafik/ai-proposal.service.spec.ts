@@ -2,7 +2,7 @@ import { ConflictException, ForbiddenException, NotFoundException } from '@nestj
 import type { TenantClient } from '@hrobot/db'
 import { TenantPrisma } from '@hrobot/db'
 import { AiProposalState, AutonomyLevel, ConsentState, EmploymentType, Role } from '@hrobot/shared'
-import { AiProposalService } from './ai-proposal.service.js'
+import { AiProposalService, PROPOSAL_INCLUDE } from './ai-proposal.service.js'
 import type { AiConfigActor } from './ai-config.service.js'
 import type { ReplacementService, RankedCandidate } from './replacement.service.js'
 import type { AiConfigService } from './ai-config.service.js'
@@ -640,6 +640,30 @@ describe('AiProposalService.requestConsent', () => {
   })
 })
 
+describe('AiProposalService — projekcja wakującej zmiany (regresja 2026-08-10)', () => {
+  it('każda odpowiedź niesie skrót zmiany, bo KANDYDAT nie ma jak go dociągnąć', () => {
+    // `GET /grafik/shifts` jest scope'owane do własnych zmian pracownika, a proponowana zmiana
+    // z definicji należy do kogoś innego — bez tej projekcji ekran zgody pokazywał `9c90b5b8`
+    // zamiast „czw 20.08 · 14:00–22:00 · KOORDYNATOR”, czyli prosiliśmy o zgodę bez podania kiedy i gdzie.
+    expect(PROPOSAL_INCLUDE).toHaveProperty('shift')
+    expect(PROPOSAL_INCLUDE.shift.select).toEqual({
+      id: true,
+      date: true,
+      start: true,
+      end: true,
+      role: true,
+      lokalizacjaId: true,
+    })
+  })
+
+  it('projekcja zmiany NIE niesie danych osobowych — sam kontekst zmiany', () => {
+    const keys = Object.keys(PROPOSAL_INCLUDE.shift.select)
+    for (const forbidden of ['employee', 'employeeId', 'pesel', 'peselHash', 'homeAddress', 'homeLat', 'homeLng']) {
+      expect(keys).not.toContain(forbidden)
+    }
+  })
+})
+
 describe('AiProposalService.list', () => {
   it('a global HR sees every proposal (no unit filter)', async () => {
     const client = makeClient()
@@ -647,7 +671,7 @@ describe('AiProposalService.list', () => {
 
     await service.list(as(client), HR, {})
 
-    expect(client.aiProposal.findMany).toHaveBeenCalledWith({ where: {}, include: { candidates: { include: { employee: { select: { firstName: true, lastName: true } } } } } })
+    expect(client.aiProposal.findMany).toHaveBeenCalledWith({ where: {}, include: PROPOSAL_INCLUDE })
   })
 
   it('a MANAGER is scoped to their managed units (by owningUnitId, Codex P1-2), optionally narrowed by state', async () => {
@@ -659,7 +683,7 @@ describe('AiProposalService.list', () => {
 
     expect(client.aiProposal.findMany).toHaveBeenCalledWith({
       where: { owningUnitId: { in: [UNIT] }, state: AiProposalState.DRAFT },
-      include: { candidates: { include: { employee: { select: { firstName: true, lastName: true } } } } },
+      include: PROPOSAL_INCLUDE,
     })
   })
 
