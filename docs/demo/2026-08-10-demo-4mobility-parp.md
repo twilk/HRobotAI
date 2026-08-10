@@ -158,15 +158,41 @@ Zaloguj jako **`manager.demo`**.
 
 ## Jak odtworzyć dane do sekcji 3 (po próbie generalnej)
 
-Najprostsza droga — wywołaj łańcuch od początku, jako `manager.demo`:
+**Najpierw ustal, jak daleko zaszła próba** — od tego zależy, czy wystarczy klikanie, czy potrzebna jest też jedna komenda SQL.
+
+### Przypadek A — próba skończyła się na 3c (zgoda udzielona, BEZ zatwierdzenia)
+
+Wystarczy odtworzyć propozycję. Jako `manager.demo`:
 
 1. `/ai-grafik-manager` → **Wykrywanie wypadnięć** → zakres `2026-08-17` – `2026-08-23` → **Skanuj**
 2. przy jedynym wierszu (czw 20.08, Anna Kowalska) → **Utwórz propozycję zastępstwa**
 3. dla TEJ zmiany jedynym wykonalnym kandydatem jest Katarzyna Zając, która ma konto — więc przy autonomii „Automatycznie za zgodą pracownika" propozycja idzie do niej jako `PENDING_EMPLOYEE_CONSENT` i sekcja 3c znów ma na czym działać
 
+### Przypadek B — próba przeszła CAŁY łańcuch łącznie z 3d (zatwierdzenie)
+
+⚠️ **Samo powtórzenie kroków z przypadku A NIE zadziała** i to jest najłatwiejsza pułapka w całym przygotowaniu. Zatwierdzenie w 3d **przepina zmianę na Katarzynę** — to dowód, że łańcuch działa, ale od tej chwili Anna nie jest już przypisana do tej zmiany, więc **skan zwraca 0 wypadnięć** (nie ma czego wykrywać). Sprawdzone na żywo 10.08 po biegu dowodowego.
+
+Najpierw przywróć przypisanie zmiany do Anny (jedna komenda, trafia w dokładnie jeden wiersz — selektor po dacie, godzinie i roli, więc nie trzeba przepisywać żadnego UUID):
+
+```
+docker exec -i hrobot-postgres-1 psql -U postgres -d hrobot_t_900d948b -c "UPDATE shifts SET employee_id = (SELECT id FROM employees WHERE first_name='Anna' AND last_name='Kowalska'), updated_at = now() WHERE date::date='2026-08-20' AND start='14:00' AND role='KOORDYNATOR';"
+```
+
+Sprawdź, czy przywrócenie się udało — oczekiwany wynik to `Anna Kowalska | 1` (jedynka oznacza, że ma na ten dzień zatwierdzony urlop, czyli skan ma co znaleźć):
+
+```
+docker exec -i hrobot-postgres-1 psql -U postgres -d hrobot_t_900d948b -c "SELECT e.first_name||' '||e.last_name AS przypisany, (SELECT count(*) FROM leave_requests l WHERE l.employee_id=s.employee_id AND l.status='APPROVED' AND s.date BETWEEN l.start_date AND l.end_date) AS ma_urlop FROM shifts s JOIN employees e ON e.id=s.employee_id WHERE s.date::date='2026-08-20' AND s.start='14:00' AND s.role='KOORDYNATOR';"
+```
+
+Dopiero teraz wykonaj kroki 1–3 z przypadku A.
+
+> Wpisów w dzienniku audytu **nie usuwamy** — jest append-only z założenia i poprawnie rejestruje, co wydarzyło się podczas próby. Przywrócenie danych demonstracyjnych to osobna czynność administracyjna, nie kasowanie historii.
+
+### Uwagi wspólne
+
 > ⚠️ **Użyj właśnie tego zakresu dat.** Dla innych wypadnięć (np. w lipcu) jedynym kandydatem bywa ktoś **bez konta w systemie** — wtedy propozycja od razu ląduje jako `ESKALOWANA`, bo nie ma kogo zapytać o zgodę, i sekcja 3c nie będzie miała czego pokazać.
 
-Weryfikacja: komenda `psql` z sekcji „Przed demo" powinna pokazać co najmniej jeden `PENDING_EMPLOYEE_CONSENT`.
+**Weryfikacja końcowa** — komenda `psql` z sekcji „Przed demo" powinna pokazać co najmniej jeden `PENDING_EMPLOYEE_CONSENT`. Dla pewności zaloguj się jako `pracownica.demo` i sprawdź, czy na `/zamiany` widać wiersz `czw 20.08 · 14:00–22:00 · KOORDYNATOR` z przyciskami Akceptuj/Odrzuć.
 
 ## Q&A — przygotowane odpowiedzi
 
