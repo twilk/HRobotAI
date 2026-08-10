@@ -94,10 +94,15 @@ export function groupByDay(shifts: WeekShift[], today: string): DayGroup[] {
   const days = weekDays(today)
   const byDate = new Map<string, WeekShift[]>()
   for (const s of shifts) {
-    if (!days.includes(s.date)) continue
-    const list = byDate.get(s.date) ?? []
+    // /api/grafik/shifts returns `date` as a full ISO datetime ("2026-08-11T00:00:00.000Z"), not a
+    // bare YYYY-MM-DD — comparing it straight against `days` never matched, so every shift silently
+    // vanished from this view (found live 2026-08-10, no test caught it because the fixtures above
+    // already use bare dates).
+    const day = s.date.slice(0, 10)
+    if (!days.includes(day)) continue
+    const list = byDate.get(day) ?? []
     list.push(s)
-    byDate.set(s.date, list)
+    byDate.set(day, list)
   }
 
   return days.map((date) => ({

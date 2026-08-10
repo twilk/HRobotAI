@@ -88,6 +88,15 @@ describe('groupByDay', () => {
   it('returns the full week even with no shifts at all', () => {
     expect(groupByDay([], '2026-03-12')).toHaveLength(7)
   })
+
+  it('matches shifts whose date is a full ISO datetime, as /api/grafik/shifts actually returns', () => {
+    // Regression: the real API returns "2026-03-12T00:00:00.000Z", not "2026-03-12". Comparing the
+    // raw string against the bare YYYY-MM-DD days array silently dropped every shift, every week.
+    const groups = groupByDay([shift('a', '2026-03-12T00:00:00.000Z', '08:00')], '2026-03-12')
+    const thursday = groups.find((g) => g.date === '2026-03-12')!
+
+    expect(thursday.shifts).toHaveLength(1)
+  })
 })
 
 describe('todayIso', () => {
