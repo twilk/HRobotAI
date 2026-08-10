@@ -194,6 +194,25 @@ Dopiero teraz wykonaj kroki 1–3 z przypadku A.
 
 **Weryfikacja końcowa** — komenda `psql` z sekcji „Przed demo" powinna pokazać co najmniej jeden `PENDING_EMPLOYEE_CONSENT`. Dla pewności zaloguj się jako `pracownica.demo` i sprawdź, czy na `/zamiany` widać wiersz `czw 20.08 · 14:00–22:00 · KOORDYNATOR` z przyciskami Akceptuj/Odrzuć.
 
+### Runbook przetestowany, nie tylko spisany
+
+Powyższa procedura (przypadek B) została **przejechana w całości 10.08 po próbie generalnej**, która świadomie zużyła dane przechodząc przez krok 3d. Zmierzony przebieg:
+
+| Moment | `PENDING_EMPLOYEE_CONSENT` | Zmiana 20.08 przypisana do |
+|---|---|---|
+| przed próbą | 1 | Anna Kowalska |
+| po próbie (3d wykonane) | **0** | Katarzyna Zając |
+| po komendzie SQL | 0 | Anna Kowalska |
+| po skanie i utworzeniu propozycji | **1** | Anna Kowalska |
+
+Rezerwowa propozycja `PENDING_MANAGER` przetrwała cały cykl nietknięta.
+
+## Co jeszcze warto wiedzieć po próbie generalnej
+
+- **Automatyczny przejazd trwa ~45 s**, ale to sprawdzian FUNKCJONALNY, nie próba tempa prowadzącego. Na żywo licz ~20 min według czasów przy sekcjach i przećwicz przełączanie kont — to ono zabiera najwięcej czasu, a nie same ekrany.
+- **Każda próba dokłada wersję dokumentu.** Po kilku przejazdach lista w module Dokumenty ma kilka wpisów „Ewidencja czasu pracy · Anna Kowalska · 13–19.07". To NIE jest usterka, tylko wersjonowanie append-only: zawsze dokładnie jedna pozycja ma status bieżący, poprzednie dostają **ZASTĄPIONY**. Jeśli ktoś zapyta — to jest dobra odpowiedź: *„regenerowanie nie nadpisuje poprzedniej wersji, tylko ją oznacza jako zastąpioną; pełna historia zostaje"*.
+- **Liczba `APPROVED` rośnie z każdą próbą** (przed demo: 4). Nie ma to wpływu na przebieg — zatwierdzone propozycje nie pojawiają się w skrzynce decyzyjnej.
+
 ## Q&A — przygotowane odpowiedzi
 
 - **„Czy agent to RL?"** → Nie. Uczący się scorer preferencji (affinity-learner) + wsadowy re-fit z wersjonowaną polityką. `stable_baselines3` nie jest importowany w żadnym module — sprawdzone w kodzie. **Nie używaj słowa „RL".**

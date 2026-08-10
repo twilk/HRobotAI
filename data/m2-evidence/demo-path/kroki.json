@@ -1,5 +1,5 @@
 {
-  "wykonano": "2026-08-10T15:16:16.788Z",
+  "wykonano": "2026-08-10T15:30:57.142Z",
   "baza": "http://localhost:8080",
   "konta": {
     "admin": {
@@ -71,8 +71,8 @@
       "akcja": "Ewidencja czasu pracy · Anna Kowalska · 13–19.07.2026 → „Generuj dokument”",
       "oczekiwane": "Nowy dokument w stanie DO ZATWIERDZENIA — system liczy, ale nie wysyła (RODO art. 22)",
       "dane": {
-        "dokumentów przed akcją": 21,
-        "dokumentów po akcji": 22
+        "dokumentów przed akcją": 22,
+        "dokumentów po akcji": 23
       },
       "zrzut": "2d-dokumenty.png"
     },
@@ -136,7 +136,7 @@
       "oczekiwane": "Optymalizator sprawdza H1–H4 dopiero przy zatwierdzeniu; zmiana przepina się atomowo + wpis do audytu",
       "dane": {
         "czekające na managera przed akcją": 2,
-        "zatwierdzone łącznie po akcji": 3
+        "zatwierdzone łącznie po akcji": 4
       },
       "zrzut": "3d-decyzja-managera.png"
     },
