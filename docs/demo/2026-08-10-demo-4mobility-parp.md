@@ -23,6 +23,11 @@
   Stan na 10.08: 1 × `PENDING_EMPLOYEE_CONSENT` + 1 × `PENDING_MANAGER` (rezerwa). Jak odtworzyć — patrz koniec dokumentu.
 - **NIE klikaj wielokrotnie „Generuj grafik"** — re-solve może skasować zaseedowaną zamianę demo.
 - **Asystent: tylko jednodniowe daty** (znany bug — patrz Ryzyka).
+- **⚠ ROZGRZEJ MODEL MOWY, jeśli planujesz demo głosem.** Model ładuje się dopiero przy pierwszym użyciu: pierwsza transkrypcja trwa **13 s**, każda kolejna **7–8 s** (zmierzone 10.08). Jedna komenda oszczędza 5 sekund ciszy przed odbiorcą:
+  ```
+  curl -s http://localhost:8011/health
+  ```
+  Jeśli zwróci `"loaded": false`, wykonaj jedno próbne nagranie w `/asystent` **przed** wejściem odbiorcy. Po rozgrzaniu `"loaded": true`.
 
 ---
 
@@ -120,6 +125,21 @@ Zostań jako `pracownica.demo` albo przełącz na `pracownik.demo` → `/asysten
 > *„To jest pointa, nie usterka. Gdybyśmy podpięli tu duży model językowy, wymyśliłby odpowiedź. My wolimy, żeby system powiedział »nie wiem« — bo to jest ścieżka o skutkach prawnych."*
 
 Wspomnij: transkrypcja mowy liczy się **lokalnie** (faster-whisper) — nagranie głosu to dana osobowa i nie opuszcza infrastruktury w UE.
+
+### Jeśli demonstrujesz GŁOSEM (tor przetestowany nagraniem 10.08)
+
+Tor został sprawdzony realnym nagraniem w formacie, który wysyła przeglądarka (webm/opus): transkrypcja polska jest bardzo dobra, a obie frazy demo rozpoznają się poprawnie.
+
+| Fraza | Transkrypcja | Pewność | Wynik parsera |
+|---|---|---|---|
+| „Chcę wziąć urlop wypoczynkowy 20 sierpnia" | *Chcę wziąć urlop wypoczynkowy 20 sierpnia.* | 0,87 | `URLOP` · 2026-08-20 · wymaga potwierdzenia |
+| „Ile osób pracuje jutro na lotnisku" | *Ile osób pracuje jutro na lotnisku?* | 0,79 | `NIEZNANE` → odesłanie do formularza |
+
+**Zagospodaruj 7–8 sekund ciszy.** Tyle trwa transkrypcja po rozgrzaniu modelu i w milczeniu wygląda to jak zawieszenie. Zamień to w argument — powiedz w trakcie liczenia:
+
+> *„W tej chwili nagranie jest przetwarzane na naszym serwerze, nie w chmurze dostawcy. Te kilka sekund to dokładnie cena za to, że głos pracownika nie opuszcza Waszej infrastruktury."*
+
+To jedyny moment w całym demo, w którym opóźnienie jest zaletą — nie przepraszaj za nie.
 
 ## 5. PRACOWNIK — mobilna trasa (2 min)
 

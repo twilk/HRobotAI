@@ -241,9 +241,21 @@ sprawny i uczciwie opisany w `docs/demo/2026-08-10-demo-4mobility-parp.md`), a p
       („a jednak od piątku"), co przy poleceniach głosowych jest naturalnym odruchem użytkownika.
 - [ ] **P3 — Wąski zestaw intencji** (wnioski urlopowe + pytania o własny grafik). Rozszerzenie o pytania
       o obsadę jest w KM3 opisane jako zakres przyszły — granicę trzymać świadomie, nie przez zaniedbanie.
-- [ ] **P3 — Ścieżka głosowa nieprzetestowana w warunkach sali.** Usługa `stt` (faster-whisper, port 8011)
-      odpowiada na `/health` kodem 200, ale nagrywanie z mikrofonu w przeglądarce nie było walidowane
-      end-to-end na sprzęcie demo ani w akustyce sali.
+- [ ] **P2 — Transkrypcja trwa 7–8 s po rozgrzaniu, 13 s na zimno.** Zmierzone 10.08 realnym nagraniem
+      przepuszczonym przez `/voice/transcribe` (faster-whisper `small`, int8, CPU). Model ładuje się
+      leniwie przy pierwszym użyciu — stąd różnica. Na demo obchodzimy to rozgrzewką i zagospodarowaniem
+      ciszy narracją o lokalnym przetwarzaniu, ale produkcyjnie 8 s na polecenie głosowe to za dużo.
+      Kierunki: wstępne ładowanie modelu przy starcie kontenera (kosztem ~490 MB RAM w spoczynku),
+      mniejszy model dla krótkich poleceń, albo strumieniowanie zamiast czekania na całe nagranie.
+- [x] **Ścieżka głosowa — SILNIK sprawdzony end-to-end (10.08).** Realne nagranie w formacie, który
+      wysyła przeglądarka (webm/opus, `MediaRecorder`), przepuszczone przez cały tor: transkrypcja PL
+      poprawna dla obu fraz demo (0,87 i 0,79 pewności), parser intencji poprawnie zwraca `URLOP`
+      z datą oraz `NIEZNANE` + `fallbackToForm` dla pytania spoza zakresu. WAV i webm dają identyczny
+      wynik. Nagranie testowe wygenerowane syntezatorem Windows (głos pl-PL), nie ludzkim głosem.
+- [ ] **P3 — Warunki sali nadal niesprawdzone przez człowieka.** Silnik działa, ale nikt nie zweryfikował
+      na sprzęcie demo: zgody przeglądarki na mikrofon, wzmocnienia i jakości mikrofonu w akustyce sali,
+      ani zachowania modelu przy prawdziwej mowie (akcent, tempo, szum tła) — synteza mowy jest czystsza
+      niż człowiek w pomieszczeniu. Wymaga jednego przejazdu na głos przed odbiorcą.
 
 ### Analityk HR
 
