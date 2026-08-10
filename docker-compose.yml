@@ -14,6 +14,7 @@
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     # POSTGRES_DB creates hrobot_control on first boot; the `postgres`
     # maintenance DB (used by POSTGRES_SUPERUSER_URL) always exists too.
     #
@@ -35,6 +36,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     ports:
       - "6379:6379"
     healthcheck:
@@ -45,6 +47,7 @@ services:
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
     # Dev default guest/guest; management UI at http://localhost:15672. Override on staging. [ENV-2]
     # NOTE: rabbitmq only applies RABBITMQ_DEFAULT_* on a FIRST boot with an empty data dir.
     environment:
@@ -62,6 +65,7 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     command: ["start-dev"]
+    restart: unless-stopped
     environment:
       # KC 25+ renamed KEYCLOAK_ADMIN* -> KC_BOOTSTRAP_ADMIN*.
       # Dev default admin/admin; STAGING MUST override via .env. [ENV-2]
@@ -75,12 +79,21 @@ services:
     # Persist KC's embedded H2 so realms/clients/users survive `docker compose down` (without -v).
     volumes:
       - hrobot_keycloak:/opt/keycloak/data
+    # No curl/wget in this image (ubi-micro) and start-dev doesn't expose the KC health probe on
+    # :9000 by default — a plain TCP connect to the HTTP port is the cheapest true liveness signal.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   # Control-plane API as a container (CI/prod parity). For day-to-day dev, run it
   # on the host. Gated behind the "full" profile so a bare `docker compose up -d`
   # starts only backing services (no :3000 collision with a host app).
   control-plane:
     profiles: ["full"]
+    restart: unless-stopped
     build:
       context: .
       dockerfile: apps/control-plane/Dockerfile
@@ -106,11 +119,21 @@ services:
         condition: service_healthy
     ports:
       - "3000:3000"
+    # /health/live is a pure liveness probe (no deps); /health/ready also checks DB+Redis but
+    # a ready-check flapping to unhealthy would restart the app for a dependency it can't fix by
+    # restarting — use live here so autoheal only kills genuinely wedged/hung processes.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   # Tenant-runtime API as a container (CI/prod parity). Same monorepo build, runs
   # the apps/tenant-runtime dist. Listens on 3001 to avoid the control-plane port.
   tenant-runtime:
     profiles: ["full"]
+    restart: unless-stopped
     build:
       context: .
       dockerfile: apps/tenant-runtime/Dockerfile
@@ -133,6 +156,12 @@ services:
         condition: service_healthy
     ports:
       - "3001:3001"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/api/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   # Grafik solver (FastAPI + CP-SAT). M2-A1 skeleton: GET /health + a STUB POST /solve carrying the
   # frozen ProblemInput/SolveResult contract; the CP-SAT model lands in M2-A2. Built from the
@@ -140,6 +169,7 @@ services:
   # like the other app services so a bare `docker compose up -d` starts only backing services.
   optimizer:
     profiles: ["full"]
+    restart: unless-stopped
     build:
       context: ./grafik-optimizer
       dockerfile: Dockerfile
@@ -148,6 +178,12 @@ services:
       PYTHONUNBUFFERED: "1"
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
 
   # RESERVED SLOT — RL agent (roadmap #2, spec #1 §3/§41). The agent shares the optimizer image and
   # container build (same ./grafik-optimizer context); its training/serving entrypoint and behavior
@@ -166,6 +202,7 @@ services:
   # to Caddy. Proxy BFF /api/* → tenant-runtime po stronie serwera (tokeny httpOnly, RODO).
   web:
     profiles: ["full"]
+    restart: unless-stopped
     build:
       context: .
       dockerfile: apps/web/Dockerfile
@@ -183,7 +220,7 @@ services:
       PORT: "3000"
     depends_on:
       tenant-runtime:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
@@ -194,6 +231,7 @@ services:
   # backendu — robi to front BFF server-side, trzymając tokeny httpOnly.)
   caddy:
     profiles: ["full"]
+    restart: unless-stopped
     image: caddy:2-alpine
     ports:
       - "8080:8080"
@@ -202,6 +240,12 @@ services:
     depends_on:
       web:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/login"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
   # Local speech-to-text for the Agent Głosowy module (M3). faster-whisper `small` (PL) on CPU, in
   # its own image — CTranslate2, not torch/SB3, so it must not be mixed into the heavy RL image
   # (see docs/superpowers/specs/2026-07-21-agent-glosowy-poc.md §1/§3).
@@ -216,6 +260,7 @@ services:
     # BEZ profilu: rozpoznawanie mowy jest czescia sciezki demo, a nie dodatkiem. Dopoki `stt` siedzial
     # za profilem "full", zwykle `docker compose up` go nie podnosilo i asystent odpowiadal
     # "Usluga rozpoznawania mowy jest niedostepna" — mimo ze kod dzialal (transkrypcja PL, pewnosc 0.82).
+    restart: unless-stopped
     build:
       context: ./stt-service
       dockerfile: Dockerfile
@@ -244,6 +289,12 @@ services:
       # agencie konczy sie "port already allocated", a sciezka demo J4 przestaje istniec.
       # Port KONTENERA zostaje 8010 — tak jest w Dockerfile i README stt-service, kod bez zmian.
       - "8011:8010"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8010/health').status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
 volumes:
   hrobot_pgdata:
