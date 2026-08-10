@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { LEAVE_TYPES, leaveTypeLabel, validateLeaveRange } from '@/lib/wnioski'
-import { groupByDay, todayIso, type DayGroup, type WeekShift } from '@/lib/moj-tydzien'
+import { dayLabel, groupByDay, nextShiftAfterWeek, todayIso, type DayGroup, type WeekShift } from '@/lib/moj-tydzien'
 
 /**
  * The employee's week on a phone. One column, large targets, two answers only: when am I working,
@@ -63,6 +63,8 @@ const STATUS_TONE: Record<string, string> = {
 
 export function MobileWeek() {
   const [days, setDays] = useState<DayGroup[] | null>(null)
+  /** Najbliższa zmiana poza tym tygodniem — pokazywana, gdy tydzień jest pusty (patrz niżej). */
+  const [nastepna, setNastepna] = useState<WeekShift | null>(null)
   const [leaves, setLeaves] = useState<LeaveRow[]>([])
   const [me, setMe] = useState<MeResponse | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
@@ -79,7 +81,9 @@ export function MobileWeek() {
       ])
       if (cancelled.current) return
       setMe(meRes)
-      setDays(groupByDay(Array.isArray(shifts) ? shifts : [], today))
+      const lista = Array.isArray(shifts) ? shifts : []
+      setDays(groupByDay(lista, today))
+      setNastepna(nextShiftAfterWeek(lista, today))
       setLeaves(Array.isArray(leaveRows) ? leaveRows : [])
       setError(null)
     } catch {
@@ -109,6 +113,38 @@ export function MobileWeek() {
 
   const hours = (days ?? []).flatMap((d) => d.shifts).length
 
+  /**
+   * Konto BEZ kartoteki pracownika (ADMIN_KLIENTA / HR — to loginy, nie osoby w grafiku) kończy się
+   * na tym komunikacie. Wcześniej strona pisała „to konto nie ma własnego grafiku”, a mimo to
+   * renderowała pod spodem siatkę tygodnia zbudowaną z `/api/grafik/shifts` — a ten endpoint zawęża
+   * wynik do WŁASNYCH zmian tylko PRACOWNIKOWI. Administrator dostawał więc pod nagłówkiem „Twój
+   * tydzień” komplet zmian całego najemcy (zmierzone 2026-08-10: 8 zmian w poniedziałek), a manager
+   * zmiany swojej jednostki. Ekran przeczył sam sobie w dwóch sąsiednich zdaniach.
+   *
+   * Usterka istniała wcześniej, ale była NIEWIDOCZNA: dopóki `groupByDay` porównywał ISO-timestamp
+   * z gołą datą, nic się nie dopasowywało i siatka zawsze wychodziła pusta. Naprawa dopasowania
+   * (ten sam dzień) odsłoniła problem, który pod nią siedział.
+   */
+  if (me === null) {
+    return (
+      <div className="space-y-4">
+        <h1 className="font-display text-2xl font-extrabold tracking-tighter2 text-navy">Twój tydzień</h1>
+        <div className="rounded-lg border border-line bg-card p-4">
+          <p className="text-[13.5px] text-ink">
+            To konto nie ma kartoteki pracownika, więc nie ma własnego grafiku ani wniosków.
+          </p>
+          <p className="mt-2 text-[13px] text-muted">
+            Ten ekran jest przeznaczony dla pracownika. Grafik całego zespołu znajdziesz w module{' '}
+            <a href="/grafik" className="font-medium text-accent-ink underline hover:no-underline">
+              Grafik
+            </a>
+            .
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <header>
@@ -118,12 +154,15 @@ export function MobileWeek() {
         <h1 className="font-display text-2xl font-extrabold tracking-tighter2 text-navy">
           {me?.firstName ? `Cześć, ${me.firstName}` : 'Twój tydzień'}
         </h1>
+        {/* Pusty tydzień MUSI powiedzieć, co dalej. Samo „nie masz zmian” plus siedem razy „Wolne”
+            czyta się jak awaria aplikacji, a nie jak wolne — zwłaszcza że pulpit tego samego
+            pracownika zna najbliższą zmianę. Gałąź `me === null` obsłużona wcześniej (early return). */}
         <p className="mt-1 text-[13px] text-muted">
-          {me === null
-            ? 'To konto nie ma kartoteki pracownika, więc nie ma własnego grafiku ani wniosków.'
-            : hours === 0
-              ? 'W tym tygodniu nie masz zaplanowanych zmian.'
-              : `Masz ${hours} zaplanowanych zmian.`}
+          {hours > 0
+            ? `Masz ${hours} zaplanowanych zmian.`
+            : nastepna
+              ? `W tym tygodniu nie masz zmian. Najbliższa: ${dayLabel(nastepna.date.slice(0, 10)).weekday.toLowerCase()}, ${dayLabel(nastepna.date.slice(0, 10)).dayLabel}, ${nastepna.start}–${nastepna.end}.`
+              : 'Nie masz zaplanowanych zmian ani w tym tygodniu, ani później.'}
         </p>
       </header>
 

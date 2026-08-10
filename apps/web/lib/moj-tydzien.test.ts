@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addDays, dayLabel, groupByDay, todayIso, weekDays, type WeekShift } from './moj-tydzien'
+import { addDays, dayLabel, groupByDay, nextShiftAfterWeek, todayIso, weekDays, type WeekShift } from './moj-tydzien'
 
 const shift = (id: string, date: string, start: string, end = '16:00'): WeekShift => ({ id, date, start, end })
 
@@ -109,5 +109,39 @@ describe('todayIso', () => {
 
   it('zero-pads month and day', () => {
     expect(todayIso(new Date(2026, 0, 5))).toBe('2026-01-05')
+  })
+})
+
+// Regresja 2026-08-10: pracownik z pustym tygodniem widzial siedem razy „Wolne" i nic wiecej — nie
+// wiedzial, czy naprawde nie ma pracy, czy dane sie nie wczytaly. Jego wlasny pulpit znal najblizsza
+// zmiane; ten ekran jej nie pokazywal.
+describe('nextShiftAfterWeek', () => {
+  const s = (id: string, date: string, start = '08:00'): WeekShift => ({ id, date, start, end: '16:00' })
+
+  it('zwraca najblizsza zmiane PO biezacym tygodniu', () => {
+    // 2026-03-12 to czwartek; tydzien konczy sie 2026-03-15.
+    const r = nextShiftAfterWeek([s('p', '2026-03-20'), s('b', '2026-04-02')], '2026-03-12')
+    expect(r?.id).toBe('p')
+  })
+
+  it('IGNORUJE zmiany z biezacego tygodnia — te sa juz widoczne w siatce', () => {
+    expect(nextShiftAfterWeek([s('w-tym-tyg', '2026-03-14')], '2026-03-12')).toBeNull()
+  })
+
+  it('IGNORUJE przeszlosc — „nastepna" z definicji jeszcze nie nastapila', () => {
+    expect(nextShiftAfterWeek([s('stara', '2026-01-05')], '2026-03-12')).toBeNull()
+  })
+
+  it('przy kilku tego samego dnia wybiera te, ktora zaczyna sie wczesniej', () => {
+    const r = nextShiftAfterWeek([s('pozna', '2026-03-20', '14:00'), s('wczesna', '2026-03-20', '06:00')], '2026-03-12')
+    expect(r?.id).toBe('wczesna')
+  })
+
+  it('radzi sobie z pelnym ISO-timestampem, tak jak zwraca API', () => {
+    expect(nextShiftAfterWeek([s('p', '2026-03-20T00:00:00.000Z')], '2026-03-12')?.id).toBe('p')
+  })
+
+  it('zwraca null dla pustej listy', () => {
+    expect(nextShiftAfterWeek([], '2026-03-12')).toBeNull()
   })
 })

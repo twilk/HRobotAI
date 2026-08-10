@@ -113,6 +113,26 @@ export function groupByDay(shifts: WeekShift[], today: string): DayGroup[] {
   }))
 }
 
+/**
+ * Najbliższa zmiana PO bieżącym tygodniu, albo `null` gdy takiej nie ma.
+ *
+ * Pusty tydzień bez tej informacji wygląda jak awaria aplikacji, a nie jak wolne: pracownik widzi
+ * siedem razy „Wolne” i nie wie, czy naprawdę nie ma pracy, czy dane się nie wczytały. Jego własny
+ * pulpit ZNA najbliższą zmianę — ten ekran po prostu jej nie pokazywał (znalezione 2026-08-10:
+ * Katarzyna ma pusty tydzień, a najbliższą zmianę 14.09).
+ *
+ * Bierze pod uwagę wyłącznie zmiany PRZYSZŁE względem `today`; przeszłe ignoruje, bo „następna”
+ * z definicji jeszcze nie nastąpiła. Porównanie po `slice(0,10)` — API zwraca pełny ISO-timestamp.
+ */
+export function nextShiftAfterWeek(shifts: WeekShift[], today: string): WeekShift | null {
+  const week = new Set(weekDays(today))
+  const przyszle = shifts
+    .map((s) => ({ s, dzien: s.date.slice(0, 10) }))
+    .filter(({ dzien }) => dzien > today && !week.has(dzien))
+    .sort((a, b) => a.dzien.localeCompare(b.dzien) || a.s.start.localeCompare(b.s.start))
+  return przyszle[0]?.s ?? null
+}
+
 /** Today as YYYY-MM-DD in local time — the employee's "today", not UTC's. */
 export function todayIso(now = new Date()): string {
   const y = now.getFullYear()
