@@ -247,8 +247,12 @@ describe('costBreakdownText', () => {
     expect(costBreakdownText(12, undefined)).toBe('+12,00 zł')
   })
 
-  it('falls back to "brak stawki" when the total itself is null', () => {
-    expect(costBreakdownText(null, 16.1)).toBe('brak stawki')
+  it('falls back to a neutral "brak wyceny" when the total itself is null', () => {
+    // Regression 2026-08-10: null here can mean an unreachable candidate (no login to ask for
+    // consent — backend skips cost on purpose) just as easily as a genuinely missing rate. The old
+    // "brak stawki" text asserted the wrong cause and sent a manager chasing a rate that already
+    // existed.
+    expect(costBreakdownText(null, 16.1)).toBe('Brak wyceny — sprawdź kandydata (może być nieosiągalny)')
   })
 
   it('handles a negative labour delta inside the breakdown (a cheaper candidate)', () => {
@@ -265,7 +269,7 @@ describe('costCellText', () => {
 
   it('delegates to costBreakdownText once a candidate exists', () => {
     expect(costCellText(true, 25.6, 16.1)).toBe(costBreakdownText(25.6, 16.1))
-    expect(costCellText(true, null, null)).toBe('brak stawki')
+    expect(costCellText(true, null, null)).toBe('Brak wyceny — sprawdź kandydata (może być nieosiągalny)')
   })
 })
 

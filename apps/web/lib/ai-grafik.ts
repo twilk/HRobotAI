@@ -345,6 +345,18 @@ export function travelBadgeText(
 }
 
 /**
+ * A null total here does NOT mean "no hourly rate on file" — `computeEstimatedCost` (tenant-runtime)
+ * also returns null, with cost never computed at all, when the AUTO_ASK_CONSENT/AUTO_COMMIT autonomy
+ * branch escalates a candidate as unreachable (no linked login to ask for consent — see
+ * `createReplacement`'s `EMPLOYEE_UNREACHABLE` branch). `formatCostDelta`'s shared "brak stawki" text
+ * is correct for an actual missing-rate case elsewhere (Koszty grafiku) but names the wrong reason
+ * here — found live 2026-08-10 chasing a "missing rate" that turned out to already exist; the
+ * candidate simply had no account. Backend doesn't yet expose WHICH of the two null-causes applies
+ * (tracked separately), so this cell states only what's certain and true either way.
+ */
+const NO_COST_MESSAGE = 'Brak wyceny — sprawdź kandydata (może być nieosiągalny)'
+
+/**
  * The Δ koszt cell's text for a proposal that HAS an active candidate: a "praca X + dojazd Y = razem
  * Z" breakdown when that candidate's travel cost is non-zero (cross-unit), else the plain total (a
  * local candidate's travel is always 0, so a breakdown would be noise). `estimatedCost` is the total
@@ -357,7 +369,7 @@ export function costBreakdownText(
   travelCost: string | number | null | undefined,
 ): string {
   const total = toFiniteNumber(estimatedCost)
-  if (total === null) return formatCostDelta(estimatedCost)
+  if (total === null) return NO_COST_MESSAGE
   const travel = toFiniteNumber(travelCost) ?? 0
   if (travel <= 0) return formatCostDelta(estimatedCost)
   const labour = total - travel
