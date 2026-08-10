@@ -12,7 +12,8 @@
  * Wpięcie: wyrenderuj `<TourTrigger />` w topbarze; przycisk montuje `<Tour />` na żądanie.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { cn } from '@/lib/cn'
 import { TOUR_STEPS, type TourStep } from './tour.data'
 import { nextIndex, isLast } from './tour.logic'
@@ -85,6 +86,8 @@ export function Tour({ steps = TOUR_STEPS, onClose, autoplay = false }: TourProp
   const reducedMotion = usePrefersReducedMotion()
   const [playing, setPlaying] = useState(autoplay && !reducedMotion)
   const dialogRef = useRef<HTMLDivElement>(null)
+  /** Zmierzona wysokość dymka; 280 to ostrożny start do PIERWSZEGO renderu, potem realna wartość. */
+  const [tipHeight, setTipHeight] = useState(280)
 
   const step = steps[index]
   const rect = useTargetRect(step)
@@ -149,15 +152,43 @@ export function Tour({ steps = TOUR_STEPS, onClose, autoplay = false }: TourProp
     dialogRef.current?.focus()
   }, [index])
 
+  // Zmierz REALNĄ wysokość dymka, żeby dolne przycięcie liczyło się z faktu, nie ze stałej.
+  // `useLayoutEffect` (nie `useEffect`) — mierzymy i repozycjonujemy PRZED malowaniem, więc dymek
+  // nie przeskakuje w oczach użytkownika.
+  useLayoutEffect(() => {
+    const h = dialogRef.current?.offsetHeight
+    if (h) setTipHeight(h)
+  }, [index, step])
+
   if (!step) return null
+  // SSR-guard: `<Tour/>` montuje się dopiero po kliknięciu (stan `open` w TourTrigger startuje na
+  // false), więc na serwerze nigdy tu nie dochodzimy — ale portal bez `document` rzuciłby wyjątkiem,
+  // gdyby ktoś kiedyś otworzył przewodnik od razu przy montowaniu.
+  if (typeof document === 'undefined') return null
 
   // Dymek: pod spotlightem, a jeśli target jest nisko/niewidoczny — wyśrodkowany.
+  //
+  // Dolny clamp liczy się ze ZMIERZONEJ wysokości dymka (`tipHeight`) plus 16 px marginesu. Wcześniej
+  // była tu stała `220`, a realny dymek ma ~268 px — przy celu nisko w nawigacji (krok „Analityk HR",
+  // przedostatnia pozycja menu) wystawał poza dolną krawędź okna razem z przyciskiem „Dalej", czyli
+  // przewodnika nie dało się dokończyć bez klawiatury. Zmierzone 2026-08-10.
   const hasRect = rect && rect.width > 0 && rect.height > 0
+  const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800
+  const viewportW = typeof window !== 'undefined' ? window.innerWidth : 1200
   const tooltipStyle: React.CSSProperties = hasRect
-    ? { top: Math.min(rect.top + rect.height + 14, (typeof window !== 'undefined' ? window.innerHeight : 800) - 220), left: Math.max(16, Math.min(rect.left, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 372)) }
+    ? {
+        top: Math.max(16, Math.min(rect.top + rect.height + 14, viewportH - tipHeight - 16)),
+        left: Math.max(16, Math.min(rect.left, viewportW - 372)),
+      }
     : { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }
 
-  return (
+  // PORTAL DO `document.body` — nie kosmetyka, warunek poprawnego działania. `<TourTrigger/>` siedzi
+  // w topbarze, a ten ma `position: sticky` + `z-10` (`components/layout/topbar.tsx`), co tworzy
+  // WŁASNY kontekst stakowania. Renderowane w miejscu, `z-[80]` dymka było porównywane tylko wewnątrz
+  // tego kontekstu, więc sticky kolumna grafiku (`components/grafik/schedule-grid.tsx`, też `z-10`,
+  // ale w kontekście korzenia i PÓŹNIEJ w DOM) malowała się NAD przyciemnieniem i nad dymkiem.
+  // Zmierzone 2026-08-10: `elementFromPoint` nad kolumną zwracał komórkę siatki, nie overlay.
+  return createPortal(
     <div className="fixed inset-0 z-[80]" role="dialog" aria-modal="true" aria-label="Przewodnik po HRobot">
       {/* Przyciemnienie tła + spotlight na target (obwódka wokół zmierzonego prostokąta). */}
       <div className="absolute inset-0 bg-navy/50" onClick={finish} aria-hidden="true" />
@@ -251,7 +282,8 @@ export function Tour({ steps = TOUR_STEPS, onClose, autoplay = false }: TourProp
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

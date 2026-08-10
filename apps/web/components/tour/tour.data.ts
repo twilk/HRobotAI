@@ -23,7 +23,10 @@ export interface TourStep {
 export const TOUR_STEPS: TourStep[] = [
   {
     id: 'dashboard',
-    target: '[data-tour="dashboard"]',
+    // Kotwiczymy do pozycji w nawigacji — tak jak KAŻDY inny krok. Wcześniej był tu
+    // `[data-tour="dashboard"]`, atrybut, którego nie ma nigdzie w `apps/web` (zweryfikowane
+    // grepem 2026-08-10), więc krok 1 nigdy nie znajdował celu i spadał do pozycji zapasowej.
+    target: '[href="/dashboard"]',
     screen: '/dashboard',
     title: 'Pulpit menedżera',
     text: 'Start dnia w jednym miejscu: obsada zmian, otwarte wnioski i sygnały z AI. Kafelki prowadzą prosto do modułu, który wymaga decyzji — bez klikania po całej aplikacji.',
@@ -65,8 +68,10 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     id: 'analiza',
-    target: '[href="/analiza"]',
-    screen: '/analiza',
+    // Trasa modułu to `/analityk` (patrz `lib/nav.ts`); `/analiza` to osobny, NIEnawigowalny
+    // katalog, więc `[href="/analiza"]` nie pasowało do żadnego linku w DOM.
+    target: '[href="/analityk"]',
+    screen: '/analityk',
     title: 'Analityk HR',
     text: 'Pytania o zespół zadane po polsku, odpowiedzi liczone na Twoich danych: rotacja, nadgodziny, koszt obsady, ryzyka. Strategiczny obraz HR bez arkuszy i eksportów.',
   },
