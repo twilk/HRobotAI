@@ -123,12 +123,15 @@ const SEKCJE = [
     ],
     pointa: 'Gdybyśmy podpięli tu duży model językowy, wymyśliłby odpowiedź. Wolimy, żeby system powiedział „nie wiem” — bo to ścieżka o skutkach prawnych.',
     pytania: [
-      ['Dlaczego transkrypcja trwa kilka sekund?',
-       'Bo liczy się lokalnie, na naszym serwerze, a nie w chmurze dostawcy. To cena za to, że nagranie głosu — dana osobowa — nie opuszcza Waszej infrastruktury.'],
+      ['Dlaczego transkrypcja trwa kilkanaście sekund?',
+       'Bo liczy się lokalnie na CPU, a nie w chmurze dostawcy — to cena za to, że nagranie głosu nie opuszcza Waszej infrastruktury. Nie udawaj, że to szybkie: 12–15 s to dużo i na produkcji wymaga GPU albo mniejszego modelu.', 'slaby'],
       ['Czemu nie użyliście ChatGPT — byłoby mądrzejsze?',
        'W ścieżce o skutkach kadrowych wybraliśmy parser deterministyczny: to samo zdanie zawsze daje ten sam wynik i da się to zaudytować. Model językowy zgadywałby, a tu zgadywanie kosztuje.'],
     ],
-    ostrzezenia: ['Głos: jeśli mikrofon nie był testowany w tej sali — prowadź tekstem.'],
+    ostrzezenia: [
+      'Głos: jeśli mikrofon nie był testowany w tej sali — prowadź tekstem.',
+      'Po kliknięciu „Stop” masz 12–15 SEKUND CISZY. Nie czekaj w milczeniu — mów wtedy: „nagranie jest właśnie przetwarzane na naszym serwerze, nie w chmurze dostawcy; te kilkanaście sekund to cena za to, że głos pracownika nie opuszcza Waszej infrastruktury”.',
+    ],
   },
   {
     nr: '5–6', tytul: 'Pracownik w terenie · koszt dla managera', czas: '3 min',
@@ -158,7 +161,7 @@ const stronaKonta = `
   <h2>Zanim wejdzie odbiorca</h2>
   <table class="check">
     <tr><td class="kbox">☐</td><td><b>Stan danych</b> — musi być co najmniej 1 × <span class="mono">PENDING_EMPLOYEE_CONSENT</span><div class="mono cmd">docker exec -i hrobot-postgres-1 psql -U postgres -d hrobot_t_900d948b -c "SELECT state, count(*) FROM ai_proposal GROUP BY state;"</div></td></tr>
-    <tr><td class="kbox">☐</td><td><b>Model mowy rozgrzany</b> — ma zwrócić <span class="mono">"loaded": true</span>, inaczej pierwsza transkrypcja trwa 13 s zamiast 8<div class="mono cmd">curl -s http://localhost:8011/health</div></td></tr>
+    <tr><td class="kbox">☐</td><td><b>Model mowy załadowany</b> — ma zwrócić <span class="mono">"loaded": true</span><div class="mono cmd">curl -s http://localhost:8011/health</div><div class="dopisek">To NIE przyspiesza transkrypcji — ta trwa <b>12–15 s</b> niezależnie od rozgrzania (4 pomiary przez pełną ścieżkę, 11.08). Sprawdzasz tylko, czy usługa w ogóle żyje.</div></td></tr>
     <tr><td class="kbox">☐</td><td><b>Druga karta przeglądarki</b> otwarta na <span class="mono">/analiza</span> — pierwsze wejście liczy ~8 s</td></tr>
     <tr><td class="kbox">☐</td><td><b>Zakładka główna</b> na <span class="mono">http://localhost:8080/login</span></td></tr>
   </table>
@@ -220,6 +223,7 @@ const html = `<!doctype html><html lang="pl"><head><meta charset="utf-8"><title>
   table { width: 100%; border-collapse: collapse; }
   .check td { padding: 6pt 7pt; border-bottom: 0.5pt solid #D8DEF2; vertical-align: top; font-size: 10.5pt; }
   .kbox { width: 22pt; font-size: 15pt; color: #1E2761; }
+  .dopisek { margin-top: 4pt; font-size: 9pt; color: #5A6180; }
   .cmd { display: block; margin-top: 3pt; background: #F4F6FC; padding: 4pt 6pt; border-radius: 3pt;
          font-size: 8pt; color: #1E2761;
          /* break-word, NIE break-all: komenda do przepisania nie moze sie lamac w srodku

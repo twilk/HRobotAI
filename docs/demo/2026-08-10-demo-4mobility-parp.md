@@ -24,11 +24,16 @@
   Stan na 10.08: 1 × `PENDING_EMPLOYEE_CONSENT` + 1 × `PENDING_MANAGER` (rezerwa). Jak odtworzyć — patrz koniec dokumentu.
 - **NIE klikaj wielokrotnie „Generuj grafik"** — re-solve może skasować zaseedowaną zamianę demo.
 - **Asystent obsługuje już zakresy wielodniowe** (naprawione 10.08) — możesz spokojnie powiedzieć „od 20 sierpnia do 21 sierpnia".
-- **⚠ ROZGRZEJ MODEL MOWY, jeśli planujesz demo głosem.** Model ładuje się dopiero przy pierwszym użyciu: pierwsza transkrypcja trwa **13 s**, każda kolejna **7–8 s** (zmierzone 10.08). Jedna komenda oszczędza 5 sekund ciszy przed odbiorcą:
+- **⚠ SPRAWDŹ USŁUGĘ MOWY, jeśli planujesz demo głosem.**
   ```
   curl -s http://localhost:8011/health
   ```
-  Jeśli zwróci `"loaded": false`, wykonaj jedno próbne nagranie w `/asystent` **przed** wejściem odbiorcy. Po rozgrzaniu `"loaded": true`.
+  Ma zwrócić `"loaded": true`. Jeśli `false` — zrób jedno próbne nagranie w `/asystent` przed wejściem odbiorcy.
+
+  **Korekta z 11.08: rozgrzewanie NIE skraca transkrypcji.** Cztery pomiary przez pełną ścieżkę
+  przeglądarka → `/api/voice/transcribe` → STT dały **11,8 / 13,4 / 15,5 / 15,3 s** przy modelu
+  załadowanym — bez tendencji spadkowej. Wcześniejsze „7–8 s po rozgrzaniu" (10.08) było mierzone
+  inaczej i jest nieaktualne. Planuj **12–15 s** i zagospodaruj tę ciszę (sekcja 4).
 
 ---
 
@@ -163,11 +168,11 @@ Tor został sprawdzony realnym nagraniem w formacie, który wysyła przeglądark
 | „Chcę wziąć urlop wypoczynkowy 20 sierpnia" | *Chcę wziąć urlop wypoczynkowy 20 sierpnia.* | 0,87 | `URLOP` · 2026-08-20 · wymaga potwierdzenia |
 | „Ile osób pracuje jutro na lotnisku" | *Ile osób pracuje jutro na lotnisku?* | 0,79 | `NIEZNANE` → odesłanie do formularza |
 
-**Zagospodaruj 7–8 sekund ciszy.** Tyle trwa transkrypcja po rozgrzaniu modelu i w milczeniu wygląda to jak zawieszenie. Zamień to w argument — powiedz w trakcie liczenia:
+**Zagospodaruj 12–15 sekund ciszy** (zmierzone 11.08, patrz sekcja startowa). To dużo — w milczeniu wygląda jak zawieszenie aplikacji. Zamień to w argument, mów w trakcie liczenia:
 
-> *„W tej chwili nagranie jest przetwarzane na naszym serwerze, nie w chmurze dostawcy. Te kilka sekund to dokładnie cena za to, że głos pracownika nie opuszcza Waszej infrastruktury."*
+> *„W tej chwili nagranie jest przetwarzane na naszym serwerze, nie w chmurze dostawcy. Te kilkanaście sekund to dokładnie cena za to, że głos pracownika nie opuszcza Waszej infrastruktury."*
 
-To jedyny moment w całym demo, w którym opóźnienie jest zaletą — nie przepraszaj za nie.
+Nie przepraszaj za opóźnienie, ale też go nie bagatelizuj: jeśli ktoś dopyta, uczciwa odpowiedź brzmi, że na produkcji ten czas schodzi do sekund dopiero na GPU albo na mniejszym modelu — a to świadomy wybór na później, nie coś, co mamy dziś.
 
 ## 5. PRACOWNIK — mobilna trasa (2 min)
 

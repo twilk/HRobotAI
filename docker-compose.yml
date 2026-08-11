@@ -216,6 +216,11 @@ services:
       KEYCLOAK_CLIENT_ID: hrobot-web
       KEYCLOAK_USERNAME: demo
       KEYCLOAK_PASSWORD: ${KEYCLOAK_DEMO_PASSWORD:-demo-staging-2026}
+      # Port 8010, NIE 8011. 8011 to mapowanie na HOST (docker-compose `stt`); wewnatrz sieci
+      # kontener slucha na 8010. Bez tej zmiennej route.ts bierze fallback http://localhost:8011,
+      # czyli localhost KONTENERA WEB — nikt tam nie nasluchuje, fetch rzuca, a uzytkownik dostaje
+      # 503 „Usluga rozpoznawania mowy jest niedostepna" przy w pelni zdrowym STT (2026-08-11).
+      STT_SERVICE_URL: http://stt:8010
       NODE_ENV: production
       PORT: "3000"
     depends_on:
