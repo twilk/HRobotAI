@@ -126,6 +126,70 @@ test('ścieżka demo 4Mobility — pełne przejście z materiałem dowodowym', a
     },
   })
 
+  // 2e — moduł rozliczany w KM3. Do 11.08 ten przebieg go POMIJAŁ: przechodził /analityk i szedł
+  // dalej, więc bieg świecił na zielono nie dotykając ani jednego ekranu z sekcji 2e skryptu demo.
+  // „Próba generalna”, która omija stronę 3 karty prowadzącego, nie jest próbą generalną.
+  await page.goto('/analiza', { waitUntil: 'domcontentloaded' })
+  await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 90_000 })
+  const wierszeMapy = await page.locator('table tbody tr').count()
+  const naglowekWydajnosc = (await page.locator('table thead th').nth(1).innerText()).replace(/\s+/g, ' ')
+  const przegladAnalizy = (await odczyt(page, '/api/strategic-brain/overview')) as {
+    heatmap?: Array<Record<string, unknown>>
+  }
+  const mapa = przegladAnalizy.heatmap ?? []
+
+  // Kolumna musi nieść percentyl, a nie surową liczbę zleceń — o to była cała zmiana z 11.08.
+  expect(naglowekWydajnosc).toMatch(/pozycja w grupie/i)
+  expect(mapa.length).toBeGreaterThan(30)
+  expect(mapa.every((r) => r.performancePercentile !== undefined)).toBe(true)
+
+  await zapisz(page, {
+    id: '2e-analiza-mapa',
+    sekcja: '2. ADMIN — pełny obraz organizacji',
+    tytul: 'Analiza rozwoju (KM3) — mapa wydajności całej firmy',
+    konto: `${KONTA.admin.login} — ${KONTA.admin.opis}`,
+    akcja: 'Wejście na /analiza',
+    oczekiwane: 'Wszyscy pracownicy, a kolumna „Wydajność” to pozycja w grupie 0–100, nie liczba zleceń',
+    dane: {
+      'wierszy w mapie': wierszeMapy,
+      'nagłówek kolumny': naglowekWydajnosc,
+      'wiersze z percentylem': mapa.filter((r) => r.performancePercentile !== null).length,
+      'porównanie zawężone do rola|jednostka|etat': mapa.filter((r) => r.peerLevel === 'ROLA_JEDNOSTKA_ETAT').length,
+      'porównanie poszerzone (drabinka M10)': mapa.filter((r) => r.peerFellBack === true).length,
+      'grupa zbyt mała — wartość orientacyjna': mapa.filter((r) => r.peerMeaningful === false).length,
+    },
+  })
+
+  // Karta pracownika: to ona niesie trajektorię i rozbicie na wymiary z wagami.
+  await page.getByRole('cell', { name: 'Rafał Adamczyk', exact: true }).click()
+  await page.waitForTimeout(1200)
+  const karta = page.locator('h3', { hasText: 'Rafał Adamczyk' }).locator('xpath=ancestor::div[contains(@class,"rounded-lg")][1]')
+  await expect(karta).toBeVisible({ timeout: 30_000 })
+  const trescKarty = (await karta.innerText()).replace(/\s+/g, ' ')
+  const opisWykresu = await karta.locator('svg[role=img]').getAttribute('aria-label')
+
+  // Rozbicie wymiarów musi pokazywać wielkość, którą silnik faktycznie mnoży przez wagę 30%
+  // (percentyl), a nie surową liczbę zleceń — inaczej panel wyjaśnia model, którego nie ma.
+  expect(trescKarty).toMatch(/\/ 100 · \d+ zleceń/)
+
+  await zapisz(page, {
+    id: '2e-analiza-karta',
+    sekcja: '2. ADMIN — pełny obraz organizacji',
+    tytul: 'Analiza rozwoju (KM3) — karta pracownika i trajektoria',
+    konto: `${KONTA.admin.login} — ${KONTA.admin.opis}`,
+    akcja: 'Kliknięcie wiersza „Rafał Adamczyk” w mapie wydajności',
+    oczekiwane: 'Trajektoria z podpisem liczbowym + rozbicie na 4 wymiary z wagami; Wydajność jako percentyl',
+    dane: {
+      'trajektoria (opis dostępnościowy)': opisWykresu ?? '(brak)',
+      // Oba wzorce kotwiczone na końcu dopasowania, nie na `[^|]*` — pierwsza wersja była zachłanna
+      // i wciągała całe rozbicie wymiarów do pola „podpis”, a druga nie trafiała wcale, przez co
+      // dokument dowodowy pisał „(brak)” o czymś, co jest na ekranie.
+      'podpis pod wykresem': trescKarty.match(/\d+ → \d+ w \d+ oknach(?: \([+-]?\d+ pkt\))?/)?.[0] ?? '(brak)',
+      'wiersz Wydajność': trescKarty.match(/Wydajność.*?\d+\/ ?100 · \d+ zleceń/)?.[0] ?? '(brak)',
+      'nagłówek sygnału': trescKarty.match(/(Trend spadkowy|Wynik poniżej progu|Stabilnie|Słabszy wynik|Sygnały mieszane)[^.]*\./)?.[0] ?? '(brak)',
+    },
+  })
+
   // Dokumenty — realna akcja: wygenerowanie ewidencji czasu pracy
   await page.goto('/dokumenty', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: /Dokumenty/i }).first()).toBeVisible({ timeout: 60_000 })
@@ -209,7 +273,19 @@ test('ścieżka demo 4Mobility — pełne przejście z materiałem dowodowym', a
     },
   })
 
-  if (jestDoZaakceptowania) {
+  // Bramka próby generalnej. Wcześniej cały krok 3c był owinięty w `if (jestDoZaakceptowania)`, więc
+  // gdy poprzedni bieg zużył propozycję, ten przechodził na ZIELONO nie mając czego pokazać — a 3c to
+  // centralny moment demo („pracownik dostaje pytanie, nie polecenie”). Harness, który nie potrafi
+  // powiedzieć „ten ekran będzie pusty przed odbiorcą”, nie jest próbą generalną. Teraz brak danych
+  // to twarda porażka z instrukcją naprawy.
+  expect(
+    jestDoZaakceptowania,
+    'Sekcja 3c nie ma czego pokazać: zero propozycji w stanie PENDING_EMPLOYEE_CONSENT. ' +
+      'Odtwórz dane wg „Jak odtworzyć dane do sekcji 3” w docs/demo/2026-08-10-demo-4mobility-parp.md ' +
+      '(przywróć zmianę Annie, potem Skanuj → „Utwórz propozycję zastępstwa”).',
+  ).toBe(true)
+
+  {
     await akceptuj.click()
     await page.waitForTimeout(3000)
     await zapisz(page, {

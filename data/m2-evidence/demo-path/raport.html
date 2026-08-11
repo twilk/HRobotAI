@@ -36,10 +36,10 @@
   <p class="lead">Pełne przejście scenariusza demonstracyjnego HRobot.AI, wykonane automatycznie na żywym środowisku.
   Każdy krok udokumentowany trzema rzeczami: wykonaną akcją, odczytem danych z API oraz zrzutem ekranu.</p>
   <p class="meta-biegu">
-    Data i godzina biegu: <strong>10.08.2026, 17:30:57</strong> (Europe/Warsaw)<br>
+    Data i godzina biegu: <strong>11.08.2026, 14:55:29</strong> (Europe/Warsaw)<br>
     Środowisko: <span class="mono">http://localhost:8080</span> · projekt compose <span class="mono">hrobot</span> · gałąź <span class="mono">feat/demo-4mobility</span><br>
     Sposób zebrania: <span class="mono">apps/web/e2e/demo-path.spec.ts</span> (Playwright, odtwarzalny jedną komendą)<br>
-    Liczba udokumentowanych kroków: <strong>14</strong>
+    Liczba udokumentowanych kroków: <strong>16</strong>
   </p>
 </div>
 
@@ -106,12 +106,48 @@
       <table class="dane">
         <thead><tr><th colspan="2">Odczyt danych z systemu (dowód, że to nie jest sam obrazek)</th></tr></thead>
         <tbody>
-          <tr><td>surowe identyfikatory na stronie</td><td class="mono val">1</td></tr><tr><td>sygnały wykryte</td><td class="mono val">3</td></tr>
+          <tr><td>surowe identyfikatory na stronie</td><td class="mono val">1</td></tr><tr><td>sygnały wykryte</td><td class="mono val">2</td></tr>
         </tbody>
       </table>
       <figure>
         <img src="screenshots/2c-analityk.png" alt="Analityk HR — sygnały i proweniencja liczb">
         <figcaption>Zrzut ekranu: <span class="mono">2c-analityk.png</span></figcaption>
+      </figure>
+    </article>
+    <article class="krok">
+      <h3>Analiza rozwoju (KM3) — mapa wydajności całej firmy</h3>
+      <table class="meta">
+        <tr><th>Konto</th><td class="mono">demo — ADMIN_KLIENTA (globalny)</td></tr>
+        <tr><th>Wykonana akcja</th><td>Wejście na /analiza</td></tr>
+        <tr><th>Oczekiwany rezultat</th><td>Wszyscy pracownicy, a kolumna „Wydajność” to pozycja w grupie 0–100, nie liczba zleceń</td></tr>
+      </table>
+      <table class="dane">
+        <thead><tr><th colspan="2">Odczyt danych z systemu (dowód, że to nie jest sam obrazek)</th></tr></thead>
+        <tbody>
+          <tr><td>wierszy w mapie</td><td class="mono val">39</td></tr><tr><td>nagłówek kolumny</td><td class="mono val">WYDAJNOŚĆ pozycja w grupie 0–100</td></tr><tr><td>wiersze z percentylem</td><td class="mono val">39</td></tr><tr><td>porównanie zawężone do rola|jednostka|etat</td><td class="mono val">0</td></tr><tr><td>porównanie poszerzone (drabinka M10)</td><td class="mono val">39</td></tr><tr><td>grupa zbyt mała — wartość orientacyjna</td><td class="mono val">0</td></tr>
+        </tbody>
+      </table>
+      <figure>
+        <img src="screenshots/2e-analiza-mapa.png" alt="Analiza rozwoju (KM3) — mapa wydajności całej firmy">
+        <figcaption>Zrzut ekranu: <span class="mono">2e-analiza-mapa.png</span></figcaption>
+      </figure>
+    </article>
+    <article class="krok">
+      <h3>Analiza rozwoju (KM3) — karta pracownika i trajektoria</h3>
+      <table class="meta">
+        <tr><th>Konto</th><td class="mono">demo — ADMIN_KLIENTA (globalny)</td></tr>
+        <tr><th>Wykonana akcja</th><td>Kliknięcie wiersza „Rafał Adamczyk” w mapie wydajności</td></tr>
+        <tr><th>Oczekiwany rezultat</th><td>Trajektoria z podpisem liczbowym + rozbicie na 4 wymiary z wagami; Wydajność jako percentyl</td></tr>
+      </table>
+      <table class="dane">
+        <thead><tr><th colspan="2">Odczyt danych z systemu (dowód, że to nie jest sam obrazek)</th></tr></thead>
+        <tbody>
+          <tr><td>trajektoria (opis dostępnościowy)</td><td class="mono val">Trajektoria wyniku ogólnego: 86, 80, 73, 66 w kolejnych oknach</td></tr><tr><td>podpis pod wykresem</td><td class="mono val">86 → 66 w 4 oknach (-20 pkt)</td></tr><tr><td>wiersz Wydajność</td><td class="mono val">Wydajność· waga 30% 92/ 100 · 15 zleceń</td></tr><tr><td>nagłówek sygnału</td><td class="mono val">Trend spadkowy — ryzyko odejścia, zareaguj wcześnie.</td></tr>
+        </tbody>
+      </table>
+      <figure>
+        <img src="screenshots/2e-analiza-karta.png" alt="Analiza rozwoju (KM3) — karta pracownika i trajektoria">
+        <figcaption>Zrzut ekranu: <span class="mono">2e-analiza-karta.png</span></figcaption>
       </figure>
     </article>
     <article class="krok">
@@ -124,7 +160,7 @@
       <table class="dane">
         <thead><tr><th colspan="2">Odczyt danych z systemu (dowód, że to nie jest sam obrazek)</th></tr></thead>
         <tbody>
-          <tr><td>dokumentów przed akcją</td><td class="mono val">22</td></tr><tr><td>dokumentów po akcji</td><td class="mono val">23</td></tr>
+          <tr><td>dokumentów przed akcją</td><td class="mono val">29</td></tr><tr><td>dokumentów po akcji</td><td class="mono val">30</td></tr>
         </tbody>
       </table>
       <figure>
@@ -218,7 +254,7 @@
       <table class="dane">
         <thead><tr><th colspan="2">Odczyt danych z systemu (dowód, że to nie jest sam obrazek)</th></tr></thead>
         <tbody>
-          <tr><td>czekające na managera przed akcją</td><td class="mono val">2</td></tr><tr><td>zatwierdzone łącznie po akcji</td><td class="mono val">4</td></tr>
+          <tr><td>czekające na managera przed akcją</td><td class="mono val">2</td></tr><tr><td>zatwierdzone łącznie po akcji</td><td class="mono val">7</td></tr>
         </tbody>
       </table>
       <figure>

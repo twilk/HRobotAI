@@ -1,5 +1,5 @@
 {
-  "wykonano": "2026-08-10T15:30:57.142Z",
+  "wykonano": "2026-08-11T12:55:29.873Z",
   "baza": "http://localhost:8080",
   "konta": {
     "admin": {
@@ -59,9 +59,41 @@
       "oczekiwane": "Sekcja „Na co zwrócić uwagę” + imiona i nazwiska zamiast identyfikatorów",
       "dane": {
         "surowe identyfikatory na stronie": 1,
-        "sygnały wykryte": 3
+        "sygnały wykryte": 2
       },
       "zrzut": "2c-analityk.png"
+    },
+    {
+      "id": "2e-analiza-mapa",
+      "sekcja": "2. ADMIN — pełny obraz organizacji",
+      "tytul": "Analiza rozwoju (KM3) — mapa wydajności całej firmy",
+      "konto": "demo — ADMIN_KLIENTA (globalny)",
+      "akcja": "Wejście na /analiza",
+      "oczekiwane": "Wszyscy pracownicy, a kolumna „Wydajność” to pozycja w grupie 0–100, nie liczba zleceń",
+      "dane": {
+        "wierszy w mapie": 39,
+        "nagłówek kolumny": "WYDAJNOŚĆ pozycja w grupie 0–100",
+        "wiersze z percentylem": 39,
+        "porównanie zawężone do rola|jednostka|etat": 0,
+        "porównanie poszerzone (drabinka M10)": 39,
+        "grupa zbyt mała — wartość orientacyjna": 0
+      },
+      "zrzut": "2e-analiza-mapa.png"
+    },
+    {
+      "id": "2e-analiza-karta",
+      "sekcja": "2. ADMIN — pełny obraz organizacji",
+      "tytul": "Analiza rozwoju (KM3) — karta pracownika i trajektoria",
+      "konto": "demo — ADMIN_KLIENTA (globalny)",
+      "akcja": "Kliknięcie wiersza „Rafał Adamczyk” w mapie wydajności",
+      "oczekiwane": "Trajektoria z podpisem liczbowym + rozbicie na 4 wymiary z wagami; Wydajność jako percentyl",
+      "dane": {
+        "trajektoria (opis dostępnościowy)": "Trajektoria wyniku ogólnego: 86, 80, 73, 66 w kolejnych oknach",
+        "podpis pod wykresem": "86 → 66 w 4 oknach (-20 pkt)",
+        "wiersz Wydajność": "Wydajność· waga 30% 92/ 100 · 15 zleceń",
+        "nagłówek sygnału": "Trend spadkowy — ryzyko odejścia, zareaguj wcześnie."
+      },
+      "zrzut": "2e-analiza-karta.png"
     },
     {
       "id": "2d-dokumenty",
@@ -71,8 +103,8 @@
       "akcja": "Ewidencja czasu pracy · Anna Kowalska · 13–19.07.2026 → „Generuj dokument”",
       "oczekiwane": "Nowy dokument w stanie DO ZATWIERDZENIA — system liczy, ale nie wysyła (RODO art. 22)",
       "dane": {
-        "dokumentów przed akcją": 22,
-        "dokumentów po akcji": 23
+        "dokumentów przed akcją": 29,
+        "dokumentów po akcji": 30
       },
       "zrzut": "2d-dokumenty.png"
     },
@@ -136,7 +168,7 @@
       "oczekiwane": "Optymalizator sprawdza H1–H4 dopiero przy zatwierdzeniu; zmiana przepina się atomowo + wpis do audytu",
       "dane": {
         "czekające na managera przed akcją": 2,
-        "zatwierdzone łącznie po akcji": 4
+        "zatwierdzone łącznie po akcji": 7
       },
       "zrzut": "3d-decyzja-managera.png"
     },
