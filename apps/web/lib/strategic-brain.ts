@@ -135,6 +135,13 @@ export interface EmployeeCardFactors {
   slaHitRate: number | null
   defectRate: number | null
   throughput: number
+  /** The peer percentile — the quantity `weightPerformance` actually multiplies. `throughput` above
+   *  is the count it was derived from, kept so the card can show the fact behind the ranking. */
+  performancePercentile?: number | null
+  peerMeaningful?: boolean
+  peerFellBack?: boolean
+  peerGroupSize?: number
+  peerLevel?: PeerLevel
   isNewHire: boolean
   excludedReason: string | null
 }
@@ -256,6 +263,36 @@ const RETENTION_LABEL: Record<RetentionSignal, { label: string; tone: RetentionT
   INWESTOWAC: { label: 'Inwestować', tone: 'invest' },
   RYZYKO: { label: 'Ryzyko', tone: 'risk' },
   OBSERWOWAC: { label: 'Obserwować', tone: 'watch' },
+}
+
+/**
+ * Plain-Polish "why" for a retention signal.
+ *
+ * WHY THIS TAKES THE SLOPE. `RYZYKO` is reachable two different ways (`retentionSignal` in
+ * scoring.util.ts): a HIGH score that is declining, and a LOW score that is not rising. A single
+ * sentence covered only the first, so Andrzej Kowalczyk's card read "Dobry wynik, ale spada" above
+ * a score of 38 and a trend of +0.20 — the headline, the number and the arrow each said something
+ * different, on the module's headline screen.
+ *
+ * The two cases are separable from the slope ALONE, with no need to copy the score threshold into
+ * the client: a high score with a non-negative slope yields `UTRZYMAC`, never `RYZYKO`. So
+ * `RYZYKO` + slope >= 0 implies the low-score branch. This selects COPY from values the server
+ * already returned; the signal itself stays server-computed and is never re-derived here.
+ */
+export function retentionHeadline(signal: RetentionSignal, slope: number | null): string {
+  if (signal === 'RYZYKO') {
+    return slope !== null && slope < 0
+      ? 'Trend spadkowy — ryzyko odejścia, zareaguj wcześnie.'
+      : 'Wynik poniżej progu, a poprawa zbyt słaba — potrzebna reakcja.'
+  }
+  return SIGNAL_HEADLINE[signal]
+}
+
+const SIGNAL_HEADLINE: Record<RetentionSignal, string> = {
+  UTRZYMAC: 'Stabilnie mocny — utrzymać zaangażowanie.',
+  INWESTOWAC: 'Słabszy wynik, ale rośnie — warto zainwestować w rozwój.',
+  RYZYKO: 'Ryzyko odejścia — wynik wymaga reakcji.',
+  OBSERWOWAC: 'Sygnały mieszane — obserwuj, zbieraj więcej danych.',
 }
 
 /** Polish label + semantic tone for a `RetentionSignal` (card badge / heatmap cell legend). */

@@ -419,7 +419,10 @@ export class SnapshotService {
     let signal: RetentionSignal | null = null
     let factors: Record<string, unknown> | null = null
     if (latest) {
-      const cfg = (await this.configService.getEffectiveConfig(client, null)) as { minSlopeForGrowth: unknown }
+      const cfg = (await this.configService.getEffectiveConfig(client, null)) as {
+        minSlopeForGrowth: unknown
+        minPeerGroupSize: unknown
+      }
       const composite = latest.compositeScore == null ? null : Number(latest.compositeScore)
       const slope = latest.developmentSlope == null ? null : Number(latest.developmentSlope)
       const conf = Number(latest.confidence)
@@ -430,6 +433,16 @@ export class SnapshotService {
               minSlopeForGrowth: Number(cfg.minSlopeForGrowth),
               confidenceMin: CARD_RETENTION_CONFIDENCE_MIN,
             })
+      // The `performance` dimension the card BREAKS DOWN is the peer percentile, not the raw
+      // completed-order count — that is what `finalizeWindow` multiplies by `weightPerformance`
+      // before it reaches `compositeScore`. Listing "Wydajność · waga 30%: 7" next to a composite
+      // computed from a percentile of 64 makes the explainability panel misdescribe its own model,
+      // so the card carries both: the weighted quantity, and the count it came from.
+      const peers = (await client.employeePerformanceSnapshot.findMany({
+        where: { windowEnd: latest.windowEnd },
+      })) as unknown as SnapshotReadRow[]
+      const peer = this.peerPerformance(latest, this.buildPeerIndex(peers), Number(cfg.minPeerGroupSize))
+
       factors = {
         compositeScore: composite,
         developmentSlope: slope,
@@ -437,6 +450,7 @@ export class SnapshotService {
         slaHitRate: latest.slaHitRate == null ? null : Number(latest.slaHitRate),
         defectRate: latest.defectRate == null ? null : Number(latest.defectRate),
         throughput: latest.throughput,
+        ...peer,
         isNewHire: latest.isNewHire,
         excludedReason: latest.excludedReason,
       }

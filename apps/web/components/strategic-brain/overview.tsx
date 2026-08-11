@@ -6,6 +6,7 @@ import { RecruitmentPanel } from '@/components/strategic-brain/recruitment-panel
 import { IconSparkles, IconUsers } from '@/components/icons'
 import {
   strategicBrainApi,
+  retentionHeadline,
   retentionLabel,
   slopeIndicator,
   formatScore,
@@ -114,11 +115,6 @@ function PerformanceCell({ cell }: { cell: SnapshotCell }) {
   )
 }
 
-const FEED_REASON: Record<'RYZYKO' | 'INWESTOWAC', string> = {
-  RYZYKO: 'Dobry wynik, ale trend spadkowy — ryzyko odejścia.',
-  INWESTOWAC: 'Słabszy wynik, ale rośnie — warto zainwestować.',
-}
-
 export interface StrategicOverviewProps {
   /** 'global' = HR/ADMIN (may read config + acknowledge); 'manager' = unit-scoped, read-only. */
   scope: 'global' | 'manager'
@@ -224,7 +220,9 @@ export function StrategicOverview({ scope }: StrategicOverviewProps) {
                   </span>
                   <span className="min-w-0">
                     <span className="block truncate text-[13.5px] font-semibold text-navy">{nameOf(c.employeeId)}</span>
-                    <span className="block text-[12px] text-muted">{FEED_REASON[sig]}</span>
+                    <span className="block text-[12px] text-muted">
+                      {retentionHeadline(sig, c.factors?.developmentSlope ?? null)}
+                    </span>
                   </span>
                 </button>
               )

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  retentionHeadline,
   retentionLabel,
   slopeIndicator,
   verdictLabel,
@@ -102,5 +103,32 @@ describe('formatScore', () => {
     expect(formatScore(84.4)).toBe('84')
     expect(formatScore(0)).toBe('0')
     expect(formatScore(100)).toBe('100')
+  })
+})
+
+// Regresja 2026-08-11: karta Andrzeja Kowalczyka pokazywala jednoczesnie „Ryzyko", strzalke w gore,
+// wynik 38 i naglowek „Dobry wynik, ale spada". Do RYZYKO prowadza DWIE rozne drogi i jedno zdanie
+// opisywalo tylko jedna z nich.
+describe('retentionHeadline', () => {
+  it('opisuje spadek, gdy nachylenie jest ujemne', () => {
+    expect(retentionHeadline('RYZYKO', -6.7)).toContain('Trend spadkowy')
+  })
+
+  it('NIE mowi „spada", gdy trend jest dodatni — to druga droga do RYZYKO', () => {
+    // Wysoki wynik z nieujemnym nachyleniem daje UTRZYMAC, wiec RYZYKO + slope >= 0 moze pochodzic
+    // wylacznie ze sciezki „niski wynik, brak poprawy". Rozroznienie nie wymaga progu w kliencie.
+    const h = retentionHeadline('RYZYKO', 0.2)
+    expect(h).not.toMatch(/spada|spadkow/i)
+    expect(h).toContain('poniżej progu')
+  })
+
+  it('traktuje brak nachylenia jak brak dowodu na spadek', () => {
+    expect(retentionHeadline('RYZYKO', null)).not.toMatch(/spada|spadkow/i)
+  })
+
+  it('pozostale sygnaly maja stale brzmienie', () => {
+    expect(retentionHeadline('INWESTOWAC', 8.5)).toContain('rośnie')
+    expect(retentionHeadline('UTRZYMAC', 0.2)).toContain('Stabilnie')
+    expect(retentionHeadline('OBSERWOWAC', null)).toContain('mieszane')
   })
 })

@@ -4,10 +4,11 @@ import type { ReactNode } from 'react'
 import {
   confidenceDisclosure,
   formatScore,
+  retentionHeadline,
   retentionLabel,
+  PEER_LEVEL_LABEL,
   slopeIndicator,
   type EmployeeCard as EmployeeCardData,
-  type RetentionSignal,
   type RetentionTone,
   type SnapshotCell,
 } from '@/lib/strategic-brain'
@@ -58,15 +59,6 @@ export const RETENTION_TONE_CLASSES: Record<
   },
 }
 
-/** The retention signal → a one-line plain-Polish "why", the level-vs-trend distinction the spec
- *  calls the core of the model. Copy only — never a re-derivation of the signal itself. */
-const SIGNAL_HEADLINE: Record<RetentionSignal, string> = {
-  UTRZYMAC: 'Stabilnie mocny — utrzymać zaangażowanie.',
-  INWESTOWAC: 'Słabszy wynik, ale rośnie — warto zainwestować w rozwój.',
-  RYZYKO: 'Dobry wynik, ale spada — ryzyko odejścia, zareaguj wcześnie.',
-  OBSERWOWAC: 'Sygnały mieszane — obserwuj, zbieraj więcej danych.',
-}
-
 export interface DimensionWeights {
   performance: number
   timeliness: number
@@ -98,63 +90,116 @@ function weightBadge(w: number | undefined): string | null {
   return `waga ${Math.round(w * 100)}%`
 }
 
-/** Composite trajectory sparkline: line + area, an emphasized endpoint, and a faint baseline at the
- *  first window's score so rise/decline reads at a glance. Pure SVG, tone-colored. Domain fixed to
- *  0..100 (scores are always whole 0..100) so cards are visually comparable. */
+/** Minimum score span the y-axis will ever show. Below this the chart zooms no further, so a
+ *  1-point wobble cannot be dramatised into a cliff. */
+const MIN_DOMAIN_SPAN = 14
+
+/**
+ * Composite trajectory chart.
+ *
+ * THREE THINGS THIS FIXES, all visible on Andrzej Kowalczyk's card (38 · 37 · 39 · 38):
+ *
+ *  1. The domain was pinned to 0..100 "so cards are visually comparable". Real HR movement is
+ *     small: a 2-point spread rendered as under one pixel across 44px of plot, so the chart was a
+ *     flat bar — and even Rafał's genuinely alarming 86→66 collapse got nine pixels. The domain now
+ *     tracks the data with a floor of {@link MIN_DOMAIN_SPAN}. Comparability is not lost, it is made
+ *     EXPLICIT: the axis prints its own top and bottom, so nobody reads two cards as one scale.
+ *  2. `preserveAspectRatio="none"` stretched a 240-wide viewBox across a ~410px card, so the
+ *     endpoint circles rendered as visible ellipses and stroke width was horizontally squashed.
+ *     Dropped — the viewBox now matches the render box and nothing is distorted.
+ *  3. The area filled from a FLAT line down to the baseline, which read as a solid coloured slab
+ *     rather than a chart. The fill now drops to the plot floor and, with a real domain, has shape.
+ *
+ * Every window gets a dot, not just the last one, so four windows read as four measurements rather
+ * than a continuous curve we did not actually observe.
+ */
 function Sparkline({ series, tone }: { series: SnapshotCell[]; tone: RetentionTone }) {
   const pts = series
     .map((s) => num(s.compositeScore))
-    .map((v, i) => ({ i, v }))
-    .filter((p): p is { i: number; v: number } => p.v !== null)
+    .filter((v): v is number => v !== null)
 
   const c = RETENTION_TONE_CLASSES[tone]
-  const W = 240
-  const H = 60
-  const padX = 6
-  const padY = 8
+  const W = 400
+  const H = 78
+  const padX = 30
+  const padTop = 10
+  const padBottom = 16
 
   if (pts.length < 2) {
     return <p className="text-[12px] text-muted-2">Za mało okien na wykres trajektorii.</p>
   }
 
+  // Domain: centred on the data, at least MIN_DOMAIN_SPAN wide, clamped into 0..100.
+  const lo0 = Math.min(...pts)
+  const hi0 = Math.max(...pts)
+  const mid = (lo0 + hi0) / 2
+  const span = Math.max(hi0 - lo0, MIN_DOMAIN_SPAN)
+  let lo = Math.round(Math.max(0, mid - span * 0.75))
+  let hi = Math.round(Math.min(100, mid + span * 0.75))
+  if (hi - lo < 4) { lo = Math.max(0, lo - 2); hi = Math.min(100, hi + 2) }
+
   const n = pts.length
   const x = (idx: number) => padX + (idx / (n - 1)) * (W - 2 * padX)
   const y = (v: number) => {
-    const clamped = Math.max(0, Math.min(100, v))
-    return H - padY - (clamped / 100) * (H - 2 * padY)
+    const t = (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)
+    return H - padBottom - t * (H - padTop - padBottom)
   }
 
-  const coords = pts.map((p, idx) => ({ px: x(idx), py: y(p.v) }))
+  const coords = pts.map((v, idx) => ({ px: x(idx), py: y(v), v }))
   const linePath = coords.map((p, idx) => `${idx === 0 ? 'M' : 'L'}${p.px.toFixed(1)},${p.py.toFixed(1)}`).join(' ')
-  const areaPath = `${linePath} L${coords[coords.length - 1].px.toFixed(1)},${(H - padY).toFixed(1)} L${coords[0].px.toFixed(1)},${(H - padY).toFixed(1)} Z`
-  const last = coords[coords.length - 1]
-  const baselineY = y(pts[0].v)
+  const floor = H - padBottom
+  const areaPath = `${linePath} L${coords[n - 1]!.px.toFixed(1)},${floor} L${coords[0]!.px.toFixed(1)},${floor} Z`
+  const last = coords[n - 1]!
 
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
-      className="w-full h-[60px]"
+      className="h-[78px] w-full"
       role="img"
-      aria-label="Trajektoria wyniku ogólnego w kolejnych oknach"
-      preserveAspectRatio="none"
+      aria-label={`Trajektoria wyniku ogólnego: ${pts.map((v) => Math.round(v)).join(', ')} w kolejnych oknach`}
     >
-      {/* faint baseline at the starting score */}
-      <line
-        x1={padX}
-        y1={baselineY}
-        x2={W - padX}
-        y2={baselineY}
-        stroke={c.stroke}
-        strokeOpacity={0.18}
-        strokeWidth={1}
-        strokeDasharray="3 3"
-      />
+      {/* plot frame: top and bottom of the visible range, labelled so the zoom is never implicit */}
+      <line x1={padX} y1={padTop} x2={W - padX} y2={padTop} stroke="currentColor" className="text-line" strokeWidth={1} />
+      <line x1={padX} y1={floor} x2={W - padX} y2={floor} stroke="currentColor" className="text-line" strokeWidth={1} />
+      <text x={padX - 6} y={padTop + 3} textAnchor="end" className="fill-current text-muted-2" fontSize={9}>
+        {hi}
+      </text>
+      <text x={padX - 6} y={floor + 3} textAnchor="end" className="fill-current text-muted-2" fontSize={9}>
+        {lo}
+      </text>
+
       <path d={areaPath} fill={c.fill} stroke="none" />
       <path d={linePath} fill="none" stroke={c.stroke} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-      {/* emphasized endpoint: halo + solid dot */}
-      <circle cx={last.px} cy={last.py} r={6} fill={c.stroke} fillOpacity={0.18} />
-      <circle cx={last.px} cy={last.py} r={3.4} fill={c.stroke} />
+
+      {/* one dot per observed window — four measurements, not a continuous curve */}
+      {coords.slice(0, -1).map((p, idx) => (
+        <circle key={idx} cx={p.px} cy={p.py} r={2.6} fill="#fff" stroke={c.stroke} strokeWidth={1.5} />
+      ))}
+      <circle cx={last.px} cy={last.py} r={6.5} fill={c.stroke} fillOpacity={0.16} />
+      <circle cx={last.px} cy={last.py} r={3.6} fill={c.stroke} />
     </svg>
+  )
+}
+
+/**
+ * The trajectory's numbers, as a caption under the chart rather than labels inside it.
+ *
+ * They started life as SVG `<text>` at the two ends, which put the first value directly under the
+ * axis's own low-range label — "28" and "38" landed within a few pixels of each other in the
+ * bottom-left corner and read as one garbled number. Outside the plot there is room to state the
+ * whole thing in words, and it stays legible when the card narrows.
+ */
+function TrajectoryCaption({ series }: { series: SnapshotCell[] }) {
+  const pts = series.map((s) => num(s.compositeScore)).filter((v): v is number => v !== null)
+  if (pts.length < 2) return null
+  const first = Math.round(pts[0]!)
+  const last = Math.round(pts[pts.length - 1]!)
+  const delta = last - first
+  return (
+    <p className="mt-0.5 text-[11px] text-muted-2 tabular-nums">
+      {first} → {last} w {pts.length} oknach
+      {delta !== 0 && ` (${delta > 0 ? '+' : ''}${delta} pkt)`}
+    </p>
   )
 }
 
@@ -208,7 +253,7 @@ export function EmployeeCard({ card, name, weights }: EmployeeCardProps) {
         </div>
 
         {signal && (
-          <p className="mt-2 text-[12.5px] leading-snug text-muted">{SIGNAL_HEADLINE[signal]}</p>
+          <p className="mt-2 text-[12.5px] leading-snug text-muted">{retentionHeadline(signal, slope)}</p>
         )}
 
         {/* composite score + confidence */}
@@ -229,13 +274,42 @@ export function EmployeeCard({ card, name, weights }: EmployeeCardProps) {
         <div className="mt-3">
           <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-2">Trajektoria</div>
           <Sparkline series={card.series} tone={tone} />
+          <TrajectoryCaption series={card.series} />
         </div>
 
         {/* 4-dimension breakdown */}
         <div className="mt-2 divide-y divide-line border-t border-line pt-1">
           <DimensionRow
             label="Wydajność"
-            value={f ? `${f.throughput}` : '—'}
+            // The percentile, NOT `throughput`. This row sits next to "waga 30%", and 30% is applied
+            // to the peer-normalized value — printing the raw order count here described a model the
+            // engine does not use. The count follows in muted text as the fact behind the ranking.
+            value={
+              f && f.performancePercentile != null ? (
+                <span
+                  title={
+                    f.peerMeaningful === false
+                      ? `Pozycja wśród ${f.peerGroupSize ?? '?'} os. — grupa zbyt mała, wartość orientacyjna.`
+                      : `Pozycja wśród ${f.peerGroupSize ?? '?'} os. — porównanie: ${
+                          f.peerLevel ? PEER_LEVEL_LABEL[f.peerLevel] : 'grupa porównawcza'
+                        }.`
+                  }
+                >
+                  {f.peerMeaningful === false ? '~' : ''}
+                  {Math.round(f.performancePercentile)}
+                  <span className="ml-1.5 text-[11px] font-normal text-muted-2">
+                    / 100 · {f.throughput} zleceń
+                  </span>
+                </span>
+              ) : f ? (
+                <span>
+                  —
+                  <span className="ml-1.5 text-[11px] font-normal text-muted-2">{f.throughput} zleceń</span>
+                </span>
+              ) : (
+                '—'
+              )
+            }
             weight={weightBadge(weights?.performance)}
           />
           <DimensionRow

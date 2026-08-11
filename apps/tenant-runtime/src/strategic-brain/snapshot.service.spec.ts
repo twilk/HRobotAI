@@ -464,6 +464,33 @@ describe('SnapshotService (read paths)', () => {
       expect((card.factors as Record<string, unknown>).compositeScore).toBe(85)
     })
 
+    it('carries the PEER PERCENTILE in factors, not just the raw order count', async () => {
+      // The card is the explainability panel: it lists "Wydajność · waga 30%" beside the composite.
+      // The engine weights the percentile, so showing the raw count there would misdescribe the very
+      // model the panel exists to explain. Two findMany calls: the employee's series, then the
+      // window's peers.
+      client.employee.findUnique.mockResolvedValue({ id: 'e1', unitId: 'u1' })
+      client.employeePerformanceSnapshot.findMany
+        .mockResolvedValueOnce([
+          readSnap({ employeeId: 'e1', windowEnd: '2026-06-15T00:00:00.000Z', throughput: 10, compositeScore: 85 }),
+        ])
+        .mockResolvedValueOnce([
+          readSnap({ employeeId: 'e1', windowEnd: '2026-06-15T00:00:00.000Z', throughput: 10 }),
+          readSnap({ employeeId: 'e2', windowEnd: '2026-06-15T00:00:00.000Z', throughput: 2 }),
+          readSnap({ employeeId: 'e3', windowEnd: '2026-06-15T00:00:00.000Z', throughput: 4 }),
+          readSnap({ employeeId: 'e4', windowEnd: '2026-06-15T00:00:00.000Z', throughput: 6 }),
+          readSnap({ employeeId: 'e5', windowEnd: '2026-06-15T00:00:00.000Z', throughput: 8 }),
+        ])
+
+      const card = (await service.employeeCard(asReadClient(client), 'e1', ['u1'])) as Record<string, unknown>
+      const f = card.factors as Record<string, unknown>
+
+      expect(f.throughput).toBe(10) // the underlying fact stays available
+      expect(f.performancePercentile).toBe(90) // …but the WEIGHTED quantity is the percentile
+      expect(f.peerMeaningful).toBe(true)
+      expect(f.peerLevel).toBe('ROLA_JEDNOSTKA_ETAT')
+    })
+
     it('404s for an unknown id BEFORE any scope check', async () => {
       client.employee.findUnique.mockResolvedValue(null)
       await expect(service.employeeCard(asReadClient(client), 'nope', ['u1'])).rejects.toThrow(/not found/i)
