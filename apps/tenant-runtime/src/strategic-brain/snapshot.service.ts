@@ -5,6 +5,8 @@ import {
   defectRate,
   compositeScore,
   confidence,
+  fallbackKeys,
+  normalizeToPeerGroup,
   retentionSignal,
   type RetentionSignal,
   type ScoreDimensions,
@@ -112,6 +114,20 @@ export interface SnapshotWindow {
  * (`recommendation.service` already imports `ALGORITHM_VERSION` from here). */
 const CARD_RETENTION_CONFIDENCE_MIN = 0.5
 
+/**
+ * Which rung of the M10 ladder actually produced a row's percentile — parallel to `fallbackKeys`,
+ * finest first.
+ *
+ * REPORTED because the finest rung is rarely the one that fires. `etat` is a decimal, so
+ * `rola|jednostka|etat` splits a 13-person role into groups of two or three and almost never
+ * reaches `minPeerGroupSize`; on the 4Mobility demo tenant the ladder widened for 39 rows out of 39.
+ * A UI that captions the column "pozycja wśród osób o tej samej roli, jednostce i etacie" would
+ * therefore be stating something untrue about every single row. The caller needs to know which
+ * comparison it actually got.
+ */
+const PEER_LEVELS = ['ROLA_JEDNOSTKA_ETAT', 'ROLA_JEDNOSTKA', 'ROLA', 'FIRMA'] as const
+export type PeerLevel = (typeof PEER_LEVELS)[number]
+
 /** The subset of an `EmployeePerformanceSnapshot` row the read paths (`overview`, cards) project.
  * Decimals arrive as Prisma `Decimal`; the read methods coerce via `Number()`. */
 interface SnapshotReadRow {
@@ -119,6 +135,8 @@ interface SnapshotReadRow {
   windowStart: Date
   windowEnd: Date
   throughput: number
+  /** `rola|jednostka|etat` — needed on the read path to re-derive the M10 percentile for display. */
+  peerGroupKey: string
   slaHitRate: number | null
   defectRate: number | null
   compositeScore: number | null
@@ -263,17 +281,95 @@ export class SnapshotService {
       select: { id: true },
     })) as Array<{ id: string }>
     if (employees.length === 0) return []
-    const ids = employees.map((e) => e.id)
+    const inScope = new Set(employees.map((e) => e.id))
 
+    // UNSCOPED on purpose — see `buildPeerIndex`. Only in-scope rows are returned below.
     const snaps = (await client.employeePerformanceSnapshot.findMany({
-      where: { employeeId: { in: ids } },
       orderBy: { windowEnd: 'desc' },
     })) as unknown as SnapshotReadRow[]
 
     // Keep only the newest window per employee (rows arrive windowEnd-desc, so the first wins).
     const latest = new Map<string, SnapshotReadRow>()
     for (const s of snaps) if (!latest.has(s.employeeId)) latest.set(s.employeeId, s)
-    return [...latest.values()].map((s) => this.toHeatCell(s))
+
+    // `null` unit = tenant-wide config: the peer index spans the whole window, so a per-unit
+    // override must not change how one manager's rows are ranked against everyone else's.
+    const cfg = (await this.configService.getEffectiveConfig(client, null)) as { minPeerGroupSize: unknown }
+    const minPeerGroupSize = Number(cfg.minPeerGroupSize)
+    const peerIndex = this.buildPeerIndex([...latest.values()])
+
+    return [...latest.values()]
+      .filter((s) => inScope.has(s.employeeId))
+      .map((s) => ({ ...this.toHeatCell(s), ...this.peerPerformance(s, peerIndex, minPeerGroupSize) }))
+  }
+
+  /**
+   * Throughput distribution per (window, M10 fallback level) — the denominator of the displayed
+   * "Wydajność" percentile.
+   *
+   * BUILT FROM EVERY EMPLOYEE, NOT JUST THE CALLER'S SCOPE, and that is load-bearing. The write path
+   * ({@link RecommendationService.finalizeWindow}) normalizes against the whole window when it feeds
+   * the `performance` dimension into `compositeScore`. If the read path ranked a manager's people
+   * only against each other, the same employee would show one percentile to their manager and a
+   * different one to HR — and neither would match the `Wynik` column standing next to it.
+   *
+   * This does not widen what leaves the service: out-of-scope rows contribute an anonymous integer
+   * to a distribution and are filtered out of the response by {@link overview}. No employeeId, and
+   * no PII, crosses the scope boundary (M18).
+   *
+   * Keyed by window as well as level so two employees whose latest snapshots land in DIFFERENT
+   * windows are never ranked against each other.
+   */
+  private buildPeerIndex(rows: SnapshotReadRow[]): Map<string, number[]> {
+    const index = new Map<string, number[]>()
+    for (const s of rows) {
+      for (const level of fallbackKeys(s.peerGroupKey)) {
+        const key = `${s.windowEnd.getTime()}|${level}`
+        const arr = index.get(key) ?? []
+        arr.push(s.throughput)
+        index.set(key, arr)
+      }
+    }
+    return index
+  }
+
+  /**
+   * The M10 percentile for one row, walking the same finest→coarsest ladder as the write path and
+   * stopping at the first level that reaches `minPeerGroupSize`.
+   *
+   * `peerMeaningful: false` is NOT an error and must not be hidden: the spec (§14 M10) requires the
+   * UI to disclose "grupa zbyt mała — normalizacja orientacyjna" rather than present a percentile
+   * derived from two people as if it were a rank among peers. `peerFellBack` says the number came
+   * from a coarser grouping than `rola|jednostka|etat` — the same condition that costs the write
+   * path a confidence multiplier.
+   */
+  private peerPerformance(
+    s: SnapshotReadRow,
+    peerIndex: Map<string, number[]>,
+    minPeerGroupSize: number,
+  ): {
+    performancePercentile: number | null
+    peerMeaningful: boolean
+    peerFellBack: boolean
+    peerGroupSize: number
+    peerLevel: PeerLevel
+  } {
+    const levels = fallbackKeys(s.peerGroupKey)
+    let peers: number[] = []
+    let chosen = 0
+    for (let i = 0; i < levels.length; i++) {
+      peers = peerIndex.get(`${s.windowEnd.getTime()}|${levels[i] as string}`) ?? []
+      chosen = i
+      if (peers.length >= minPeerGroupSize) break
+    }
+    const norm = normalizeToPeerGroup(s.throughput, peers, { minPeerGroupSize })
+    return {
+      performancePercentile: norm.value,
+      peerMeaningful: norm.meaningful,
+      peerFellBack: chosen > 0,
+      peerGroupSize: peers.length,
+      peerLevel: PEER_LEVELS[chosen] as PeerLevel,
+    }
   }
 
   /**

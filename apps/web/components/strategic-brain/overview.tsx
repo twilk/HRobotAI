@@ -12,6 +12,7 @@ import {
   type EmployeeCard as EmployeeCardData,
   type Overview,
   type RetentionSignal,
+  PEER_LEVEL_LABEL,
   type SnapshotCell,
 } from '@/lib/strategic-brain'
 
@@ -58,6 +59,59 @@ function defectTone(v: number | string | null): string {
   if (n <= 0.05) return 'text-verified'
   if (n > 0.12) return 'text-warn'
   return 'text-navy'
+}
+
+/**
+ * The "Wydajność" cell.
+ *
+ * Shows the SERVER-COMPUTED peer percentile (M10), not the raw completed-order count that used to
+ * sit here. A bare count ranked a Koordynator's 22 next to a Recepcjonista's 4 under a header that
+ * implied the two were comparable; the percentile answers "where does this person stand among
+ * comparable people" — which is also the quantity that feeds the `Wynik` column beside it.
+ *
+ * WHICH comparison, per row, comes from the server (`peerLevel`) and is never assumed here. The
+ * finest rung (`rola|jednostka|etat`) is the exception rather than the rule — `etat` is a decimal,
+ * so it splits a 13-person role into groups of two and the ladder widens; on the demo tenant it
+ * widened for 39 rows out of 39. Hard-coding "same role, unit and etat" into this caption would
+ * therefore have made the screen state something untrue about every row on it.
+ *
+ * The raw count stays visible underneath: the percentile is a ranking, and a ranking with the
+ * underlying fact hidden is hard to argue with — 90th percentile off 3 orders is not the same claim
+ * as 90th off 30.
+ *
+ * `~` prefix = the peer group was below `minPeerGroupSize`. Spec §14 M10 REQUIRES this disclosure;
+ * an unqualified rank derived from two people overstates it and edges toward re-identification.
+ */
+function PerformanceCell({ cell }: { cell: SnapshotCell }) {
+  const pct = num(cell.performancePercentile ?? null)
+  const orders = <span className="block text-[11px] text-muted-2">{cell.throughput} zleceń</span>
+
+  if (pct === null) {
+    return (
+      <>
+        <span className="block tabular-nums text-muted-2" title="Brak grupy porównawczej w tym oknie.">
+          —
+        </span>
+        {orders}
+      </>
+    )
+  }
+
+  const approx = cell.peerMeaningful === false
+  const level = cell.peerLevel ? PEER_LEVEL_LABEL[cell.peerLevel] : 'grupa porównawcza'
+  const opis = `Pozycja wśród ${cell.peerGroupSize ?? '?'} os. — porównanie: ${level}.`
+  return (
+    <>
+      <span
+        className={'block font-semibold tabular-nums ' + (approx ? 'text-muted' : 'text-navy')}
+        title={approx ? `${opis} Grupa zbyt mała — wartość orientacyjna.` : opis}
+      >
+        {approx ? '~' : ''}
+        {Math.round(pct)}
+      </span>
+      {orders}
+    </>
+  )
 }
 
 const FEED_REASON: Record<'RYZYKO' | 'INWESTOWAC', string> = {
@@ -196,7 +250,12 @@ export function StrategicOverview({ scope }: StrategicOverviewProps) {
               <thead>
                 <tr className="border-b border-line text-[11px] uppercase tracking-wide text-muted-2">
                   <th className="px-3 py-2 font-medium">Pracownik</th>
-                  <th className="px-3 py-2 text-right font-medium">Wydajność</th>
+                  <th className="px-3 py-2 text-right font-medium">
+                    Wydajność
+                    <span className="block text-[10px] font-normal normal-case tracking-normal text-muted-2">
+                      pozycja w grupie 0–100
+                    </span>
+                  </th>
                   <th className="px-3 py-2 text-right font-medium">Terminowość</th>
                   <th className="px-3 py-2 text-right font-medium">Jakość</th>
                   <th className="px-3 py-2 text-right font-medium">Rozwój</th>
@@ -217,7 +276,9 @@ export function StrategicOverview({ scope }: StrategicOverviewProps) {
                       className={'cursor-pointer text-[13px] transition-colors hover:bg-card-2 ' + (isSel ? 'bg-accent/[0.05]' : '')}
                     >
                       <td className="px-3 py-2 font-medium text-navy">{nameOf(cell.employeeId)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-navy">{cell.throughput}</td>
+                      <td className="px-3 py-2 text-right text-navy">
+                        <PerformanceCell cell={cell} />
+                      </td>
                       <td className={'px-3 py-2 text-right tabular-nums ' + slaTone(cell.slaHitRate)}>{pctText(cell.slaHitRate)}</td>
                       <td className={'px-3 py-2 text-right tabular-nums ' + defectTone(cell.defectRate)}>{pctText(cell.defectRate)}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-navy">
@@ -240,6 +301,24 @@ export function StrategicOverview({ scope }: StrategicOverviewProps) {
               </tbody>
             </table>
           </div>
+        )}
+
+        {rows.length > 0 && (
+          <p className="mt-2 text-[11px] leading-relaxed text-muted-2">
+            <b className="font-semibold">Wydajność</b> to pozycja w grupie porównawczej, w skali 0–100 — 50 oznacza
+            środek grupy. Liczby zamkniętych zleceń nie porównujemy wprost, bo koordynator i recepcjonista wykonują
+            inną pracę. System zestawia pracownika z najwęższą grupą, która liczy co najmniej 5 osób: najpierw ta sama
+            rola, jednostka i etat, a gdy takich osób jest za mało — kolejno szerzej. <b className="font-semibold">
+              Najedź na wynik, żeby zobaczyć, jakie porównanie zastosowano dla tej osoby.
+            </b>
+            {rows.some((r: SnapshotCell) => r.peerMeaningful === false) && (
+              <>
+                {' '}
+                <b className="font-semibold">~</b> oznacza grupę zbyt małą, żeby ranking był miarodajny —
+                traktuj taką wartość orientacyjnie.
+              </>
+            )}
+          </p>
         )}
 
         {/* Selected employee card */}

@@ -87,6 +87,38 @@ export interface SnapshotCell {
   confidence: number | string
   isNewHire: boolean
   excludedReason: string | null
+  /**
+   * Peer-normalized throughput (M10): 0–100 mid-rank percentile inside the employee's comparison
+   * group. OPTIONAL because only `/overview` attaches these — a card's `series` reuses the same
+   * cell shape but is a single employee's history, where "rank against peers" has no meaning.
+   *
+   * `null` percentile = nobody to rank against. `peerMeaningful: false` = the group was below
+   * `minPeerGroupSize`, and the UI MUST disclose that rather than pass the number off as a rank
+   * (spec §14 M10 — small groups also risk re-identification).
+   */
+  performancePercentile?: number | string | null
+  peerMeaningful?: boolean
+  peerFellBack?: boolean
+  peerGroupSize?: number
+  /** Which rung of the M10 ladder actually produced the percentile — see {@link PEER_LEVEL_LABEL}. */
+  peerLevel?: PeerLevel
+}
+
+/** Rungs of the M10 peer ladder, finest first (`SnapshotService.PEER_LEVELS`). */
+export type PeerLevel = 'ROLA_JEDNOSTKA_ETAT' | 'ROLA_JEDNOSTKA' | 'ROLA' | 'FIRMA'
+
+/**
+ * Human wording for the comparison a row ACTUALLY got.
+ *
+ * The finest rung is the exception, not the rule: `etat` is a decimal, so `rola|jednostka|etat`
+ * splits a 13-person role into groups of two and rarely reaches the 5-person minimum. Captioning
+ * every row as "same role, unit and etat" would be false — hence a per-row label.
+ */
+export const PEER_LEVEL_LABEL: Record<PeerLevel, string> = {
+  ROLA_JEDNOSTKA_ETAT: 'ta sama rola, jednostka i etat',
+  ROLA_JEDNOSTKA: 'ta sama rola i jednostka',
+  ROLA: 'ta sama rola',
+  FIRMA: 'cała firma — brak dość licznej grupy w tej roli',
 }
 
 /** `GET /strategic-brain/overview` response (`StrategicBrainController.overview`). */

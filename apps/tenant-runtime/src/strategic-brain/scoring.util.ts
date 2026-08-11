@@ -157,6 +157,24 @@ export type PeerGroupConfig = {
 export type PeerNormalization = { value: number | null; meaningful: boolean }
 
 /**
+ * Split a `position|unitId|etat` peer key into its M10 fallback-ladder levels (finest → coarsest,
+ * global last).
+ *
+ * LIVES HERE, next to {@link normalizeToPeerGroup}, because BOTH the write path
+ * (`RecommendationService.finalizeWindow`, which feeds the percentile into `compositeScore`) and the
+ * read path (`SnapshotService.overview`, which shows it as the "Wydajność" column) must walk the
+ * identical ladder — otherwise the number on screen silently disagrees with the `Wynik` beside it.
+ * It cannot live in either service: `recommendation.service` already imports `ALGORITHM_VERSION`
+ * from `snapshot.service`, so exporting it from one and importing into the other would close a
+ * `snapshot ↔ recommendation` cycle the modules deliberately avoid. This module is pure and is
+ * already imported by both.
+ */
+export function fallbackKeys(peerGroupKey: string): string[] {
+  const [position = '', unitId = ''] = peerGroupKey.split('|')
+  return [peerGroupKey, `${position}|${unitId}`, position, '__GLOBAL__']
+}
+
+/**
  * [M10] Normalize `value` to a 0..100 percentile within its peer group (`rola|lokalizacja|etat`,
  * or a coarser fallback key chosen by the caller). Uses the mid-rank ("Hazen"-style) percentile —
  * `100 * (belowCount + 0.5 * equalCount) / n` — so it is deterministic, order-independent, always

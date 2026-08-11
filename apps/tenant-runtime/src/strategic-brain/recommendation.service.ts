@@ -3,6 +3,7 @@ import type { TenantClient } from '@hrobot/db'
 import {
   compositeScore,
   developmentSlope,
+  fallbackKeys,
   normalizeToPeerGroup,
   retentionSignal,
   type RetentionSignal,
@@ -89,13 +90,6 @@ interface SnapshotRow {
 export interface FinalizeWindow {
   start: Date
   end: Date
-}
-
-/** Split a `position|unitId|etat` peer key into its M10 fallback-ladder levels (finest → coarsest,
- * global last). */
-function fallbackKeys(peerGroupKey: string): string[] {
-  const [position = '', unitId = ''] = peerGroupKey.split('|')
-  return [peerGroupKey, `${position}|${unitId}`, position, '__GLOBAL__']
 }
 
 function num(v: number | null | undefined): number | null {
