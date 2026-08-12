@@ -37,6 +37,28 @@ export interface SwapActor {
   roles: string[] // hrobot_roles claim
 }
 
+/**
+ * Shift columns embedded in every swap row so the CALLER never has to resolve an id it cannot see.
+ *
+ * WHY THIS EXISTS. `list()` used to return bare `requesterShiftId`/`targetShiftId`, and the web UI
+ * built its labels by fetching `/api/grafik/shifts` and looking the ids up in that list. That list is
+ * bounded, so any swap pointing at a shift outside the window silently degraded to
+ * `id.slice(0, 8)` — the user saw `e0ebd707` where a date, time and role belong (found live 11.08 on
+ * `/zamiany`, rows from Oct–Dec). The failure was not cosmetic: it hit BOTH columns depending on
+ * which side happened to fall outside the window, so the screen looked randomly corrupted.
+ *
+ * The rule this encodes: a label must travel WITH the row that needs it. Anything the client has to
+ * reassemble from a second, differently-scoped query will eventually disagree with it. Same fix, same
+ * reason as `PROPOSAL_INCLUDE` in `ai-grafik/ai-proposal.service.ts`.
+ *
+ * RODO: shift columns only — no employee PII is added here. Names already reach this screen through
+ * the existing `/api/employees` projection and are deliberately left alone.
+ */
+export const SWAP_INCLUDE = {
+  requesterShift: { select: { id: true, date: true, start: true, end: true, role: true, lokalizacjaId: true } },
+  targetShift: { select: { id: true, date: true, start: true, end: true, role: true, lokalizacjaId: true } },
+} as const
+
 /** HR and the tenant admin act across every unit; MANAGER is scoped to the unit(s) they manage. */
 const GLOBAL_ROLES: string[] = [Role.HR, Role.ADMIN_KLIENTA]
 const isGlobal = (roles: string[]): boolean => roles.some((r) => GLOBAL_ROLES.includes(r))
@@ -109,6 +131,7 @@ export class ShiftSwapService {
         targetShiftId,
         state: SwapState.DRAFT,
       },
+      include: SWAP_INCLUDE,
     })
   }
 
@@ -149,7 +172,7 @@ export class ShiftSwapService {
       where.OR = scope
     }
 
-    return client.shiftSwapRequest.findMany({ where, orderBy: { createdAt: 'desc' } })
+    return client.shiftSwapRequest.findMany({ where, orderBy: { createdAt: 'desc' }, include: SWAP_INCLUDE })
   }
 
   // --- row-level RBAC assertions (M2-D2) ---------------------------------------------------------
@@ -329,7 +352,7 @@ export class ShiftSwapService {
         data: { state: approvedState, decidedByManagerId: input.decidedByManagerId },
       })
       if (swapUpd.count === 0) throw new SwapConcurrentModificationError(id)
-      const updated = await tx.shiftSwapRequest.findUniqueOrThrow({ where: { id } })
+      const updated = await tx.shiftSwapRequest.findUniqueOrThrow({ where: { id }, include: SWAP_INCLUDE })
 
       await tx.auditLog.create({
         data: {
@@ -372,7 +395,7 @@ export class ShiftSwapService {
       data: { state: to, ...extraData },
     })
     if (upd.count === 0) throw new SwapConcurrentModificationError(id)
-    return client.shiftSwapRequest.findUniqueOrThrow({ where: { id } })
+    return client.shiftSwapRequest.findUniqueOrThrow({ where: { id }, include: SWAP_INCLUDE })
   }
 
   private async load(client: TenantClient, id: string): Promise<SwapRequestRow> {

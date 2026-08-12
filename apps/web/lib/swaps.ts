@@ -76,6 +76,9 @@ interface BackendSwapRow {
   decidedByManagerId: string | null
   createdAt: string
   updatedAt: string
+  /** Embedded by `SWAP_INCLUDE` (tenant-runtime). Optional so an older backend still renders. */
+  requesterShift?: EmbeddedShift | null
+  targetShift?: EmbeddedShift | null
 }
 
 /** Carries the upstream HTTP status so the UI can distinguish 401 (auth) / 403 (RBAC) / 502 (down). */
@@ -131,6 +134,21 @@ interface ShiftLite {
   role: string
 }
 
+/**
+ * The shift as EMBEDDED in a swap row by `SWAP_INCLUDE` — no `employeeId`, because the swap row
+ * already names both parties and the projection is deliberately narrow. Separate from
+ * {@link ShiftLite} so the type states exactly what the backend sends rather than what the roster
+ * endpoint happens to return.
+ */
+interface EmbeddedShift {
+  id: string
+  date: string
+  start: string
+  end: string
+  role: string
+  lokalizacjaId?: string | null
+}
+
 /** id → resolvers, built once per enrichment pass from the roster + the week's shifts. */
 interface EnrichMaps {
   empName: Map<string, string>
@@ -173,7 +191,7 @@ export function computeMineRole(
 const WEEKDAY_SHORT_PL = ['nd', 'pon', 'wt', 'śr', 'czw', 'pt', 'sob'] as const
 
 /** "pon 13.07 · 06:00–14:00 · RECEPCJA" from a shift row (date is UTC `YYYY-MM-DD[...]`). */
-function shiftLabelOf(s: ShiftLite): string {
+function shiftLabelOf(s: Pick<ShiftLite, 'date' | 'start' | 'end' | 'role'>): string {
   const iso = s.date.slice(0, 10)
   const d = new Date(`${iso}T00:00:00.000Z`)
   const wd = WEEKDAY_SHORT_PL[d.getUTCDay()]
@@ -200,16 +218,33 @@ async function buildEnrichMaps(): Promise<EnrichMaps> {
   return { empName, shiftLabel, shiftRole, myEmployeeId }
 }
 
+/**
+ * The label for one side of a swap, in order of trust:
+ *  1. the shift EMBEDDED in the row (`SWAP_INCLUDE`) — always present, always correct;
+ *  2. the roster map, for a backend that predates the include;
+ *  3. `#e0ebd707`, prefixed so it reads as a reference rather than a corrupted date.
+ *
+ * Step 2 used to be step 1, and that was the bug: `/api/grafik/shifts` returns a BOUNDED window, so
+ * a swap pointing outside it fell straight to step 3. On `/zamiany` (11.08) that produced rows where
+ * one column showed `czw 17.12 · 14:00–22:00 · KIEROWCA` and the other showed `e0ebd707`, switching
+ * sides depending on which shift happened to fall outside the window — the screen looked broken
+ * because, as far as the user could tell, it was.
+ */
+function shiftLabelFor(embedded: EmbeddedShift | null | undefined, id: string, maps: EnrichMaps): string {
+  if (embedded) return shiftLabelOf(embedded)
+  return maps.shiftLabel.get(id) ?? `#${id.slice(0, 8)}`
+}
+
 /** Project a raw backend row onto the {@link SwapRequest} shape the component renders. */
 function enrichRow(row: BackendSwapRow, maps: EnrichMaps): SwapRequest {
   const requester: ShiftRef = {
-    label: maps.shiftLabel.get(row.requesterShiftId) ?? row.requesterShiftId.slice(0, 8),
+    label: shiftLabelFor(row.requesterShift, row.requesterShiftId, maps),
     employeeName: maps.empName.get(row.requesterEmployeeId) ?? row.requesterEmployeeId.slice(0, 8),
   }
   const target: ShiftRef | null =
     row.targetShiftId && row.targetEmployeeId
       ? {
-          label: maps.shiftLabel.get(row.targetShiftId) ?? row.targetShiftId.slice(0, 8),
+          label: shiftLabelFor(row.targetShift, row.targetShiftId, maps),
           employeeName: maps.empName.get(row.targetEmployeeId) ?? row.targetEmployeeId.slice(0, 8),
         }
       : null

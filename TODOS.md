@@ -182,6 +182,20 @@ lektury kodu — przy każdej podano dowód. Szacunki czasu są SZACUNKAMI, nie 
 sprawny i uczciwie opisany w `docs/demo/2026-08-10-demo-4mobility-parp.md`), a potem `/spec` albo
 `/autoplan` na tym backlogu — już z komentarzami odbiorcy zebranymi na żywo.
 
+### Naprawione 2026-08-11
+
+- [x] **`/zamiany` pokazywało surowe identyfikatory zamiast dat i godzin** (`e0ebd707` w kolumnie
+      „TWOJA ZMIANA"). Etykiety powstawały w kliencie z `/api/grafik/shifts`, a ta lista jest
+      OGRANICZONA — każda zamiana wskazująca zmianę spoza okna spadała do `id.slice(0, 8)`.
+      Psuło się raz po jednej, raz po drugiej stronie, więc ekran wyglądał na losowo uszkodzony.
+      Fix: `SWAP_INCLUDE` w `shift-swap.service.ts` osadza dane zmiany w wierszu (`list` **oraz**
+      `create` i oba `findUniqueOrThrow`, inaczej błąd wracał po każdej mutacji); klient bierze
+      etykietę z wiersza, mapa jest tylko fallbackiem, a ostateczny fallback ma prefiks `#`,
+      żeby nie udawał daty. 4 testy; zweryfikowane na żywo — 0 gołych identyfikatorów.
+      To była pozycja z backlogu przeglądu UX („etykieta budowana z listy, której odbiorca nie widzi"),
+      ten sam wzorzec co `PROPOSAL_INCLUDE` w propozycjach AI. **Ten wzorzec został teraz naprawiony
+      w trzech miejscach — przy każdym nowym ekranie sprawdzać, czy etykieta jedzie razem z wierszem.**
+
 ### Naprawione 2026-08-10 — kontekst, NIE robić ponownie
 
 - [x] **`/moj-tydzien` gubił wszystkie zmiany** (`apps/web/lib/moj-tydzien.ts`): API zwraca `date` jako pełny

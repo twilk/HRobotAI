@@ -149,6 +149,47 @@ describe('swapApi.list', () => {
     expect(swap.createdAt).toBe('2026-07-11')
   })
 
+  // Regresja 11.08: `/api/grafik/shifts` zwraca OGRANICZONE okno, a etykiety powstawały wylacznie
+  // z tej listy. Zamiana wskazujaca zmiane spoza okna pokazywala uzytkownikowi `e0ebd707` w miejscu
+  // daty i godzin — i to raz po stronie „twoja zmiana", raz „wspolpracownika", zaleznie od tego,
+  // ktora wypadla poza zakres. Backend osadza teraz zmiane w wierszu (SWAP_INCLUDE).
+  it('uzywa zmiany OSADZONEJ w wierszu, gdy nie ma jej w oknie /api/grafik/shifts', async () => {
+    stubFetch(() => ({
+      body: [
+        row('PENDING_MANAGER', {
+          requesterShiftId: 'sh-poza-oknem',
+          targetShiftId: 'sh-tez-poza',
+          requesterShift: { id: 'sh-poza-oknem', date: '2026-12-17', start: '14:00', end: '22:00', role: 'KIEROWCA' },
+          targetShift: { id: 'sh-tez-poza', date: '2026-10-04', start: '06:00', end: '14:00', role: 'KOORDYNATOR' },
+        }),
+      ],
+    }))
+
+    const [swap] = await swapApi.list()
+
+    expect(swap.requester.label).toBe('czw 17.12 · 14:00–22:00 · KIEROWCA')
+    expect(swap.target?.label).toBe('nd 04.10 · 06:00–14:00 · KOORDYNATOR')
+    expect(swap.requester.label).not.toMatch(/^#?[0-9a-f]{8}$/)
+  })
+
+  it('wciaz korzysta z listy zmian, gdy backend nie osadza zmiany (starsza wersja API)', async () => {
+    stubFetch(() => ({ body: [row('PENDING_PEER')] })) // brak requesterShift/targetShift
+
+    const [swap] = await swapApi.list()
+
+    expect(swap.requester.label).toBe('pon 13.07 · 06:00–14:00 · RECEPCJA')
+  })
+
+  it('gdy zmiany nie da sie rozwiazac NIGDZIE, identyfikator ma prefiks # zamiast udawac date', async () => {
+    stubFetch(() => ({ body: [row('PENDING_PEER', { requesterShiftId: 'e0ebd707-dead-beef', targetShiftId: null, targetEmployeeId: null })] }))
+
+    const [swap] = await swapApi.list()
+
+    // `#` jest tu tresciowy: bez niego goly ciag w kolumnie „TWOJA ZMIANA" czyta sie jak uszkodzone
+    // dane, a nie jak odwolanie do rekordu, ktorego nie udalo sie rozwinac.
+    expect(swap.requester.label).toBe('#e0ebd707')
+  })
+
   it('passes state and mine filters through as query params', async () => {
     stubFetch(() => ({ body: [] }))
 
@@ -198,9 +239,11 @@ describe('swapApi.list', () => {
 
     const [swap] = await swapApi.list()
 
-    // Falls back to the first 8 chars rather than rendering "undefined".
+    // Falls back to the first 8 chars rather than rendering "undefined". Od 11.08 etykieta ZMIANY
+    // dostaje prefiks `#` — goly ciag w kolumnie z data i godzinami czytal sie jak uszkodzone dane.
+    // Nazwisko zostaje bez prefiksu: tam skrot nie udaje niczego innego.
     expect(swap.requester.employeeName).toBe('emp-unkn')
-    expect(swap.requester.label).toBe('sh-unkno')
+    expect(swap.requester.label).toBe('#sh-unkno')
     expect(swap.unit).toBe('—')
   })
 })
