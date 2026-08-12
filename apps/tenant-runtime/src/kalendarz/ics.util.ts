@@ -72,3 +72,60 @@ export function foldIcsLine(line: string): string {
   }
   return czesci.join(`${CRLF} `)
 }
+
+/** Jedno zdarzenie kalendarza — projekcja wniosku urlopowego pozbawiona wszystkiego poza datami. */
+export interface IcsLeaveEvent {
+  uid: string
+  /** Pierwszy dzień urlopu, włącznie. */
+  startDate: Date
+  /** Ostatni dzień urlopu, WŁĄCZNIE. DTEND liczymy z niego jako dzień następny. */
+  endDate: Date
+  status: IcsEventStatus
+  /** RFC 5545 §3.8.7.4 — musi rosnąć przy każdej zmianie, inaczej klient zignoruje aktualizację. */
+  sequence: number
+  lastModified: Date
+}
+
+/**
+ * Deterministyczny UID zdarzenia. Wyprowadzony wyłącznie z id wniosku, więc ten sam wniosek ma ten
+ * sam UID przez całe życie — to jedyny powód, dla którego nagrobek `STATUS:CANCELLED` trafia w to
+ * zdarzenie, które klient już ma, zamiast tworzyć drugie.
+ */
+export function icsLeaveUid(leaveId: string): string {
+  return `urlop-${leaveId}@hrobot.local`
+}
+
+/** Dzień następny w UTC — DTEND zdarzenia całodniowego jest EKSKLUZYWNY (RFC 5545 §3.6.1). */
+function nextDayUtc(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1))
+}
+
+/** Buduje kompletny obiekt VCALENDAR. `now` wchodzi argumentem, żeby DTSTAMP dało się przypiąć w teście. */
+export function buildLeaveCalendar(events: readonly IcsLeaveEvent[], now: Date): string {
+  const dtstamp = formatIcsTimestamp(now)
+  const wiersze: string[] = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//HRobot//Eksport ICS//PL',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    `X-WR-CALNAME:${escapeIcsText('Urlopy (eksport ICS)')}`,
+  ]
+  for (const e of events) {
+    wiersze.push(
+      'BEGIN:VEVENT',
+      `UID:${escapeIcsText(e.uid)}`,
+      `DTSTAMP:${dtstamp}`,
+      `DTSTART;VALUE=DATE:${formatIcsDate(e.startDate)}`,
+      `DTEND;VALUE=DATE:${formatIcsDate(nextDayUtc(e.endDate))}`,
+      `SUMMARY:${escapeIcsText(ICS_EVENT_SUMMARY)}`,
+      `STATUS:${e.status}`,
+      `SEQUENCE:${e.sequence}`,
+      'TRANSP:OPAQUE',
+      `LAST-MODIFIED:${formatIcsTimestamp(e.lastModified)}`,
+      'END:VEVENT',
+    )
+  }
+  wiersze.push('END:VCALENDAR')
+  return wiersze.map(foldIcsLine).join(CRLF) + CRLF
+}
