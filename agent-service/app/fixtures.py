@@ -62,7 +62,7 @@ def resolve_problem(problem_input_id: str) -> ProblemInput | None:
 _SEASONAL_BASE = {
     "KIEROWCA": [6, 6, 6, 7, 8, 4, 3],
     "SERWISANT": [4, 4, 5, 5, 5, 2, 1],
-    "RECEPCJA": [2, 2, 2, 2, 3, 2, 1],
+    "OPERATOR": [2, 2, 2, 2, 3, 2, 1],
     "KOORDYNATOR": [1, 1, 1, 1, 1, 1, 1],
 }
 

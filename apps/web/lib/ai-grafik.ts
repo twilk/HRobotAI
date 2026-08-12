@@ -449,7 +449,7 @@ export interface ProposalEnrichMaps {
 const WEEKDAY_SHORT_PL = ['nd', 'pon', 'wt', 'śr', 'czw', 'pt', 'sob'] as const
 
 /**
- * "pon 13.07 · 06:00–14:00 · RECEPCJA" from a shift row (date is UTC `YYYY-MM-DD[...]`). Exported so
+ * "pon 13.07 · 06:00–14:00 · OPERATOR" from a shift row (date is UTC `YYYY-MM-DD[...]`). Exported so
  * callers with an inline shift shape (e.g. {@link VacatedShift}, which already carries date/start/
  * end/role — no id lookup needed) can reuse the exact same formatting instead of re-deriving it.
  */

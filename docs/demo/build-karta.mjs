@@ -63,6 +63,7 @@ const SEKCJE = [
     ostrzezenia: [
       'Pierwsze wejście liczy ~8 s — miej otwarte w drugiej karcie.',
       'Kolumna „Wydajność” to pozycja 0–100, NIE procent normy i NIE liczba zleceń. Jeśli sam ją źle nazwiesz, ktoś to wychwyci.',
+      'Role: Serwisant floty 14 · OPERATOR 14 · Kierowca 7 · Koordynator zmiany 4. Stanowisko „Recepcjonista” przemianowano na „Operator” 12.08. Starą nazwę zobaczysz jeszcze w dzienniku audytu i to jest poprawne — dziennik jest append-only, historii nie przepisujemy.',
     ],
   },
   {

@@ -41,10 +41,10 @@ UPDATE organizational_units SET manager_user_id = NULL
 -- 3) KOSZTY — a cost rate for every (position, employment_type) present in the roster, so the weekly
 --    cost calculator has full coverage (no missing rates). PLN/h, plausible 2026 values.
 INSERT INTO position_cost_rates (id, position, employment_type, hourly_rate, overtime_multiplier, currency, created_at, updated_at) VALUES
-  ('pcr-01','Recepcjonista',      'UMOWA_O_PRACE'::"EmploymentType",  34.00, 1.5, 'PLN', now(), now()),
-  ('pcr-02','Recepcjonista',      'UMOWA_ZLECENIE'::"EmploymentType", 33.00, 1.5, 'PLN', now(), now()),
-  ('pcr-03','Recepcjonista',      'UMOWA_O_DZIELO'::"EmploymentType", 35.00, 1.5, 'PLN', now(), now()),
-  ('pcr-04','Recepcjonista',      'B2B'::"EmploymentType",            52.00, 1.5, 'PLN', now(), now()),
+  ('pcr-01','Operator','UMOWA_O_PRACE'::"EmploymentType",  34.00, 1.5, 'PLN', now(), now()),
+  ('pcr-02','Operator','UMOWA_ZLECENIE'::"EmploymentType", 33.00, 1.5, 'PLN', now(), now()),
+  ('pcr-03','Operator','UMOWA_O_DZIELO'::"EmploymentType", 35.00, 1.5, 'PLN', now(), now()),
+  ('pcr-04','Operator','B2B'::"EmploymentType",            52.00, 1.5, 'PLN', now(), now()),
   ('pcr-05','Kierowca',           'UMOWA_ZLECENIE'::"EmploymentType", 41.00, 1.5, 'PLN', now(), now()),
   ('pcr-06','Kierowca',           'UMOWA_O_DZIELO'::"EmploymentType", 43.00, 1.5, 'PLN', now(), now()),
   ('pcr-07','Koordynator zmiany', 'UMOWA_O_PRACE'::"EmploymentType",  54.00, 1.5, 'PLN', now(), now()),

@@ -25,7 +25,7 @@
         "KOORDYNATOR",
         "KIEROWCA",
         "SERWISANT",
-        "RECEPCJA"
+        "OPERATOR"
       ],
       "etat": 1,
       "homeLatLng": {
@@ -85,7 +85,7 @@
       "qualifications": [
         "KIEROWCA",
         "SERWISANT",
-        "RECEPCJA"
+        "OPERATOR"
       ],
       "etat": 1,
       "homeLatLng": {
@@ -99,7 +99,7 @@
       "id": "28038927-1365-5b53-b212-dd6ba34ad73c",
       "qualifications": [
         "SERWISANT",
-        "RECEPCJA"
+        "OPERATOR"
       ],
       "etat": 0.5,
       "homeLatLng": {
@@ -160,7 +160,7 @@
       "id": "575f19c4-d442-52a0-be86-8c942541b0ef",
       "qualifications": [
         "KIEROWCA",
-        "RECEPCJA"
+        "OPERATOR"
       ],
       "etat": 1,
       "homeLatLng": {
@@ -188,7 +188,7 @@
       "qualifications": [
         "KIEROWCA",
         "SERWISANT",
-        "RECEPCJA"
+        "OPERATOR"
       ],
       "etat": 0.75,
       "homeLatLng": {
@@ -220,7 +220,7 @@
       "qualifications": [
         "KIEROWCA",
         "SERWISANT",
-        "RECEPCJA"
+        "OPERATOR"
       ],
       "etat": 0.5,
       "homeLatLng": {
@@ -276,7 +276,7 @@
       "qualifications": [
         "KIEROWCA",
         "SERWISANT",
-        "RECEPCJA"
+        "OPERATOR"
       ],
       "etat": 1,
       "homeLatLng": {
@@ -290,7 +290,7 @@
       "id": "6b72adac-8c6f-5a7b-b79f-670a9b26346d",
       "qualifications": [
         "KIEROWCA",
-        "RECEPCJA"
+        "OPERATOR"
       ],
       "etat": 1,
       "homeLatLng": {
@@ -331,7 +331,7 @@
       "id": "8567441e-7773-51f2-8eee-7eb90ab3813e",
       "qualifications": [
         "KIEROWCA",
-        "RECEPCJA"
+        "OPERATOR"
       ],
       "etat": 0.5,
       "homeLatLng": {
@@ -386,7 +386,7 @@
       "id": "9f4218eb-a8b0-51ee-9f6f-e5d74ae33798",
       "qualifications": [
         "SERWISANT",
-        "RECEPCJA"
+        "OPERATOR"
       ],
       "etat": 1,
       "homeLatLng": {
@@ -442,7 +442,7 @@
       "qualifications": [
         "KIEROWCA",
         "SERWISANT",
-        "RECEPCJA"
+        "OPERATOR"
       ],
       "etat": 0.5,
       "homeLatLng": {
@@ -484,7 +484,7 @@
       "qualifications": [
         "KIEROWCA",
         "SERWISANT",
-        "RECEPCJA"
+        "OPERATOR"
       ],
       "etat": 0.5,
       "homeLatLng": {
@@ -498,7 +498,7 @@
       "id": "953f2ff9-baa1-5f4a-b48c-c34de2ce26fe",
       "qualifications": [
         "KIEROWCA",
-        "RECEPCJA"
+        "OPERATOR"
       ],
       "etat": 1,
       "homeLatLng": {
@@ -565,7 +565,7 @@
       "date": "2026-07-20",
       "start": "06:00",
       "end": "14:00",
-      "role": "RECEPCJA",
+      "role": "OPERATOR",
       "count": 1
     },
     {
@@ -601,7 +601,7 @@
       "date": "2026-07-21",
       "start": "06:00",
       "end": "14:00",
-      "role": "RECEPCJA",
+      "role": "OPERATOR",
       "count": 1
     },
     {
@@ -637,7 +637,7 @@
       "date": "2026-07-22",
       "start": "06:00",
       "end": "14:00",
-      "role": "RECEPCJA",
+      "role": "OPERATOR",
       "count": 1
     },
     {
@@ -673,7 +673,7 @@
       "date": "2026-07-23",
       "start": "06:00",
       "end": "14:00",
-      "role": "RECEPCJA",
+      "role": "OPERATOR",
       "count": 1
     },
     {
@@ -709,7 +709,7 @@
       "date": "2026-07-24",
       "start": "06:00",
       "end": "14:00",
-      "role": "RECEPCJA",
+      "role": "OPERATOR",
       "count": 1
     },
     {
@@ -745,7 +745,7 @@
       "date": "2026-07-25",
       "start": "06:00",
       "end": "14:00",
-      "role": "RECEPCJA",
+      "role": "OPERATOR",
       "count": 1
     },
     {
@@ -781,7 +781,7 @@
       "date": "2026-07-26",
       "start": "06:00",
       "end": "14:00",
-      "role": "RECEPCJA",
+      "role": "OPERATOR",
       "count": 1
     },
     {

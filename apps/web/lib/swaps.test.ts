@@ -30,7 +30,7 @@ const EMPLOYEES = [
 
 const SHIFTS = [
   // 2026-07-13 is a Monday.
-  { id: 'sh-a', employeeId: 'emp-anna', date: '2026-07-13', start: '06:00', end: '14:00', role: 'RECEPCJA' },
+  { id: 'sh-a', employeeId: 'emp-anna', date: '2026-07-13', start: '06:00', end: '14:00', role: 'OPERATOR' },
   { id: 'sh-p', employeeId: 'emp-piotr', date: '2026-07-15', start: '14:00', end: '22:00', role: 'SERWIS' },
 ]
 
@@ -141,11 +141,11 @@ describe('swapApi.list', () => {
     expect(swap.id).toBe('swap-1')
     expect(swap.state).toBe('PENDING_PEER')
     expect(swap.requester.employeeName).toBe('Anna Kowalska')
-    expect(swap.requester.label).toBe('pon 13.07 · 06:00–14:00 · RECEPCJA')
+    expect(swap.requester.label).toBe('pon 13.07 · 06:00–14:00 · OPERATOR')
     expect(swap.target?.employeeName).toBe('Piotr Nowak')
     expect(swap.target?.label).toBe('śr 15.07 · 14:00–22:00 · SERWIS')
     // "Jednostka" column falls back to the requester shift's job role.
-    expect(swap.unit).toBe('RECEPCJA')
+    expect(swap.unit).toBe('OPERATOR')
     expect(swap.createdAt).toBe('2026-07-11')
   })
 
@@ -177,7 +177,7 @@ describe('swapApi.list', () => {
 
     const [swap] = await swapApi.list()
 
-    expect(swap.requester.label).toBe('pon 13.07 · 06:00–14:00 · RECEPCJA')
+    expect(swap.requester.label).toBe('pon 13.07 · 06:00–14:00 · OPERATOR')
   })
 
   it('gdy zmiany nie da sie rozwiazac NIGDZIE, identyfikator ma prefiks # zamiast udawac date', async () => {

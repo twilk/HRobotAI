@@ -26,7 +26,7 @@ import { generateSyntheticPesel, type SyntheticPesel } from './pesel.js'
 export const ROLE = {
   KIEROWCA: 'KIEROWCA', // driver — the bulk role
   SERWISANT: 'SERWISANT', // fleet service technician
-  RECEPCJA: 'RECEPCJA', // front desk
+  OPERATOR: 'OPERATOR', // front desk
   KOORDYNATOR: 'KOORDYNATOR', // shift coordinator — SCARCE
 } as const
 export type Role = (typeof ROLE)[keyof typeof ROLE]
@@ -244,7 +244,7 @@ function qualificationsFor(index: number): Role[] {
   if (index < 3) q.add(ROLE.KOORDYNATOR) // scarce: exactly 3 coordinators company-wide
   if (index % 5 !== 4) q.add(ROLE.KIEROWCA) // ~80% are drivers
   if (index % 3 === 0 || index % 3 === 1) q.add(ROLE.SERWISANT) // ~2/3 can service
-  if (index % 4 === 0 || index % 7 === 3) q.add(ROLE.RECEPCJA) // front-desk spread
+  if (index % 4 === 0 || index % 7 === 3) q.add(ROLE.OPERATOR) // front-desk spread
   if (q.size === 0) q.add(ROLE.KIEROWCA) // never leave anyone role-less
   return [...q]
 }
@@ -252,7 +252,7 @@ function qualificationsFor(index: number): Role[] {
 /** Job title from the highest-priority qualification held. */
 function positionFor(quals: Role[]): string {
   if (quals.includes(ROLE.KOORDYNATOR)) return 'Koordynator zmiany'
-  if (quals.includes(ROLE.RECEPCJA)) return 'Recepcjonista'
+  if (quals.includes(ROLE.OPERATOR)) return 'Operator'
   if (quals.includes(ROLE.SERWISANT)) return 'Serwisant floty'
   return 'Kierowca'
 }
@@ -310,7 +310,7 @@ function buildTemplates(): SeedTemplate[] {
       dni: [...DOW],
       okna: [
         { start: '06:00', end: '14:00', rola: ROLE.KIEROWCA, liczba: 2 },
-        { start: '06:00', end: '14:00', rola: ROLE.RECEPCJA, liczba: 1 },
+        { start: '06:00', end: '14:00', rola: ROLE.OPERATOR, liczba: 1 },
         { start: '14:00', end: '22:00', rola: ROLE.KIEROWCA, liczba: 2 },
         { start: '14:00', end: '22:00', rola: ROLE.KOORDYNATOR, liczba: 1 },
       ],

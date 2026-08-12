@@ -64,9 +64,9 @@ Trzy rzeczy do pokazania, w tej kolejności:
 1. **Sygnały retencji** — gotowe wnioski, nie tabelki: *Rafał Adamczyk — „Trend spadkowy — ryzyko odejścia, zareaguj wcześnie"*, *Marcin Dąbrowski — „Słabszy wynik, ale rośnie — warto zainwestować"*.
 2. **Mapa wydajności i rozwoju** — od 11.08 **wszystkich 39 pracowników**, nie sześcioro. Cztery wymiary (Wydajność, Terminowość, Jakość, Rozwój) plus wynik zbiorczy.
 
-   **Kolumna „Wydajność" zmieniła znaczenie (11.08).** Pokazywała surową liczbę zamkniętych zleceń, więc zestawiała 22 koordynatora z 4 recepcjonistki pod nagłówkiem sugerującym porównywalność. Teraz pokazuje **pozycję w grupie porównawczej w skali 0–100**, a liczba zleceń została pod spodem jako fakt źródłowy.
+   **Kolumna „Wydajność" zmieniła znaczenie (11.08).** Pokazywała surową liczbę zamkniętych zleceń, więc zestawiała 22 koordynatora zmiany z 4 operatora pod nagłówkiem sugerującym porównywalność. Teraz pokazuje **pozycję w grupie porównawczej w skali 0–100**, a liczba zleceń została pod spodem jako fakt źródłowy.
 
-   Powiedz to tak: *„Nie porównujemy liczby zleceń, bo koordynator i recepcjonista wykonują inną pracę. Porównujemy pozycję w najwęższej grupie, która liczy co najmniej pięć osób — najpierw ta sama rola, jednostka i etat, a gdy takich osób brakuje, kolejno szerzej."* **Najedź kursorem na wynik** — podpowiedź podaje, kogo z kim porównano dla tej konkretnej osoby.
+   Powiedz to tak: *„Koordynator zmiany prowadzi obsadę całej lokalizacji, operator obsługuje pojedyncze zlecenia. Liczba zamkniętych zleceń znaczy u nich co innego, więc jej nie zestawiamy. Porównujemy pozycję w najwęższej grupie, która liczy co najmniej pięć osób — najpierw ta sama rola, jednostka i etat, a gdy takich osób brakuje, kolejno szerzej."* **Najedź kursorem na wynik** — podpowiedź podaje, kogo z kim porównano dla tej konkretnej osoby.
 
 3. **Karta pracownika** — kliknij wiersz **Rafał Adamczyk**. Trajektoria pokazuje **86 → 66 w 4 oknach (−20 pkt)** jako wyraźny zjazd. W rozbiciu wymiarów **Wydajność 92/100 · 15 zleceń** — czyli najlepszy w swojej grupie, a mimo to sygnał brzmi „Ryzyko".
 4. **Rekomendacje rekrutacji** per jednostka i lokalizacja, każda z uzasadnieniem liczbowym: *„Luka kadrowa w Regionie Centrum wg zapotrzebowania grafiku (Koordynator zmiany: brak 2 osób w bieżącym tygodniu). Zalecane wznowienie rekrutacji."*
@@ -257,7 +257,9 @@ Znaczy to, że zabrakło dosypki grup porównawczych. Bazowy seed tworzy sześć
 docker exec -i hrobot-postgres-1 psql -U postgres -d hrobot_t_900d948b -v ON_ERROR_STOP=1 < scripts/seed-demo-strategic-brain-peers.sql
 ```
 
-Kończy się zestawieniem liczebności ról — oczekiwane: Serwisant floty 14, Recepcjonista 13, Kierowca 7, Koordynator zmiany 4, Operator 1.
+Kończy się zestawieniem liczebności ról — oczekiwane: **Serwisant floty 14, Operator 14, Kierowca 7, Koordynator zmiany 4** (razem 39).
+
+> **Zmiana nazewnictwa z 12.08.** Stanowisko `Recepcjonista` nazywa się teraz `Operator` w całej aplikacji i w danych. Jeśli gdziekolwiek zobaczysz jeszcze „Recepcjonista", to znaczy, że patrzysz na starszy materiał dowodowy albo na wpis w dzienniku audytu — ten jest append-only i historycznych zapisów nie przepisujemy. Nie jest to usterka i tak to nazwij, gdyby ktoś zapytał.
 
 Bez tego kolumna „Wydajność" traci sens: percentyl liczony wobec jednej osoby zawsze wynosi 50.
 

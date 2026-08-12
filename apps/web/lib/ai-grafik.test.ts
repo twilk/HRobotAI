@@ -131,8 +131,8 @@ describe('aiProposalActions', () => {
 describe('shiftLabelOf', () => {
   it('formats a known Monday as "pon dd.mm · start–end · ROLE"', () => {
     expect(
-      shiftLabelOf({ id: 's-1', date: '2026-07-13', start: '06:00', end: '14:00', role: 'RECEPCJA' }),
-    ).toBe('pon 13.07 · 06:00–14:00 · RECEPCJA')
+      shiftLabelOf({ id: 's-1', date: '2026-07-13', start: '06:00', end: '14:00', role: 'OPERATOR' }),
+    ).toBe('pon 13.07 · 06:00–14:00 · OPERATOR')
   })
 
   it('formats a known Sunday as "nd dd.mm · start–end · ROLE"', () => {
@@ -148,9 +148,9 @@ describe('shiftLabelOf', () => {
         date: '2026-07-13T00:00:00.000Z',
         start: '06:00',
         end: '14:00',
-        role: 'RECEPCJA',
+        role: 'OPERATOR',
       }),
-    ).toBe('pon 13.07 · 06:00–14:00 · RECEPCJA')
+    ).toBe('pon 13.07 · 06:00–14:00 · OPERATOR')
   })
 })
 

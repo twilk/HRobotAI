@@ -28,7 +28,7 @@ const validDemand = {
   date: '2026-07-13',
   start: '06:00',
   end: '14:00',
-  requiredRole: 'RECEPCJA',
+  requiredRole: 'OPERATOR',
   requiredCount: 2,
 }
 

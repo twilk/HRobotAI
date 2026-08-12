@@ -190,7 +190,7 @@ export function computeMineRole(
 
 const WEEKDAY_SHORT_PL = ['nd', 'pon', 'wt', 'śr', 'czw', 'pt', 'sob'] as const
 
-/** "pon 13.07 · 06:00–14:00 · RECEPCJA" from a shift row (date is UTC `YYYY-MM-DD[...]`). */
+/** "pon 13.07 · 06:00–14:00 · OPERATOR" from a shift row (date is UTC `YYYY-MM-DD[...]`). */
 function shiftLabelOf(s: Pick<ShiftLite, 'date' | 'start' | 'end' | 'role'>): string {
   const iso = s.date.slice(0, 10)
   const d = new Date(`${iso}T00:00:00.000Z`)

@@ -39,7 +39,7 @@ describe('canonical synthetic seed', () => {
     const withRole = (r: string) => seed.employees.filter((e) => e.qualifications.includes(r as never)).length
     expect(withRole(ROLE.KIEROWCA)).toBeGreaterThan(10)
     expect(withRole(ROLE.SERWISANT)).toBeGreaterThan(5)
-    expect(withRole(ROLE.RECEPCJA)).toBeGreaterThan(1)
+    expect(withRole(ROLE.OPERATOR)).toBeGreaterThan(1)
   })
 
   it('populates approved leaves that overlap a solve week', () => {

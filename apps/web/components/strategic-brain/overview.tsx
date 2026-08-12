@@ -66,13 +66,13 @@ function defectTone(v: number | string | null): string {
  * The "Wydajność" cell.
  *
  * Shows the SERVER-COMPUTED peer percentile (M10), not the raw completed-order count that used to
- * sit here. A bare count ranked a Koordynator's 22 next to a Recepcjonista's 4 under a header that
+ * sit here. A bare count ranked a Koordynator's 22 next to an Operator's 4 under a header that
  * implied the two were comparable; the percentile answers "where does this person stand among
  * comparable people" — which is also the quantity that feeds the `Wynik` column beside it.
  *
  * WHICH comparison, per row, comes from the server (`peerLevel`) and is never assumed here. The
  * finest rung (`rola|jednostka|etat`) is the exception rather than the rule — `etat` is a decimal,
- * so it splits a 13-person role into groups of two and the ladder widens; on the demo tenant it
+ * so it splits a 14-person role into groups of two and the ladder widens; on the demo tenant it
  * widened for 39 rows out of 39. Hard-coding "same role, unit and etat" into this caption would
  * therefore have made the screen state something untrue about every row on it.
  *
@@ -304,7 +304,7 @@ export function StrategicOverview({ scope }: StrategicOverviewProps) {
         {rows.length > 0 && (
           <p className="mt-2 text-[11px] leading-relaxed text-muted-2">
             <b className="font-semibold">Wydajność</b> to pozycja w grupie porównawczej, w skali 0–100 — 50 oznacza
-            środek grupy. Liczby zamkniętych zleceń nie porównujemy wprost, bo koordynator i recepcjonista wykonują
+            środek grupy. Liczby zamkniętych zleceń nie porównujemy wprost, bo koordynator i operator wykonują
             inną pracę. System zestawia pracownika z najwęższą grupą, która liczy co najmniej 5 osób: najpierw ta sama
             rola, jednostka i etat, a gdy takich osób jest za mało — kolejno szerzej. <b className="font-semibold">
               Najedź na wynik, żeby zobaczyć, jakie porównanie zastosowano dla tej osoby.

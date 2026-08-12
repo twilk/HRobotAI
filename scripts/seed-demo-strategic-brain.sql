@@ -125,7 +125,7 @@ INSERT INTO employees
 SELECT 'a1d00000-0000-4000-8000-00005b00e001', NULL, 'Tomasz', 'Nowacki',
        'DEMO-PLACEHOLDER-UNENCRYPTED-PESEL-SB-NEW1',
        'demo-placeholder-pesel-hash-strategic-brain-new1',
-       'Recepcjonista', 'UMOWA_O_PRACE'::"EmploymentType", (now() - interval '22 days'),
+       'Operator', 'UMOWA_O_PRACE'::"EmploymentType", (now() - interval '22 days'),
        ou.id, NULL, NULL, NULL, 1, ARRAY[]::text[], now(), now()
 FROM organizational_units ou
 WHERE ou.name = 'Region Centrum'
@@ -139,7 +139,7 @@ INSERT INTO employees
 SELECT 'a1d00000-0000-4000-8000-00005b00e002', NULL, 'Ewa', 'Lewandowska',
        'DEMO-PLACEHOLDER-UNENCRYPTED-PESEL-SB-NEW2',
        'demo-placeholder-pesel-hash-strategic-brain-new2',
-       'Recepcjonista', 'UMOWA_O_PRACE'::"EmploymentType", (now() - interval '19 days'),
+       'Operator', 'UMOWA_O_PRACE'::"EmploymentType", (now() - interval '19 days'),
        ou.id, NULL, NULL, NULL, 1, ARRAY[]::text[], now(), now()
 FROM organizational_units ou
 WHERE ou.name = 'Region Centrum'
@@ -409,7 +409,7 @@ SELECT 'a1d00000-0000-4000-8000-00005b00c002', 'UNIT'::"RecoScopeType", ou.id, '
   'Obsada w Regionie Poludnie pokryta (nadwyzka wzgledem zapotrzebowania) i metryki w normie. Zalecane wstrzymanie rekrutacji.',
   jsonb_build_object(
     'totalGap', -1,
-    'byRole', jsonb_build_array(jsonb_build_object('role','Recepcjonista','required',3,'assigned',4,'gap',-1)),
+    'byRole', jsonb_build_array(jsonb_build_object('role','Operator','required',3,'assigned',4,'gap',-1)),
     'avgDefectRate', 0.05, 'avgSlaHitRate', 0.9,
     'defectThreshold', 0.1, 'slaTargetRate', 0.8,
     'qualityBelowTarget', false, 'timelinessBelowTarget', false,
