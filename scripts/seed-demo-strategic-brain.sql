@@ -358,7 +358,15 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO shift_demands
   (id, lokalizacja_id, date, start, "end", required_role, required_count, source, created_at, updated_at)
 SELECT 'a1d00000-0000-4000-8000-00005b00d001', (SELECT id FROM lokalizacje ORDER BY name LIMIT 1),
-  (c.wk_start + interval '2 days')::date, '08:00', '16:00', 'Koordynator zmiany', 2,
+  -- KOD ROLI, nie nazwa stanowiska. `shift_demands.required_role` trzyma slownik kodow
+  -- (KIEROWCA / KOORDYNATOR / OPERATOR / SERWISANT), tak samo jak `shifts.role`; nazwy
+  -- stanowisk ("Koordynator zmiany") zyja w `employees.position`. Ten jeden wiersz wpisywal
+  -- nazwe stanowiska i byl jedynym z 219 poza slownikiem. Funkcjonalnie nie psul niczego —
+  -- CapacityGapService grupuje po tej wartosci jako po etykiecie i nigdy jej nie dopasowuje
+  -- do position ani do shifts.role — ale wypadal z kazdego filtrowania po kodzie roli.
+  -- Uzasadnienie rekomendacji nizej ZOSTAJE po polsku ("Koordynator zmiany"): to proza dla
+  -- czlowieka, a nie klucz slownikowy.
+  (c.wk_start + interval '2 days')::date, '08:00', '16:00', 'KOORDYNATOR', 2,
   'MANUAL'::"DemandSource", now(), now()
 FROM sb_ctx c
 WHERE EXISTS (SELECT 1 FROM lokalizacje)
