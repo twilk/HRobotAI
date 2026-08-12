@@ -129,13 +129,14 @@ const SEKCJE = [
     pointa: 'Gdybyśmy podpięli tu duży model językowy, wymyśliłby odpowiedź. Wolimy, żeby system powiedział „nie wiem” — bo to ścieżka o skutkach prawnych.',
     pytania: [
       ['Dlaczego transkrypcja trwa kilkanaście sekund?',
-       'Bo liczy się lokalnie na CPU, a nie w chmurze dostawcy — to cena za to, że nagranie głosu nie opuszcza Waszej infrastruktury. Nie udawaj, że to szybkie: 12–15 s to dużo i na produkcji wymaga GPU albo mniejszego modelu.', 'slaby'],
+       'Bo liczy się lokalnie na CPU, a nie w chmurze dostawcy — to cena za to, że nagranie głosu nie opuszcza Waszej infrastruktury. Nie udawaj, że to szybkie ani stabilne: zmierzone 12–26 s na tym samym nagraniu, a na produkcji potrzebny jest GPU albo mniejszy model.', 'slaby'],
       ['Czemu nie użyliście ChatGPT — byłoby mądrzejsze?',
        'W ścieżce o skutkach kadrowych wybraliśmy parser deterministyczny: to samo zdanie zawsze daje ten sam wynik i da się to zaudytować. Model językowy zgadywałby, a tu zgadywanie kosztuje.'],
     ],
     ostrzezenia: [
       'Głos: jeśli mikrofon nie był testowany w tej sali — prowadź tekstem.',
-      'Po kliknięciu „Stop” masz 12–15 SEKUND CISZY. Nie czekaj w milczeniu — mów wtedy: „nagranie jest właśnie przetwarzane na naszym serwerze, nie w chmurze dostawcy; te kilkanaście sekund to cena za to, że głos pracownika nie opuszcza Waszej infrastruktury”.',
+      'Po kliknięciu „Stop” masz od 12 do 26 SEKUND CISZY — rozrzut jest duży i nieprzewidywalny (10 pomiarów na tym samym nagraniu: 11,8 · 13,1 · 13,4 · 15,3 · 15,5 · 18,5 · 23,4 · 25,3 · 26,6). Zakładaj GÓRNĄ granicę. Nie czekaj w milczeniu — mów wtedy: „nagranie jest właśnie przetwarzane na naszym serwerze, nie w chmurze dostawcy; te kilkanaście sekund to cena za to, że głos pracownika nie opuszcza Waszej infrastruktury”.',
+      'Jeśli model pokaże „loaded”: false, PIERWSZA transkrypcja potrwa ~40 s (ładowanie modelu ~490 MB). Zrób jedno próbne nagranie zanim wejdzie odbiorca.',
     ],
   },
   {

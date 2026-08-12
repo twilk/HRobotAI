@@ -30,10 +30,15 @@
   ```
   Ma zwrócić `"loaded": true`. Jeśli `false` — zrób jedno próbne nagranie w `/asystent` przed wejściem odbiorcy.
 
-  **Korekta z 11.08: rozgrzewanie NIE skraca transkrypcji.** Cztery pomiary przez pełną ścieżkę
-  przeglądarka → `/api/voice/transcribe` → STT dały **11,8 / 13,4 / 15,5 / 15,3 s** przy modelu
-  załadowanym — bez tendencji spadkowej. Wcześniejsze „7–8 s po rozgrzaniu" (10.08) było mierzone
-  inaczej i jest nieaktualne. Planuj **12–15 s** i zagospodaruj tę ciszę (sekcja 4).
+  **Rozgrzewanie NIE skraca transkrypcji — decyduje o czymś innym.** Przy `"loaded": false` pierwsza
+  transkrypcja trwa **~40 s**, bo model (~490 MB) dopiero wchodzi do pamięci. Po rozgrzaniu czas
+  spada, ale **nie stabilizuje się**: dziesięć pomiarów tego samego nagrania przez pełną ścieżkę
+  przeglądarka → `/api/voice/transcribe` → STT dało **11,8 · 13,1 · 13,4 · 15,3 · 15,5 · 18,5 ·
+  23,4 · 25,3 · 26,6 s**.
+
+  **Planuj górną granicę, nie średnią.** Zapisane wcześniej „7–8 s" (10.08) i „12–15 s" (11.08) były
+  mierzone przy mniejszym obciążeniu maszyny i obie są zbyt optymistyczne. Zagospodaruj tę ciszę
+  (sekcja 4) albo prowadź asystenta tekstem.
 
 ---
 
@@ -176,7 +181,7 @@ Tor został sprawdzony realnym nagraniem w formacie, który wysyła przeglądark
 | „Chcę wziąć urlop wypoczynkowy 20 sierpnia" | *Chcę wziąć urlop wypoczynkowy 20 sierpnia.* | 0,87 | `URLOP` · 2026-08-20 · wymaga potwierdzenia |
 | „Ile osób pracuje jutro na lotnisku" | *Ile osób pracuje jutro na lotnisku?* | 0,79 | `NIEZNANE` → odesłanie do formularza |
 
-**Zagospodaruj 12–15 sekund ciszy** (zmierzone 11.08, patrz sekcja startowa). To dużo — w milczeniu wygląda jak zawieszenie aplikacji. Zamień to w argument, mów w trakcie liczenia:
+**Zagospodaruj od 12 do 26 sekund ciszy** (10 pomiarów 11–12.08 na tym samym nagraniu: 11,8 · 13,1 · 13,4 · 15,3 · 15,5 · 18,5 · 23,4 · 25,3 · 26,6 s). Rozrzut jest duży i nieprzewidywalny — zakładaj górną granicę, nie średnią. To dużo — w milczeniu wygląda jak zawieszenie aplikacji. Zamień to w argument, mów w trakcie liczenia:
 
 > *„W tej chwili nagranie jest przetwarzane na naszym serwerze, nie w chmurze dostawcy. Te kilkanaście sekund to dokładnie cena za to, że głos pracownika nie opuszcza Waszej infrastruktury."*
 
