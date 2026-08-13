@@ -214,43 +214,76 @@ const stronaKonta = `
 </section>`
 
 /**
+ * Strona pozycjonowania. ODDZIELNA od strony przewag, bo odpowiada na inne pytanie: nie „czym
+ * jestescie lepsi" (lista dowodow), tylko „po co budujecie nowy system, skoro Comarch to ma".
+ * Na to drugie lista funkcji jest zla odpowiedzia — przegrywa sie ja w dwoch dopytaniach, bo
+ * inkumbent ma kazda wymieniona funkcje plus dwiescie innych. Argument musi byc strategiczny.
+ */
+const POZYCJONOWANIE = {
+  teza: 'Nie wygramy z Comarchem na liczbie modułów i nie zamierzam próbować. Wygrywamy na jednym: u nas granica, za którą AI nie może przejść, jest własnością architektury i pilnują jej testy — a w zatrudnieniu przestało to być wyróżnikiem marketingowym i stało się wymogiem prawa.',
+  grupy: [
+    {
+      naglowek: 'Dlaczego teraz — okno, które właśnie się otworzyło',
+      pozycje: [
+        ['Zatrudnienie jest obszarem wysokiego ryzyka wg Załącznika III rozporządzenia 2024/1689', 'sami się tak sklasyfikowaliśmy w dokumencie zgodności — dostawcy robią odwrotnie, bo klasyfikacja uruchamia obowiązki, a nie daje ich odhaczyć'],
+        ['Przydział zadań i ocena pracownika są w tym załączniku wymienione wprost', 'to nie jest interpretacja naciągnięta pod produkt — to dokładnie te dwie rzeczy, które robi nasz solver i moduł rozwoju'],
+        ['Rejestrowanie zdarzeń mamy od pierwszego dnia, nie jako moduł zgodności dokupiony później', 'append-only z dwoma wyzwalaczami bazy; u inkumbenta compliance jest warstwą nad systemem, u nas jest w systemie'],
+      ],
+    },
+    {
+      naglowek: 'Czego nie da się dorobić do istniejącego systemu',
+      pozycje: [
+        ['U nas „AI nie zapisuje” to własność kodu; u nich to pole w ustawieniach', 'żeby dać taką gwarancję, trzeba ją udowodnić o systemie, w którym ścieżki zapisu istnieją wszędzie i korzysta z nich sto innych funkcji. To nie jest funkcja do dołożenia, to jest przebudowa'],
+        ['Sprawiedliwość jako allowlist, nie denylist', 'siedem dozwolonych sygnałów i błąd na czymkolwiek spoza listy. Denylist dowodzi wyłącznie, że słowo „wiek” jest nieobecne — nie że decyzja jest wolna od wieku'],
+        ['W ścieżce o skutku prawnym świadomie NIE ma modelu językowego', 'wszyscy dokładają LLM jako dowód nowoczesności. To samo zdanie zawsze daje u nas ten sam wynik i da się to zaudytować — czego o LLM powiedzieć nie można'],
+      ],
+    },
+    {
+      naglowek: 'Decyzja produktowa, której nie podjął nikt inny',
+      pozycje: [
+        ['Propozycja idzie NAJPIERW do pracownika, dopiero potem do managera', 'z datą, miejscem, szacunkiem JEGO dojazdu i przyciskiem „Odrzuć”. Systemy kadrowe optymalizują pod tego, kto za nie płaci — a płaci pracodawca'],
+        ['Odmowa nie ma jak się nigdzie odłożyć', 'scoring czyta zamkniętą listę siedmiu sygnałów i wywala się błędem na wszystkim spoza niej; zgód ani odmów na tej liście nie ma. To jest sprawdzalne, nie obiecane'],
+        ['Koszt decyzji widoczny w momencie decyzji', 'manager widzi „praca 0 zł + dojazd 16,09 zł” ZANIM kliknie, nie w raporcie na koniec miesiąca'],
+      ],
+    },
+    {
+      naglowek: 'Dlaczego można nam wierzyć na słowo w pozostałych sprawach',
+      pozycje: [
+        ['Sami wykryliśmy, że nasz własny test był samopotwierdzający', 'krzywa 50→0 wyglądała świetnie, ale wzorzec generowała ta sama funkcja, której używa agent. Zmierzyliśmy niezależnie 96→0 w 17 rundach i opublikowaliśmy OBIE liczby'],
+        ['Sami skorygowaliśmy zbyt szeroką deklarację z KM1', 'uczenie ze wzmocnieniem zniknęło z KM2, zanim ktokolwiek o nie zapytał'],
+        ['Raport odbiorczy ma sekcję „Ograniczenia realizacji demonstracyjnej”', '§5 — wpisaliśmy tam, czego nie ma, zanim ktoś to znalazł'],
+      ],
+    },
+  ],
+  nieMowic: [
+    'że jesteśmy lepsi od Comarchu na szerokości funkcji — to zdanie przegrywa się w dwóch dopytaniach',
+    'że mamy więcej doświadczenia albo dojrzalszy produkt; nie mamy i nie musimy tego udawać',
+    'daty wejścia obowiązków AI Act z pamięci — sprawdź ją przed wejściem na salę, bo termin był przedmiotem zmian',
+  ],
+}
+
+/**
  * Strona przewag. Osobny kształt niż sekcje demo: nie ma tu URL-a ani kroków, bo to nie jest ekran
  * do pokazania, tylko odpowiedź do wypowiedzenia. Każda pozycja ma TWIERDZENIE i DOWÓD — bo pytanie
  * „czym jesteście lepsi" pada zwykle bez zapowiedzi i bez dowodu brzmi jak folder reklamowy.
  */
 const PRZEWAGI = {
-  teza: 'Konkurencja obiecuje „człowieka w pętli” w regulaminie. U nas to jest wymuszone architekturą i pilnowane testami, które padają, gdy ktoś tę granicę złamie.',
+  teza: 'Każdą z tych rzeczy da się sprawdzić w minutę — na ekranie albo w publicznym kodzie. To nie są obietnice z folderu, tylko właściwości, które ktoś może podważyć i nie podważy.',
   grupy: [
     {
-      naglowek: 'Gwarancje, których nie da się obejść przez pomyłkę',
+      naglowek: 'Pilnuje maszyna, nie regulamin',
       pozycje: [
-        ['Agent AI fizycznie nie może zmienić grafiku ani kartoteki', 'test skanuje kod modułu i szuka zapisów do zakazanych modeli; ma kontrolę pozytywną, która dowodzi, że skaner w ogóle coś wykrywa'],
-        ['Historii nie da się przepisać — pilnuje baza, nie aplikacja', 'dwa wyzwalacze na audit_log: blokada UPDATE/DELETE i blokada TRUNCATE (tę drugą dziurę większość systemów zostawia otwartą)'],
-        ['Izolacja najemców jest fizyczna, nie filtrem w zapytaniu', 'osobna baza per klient, test integracyjny na dwóch realnych bazach Postgresa'],
+        ['Historii nie da się przepisać — pilnuje baza, nie aplikacja', 'dwa wyzwalacze na audit_log: blokada UPDATE/DELETE i osobna blokada TRUNCATE. Tę drugą dziurę większość systemów zostawia otwartą'],
+        ['Izolacja najemców jest fizyczna, nie filtrem w zapytaniu', 'osobna baza per klient, test integracyjny na dwóch realnych bazach Postgresa — nie na atrapach'],
+        ['Rozpoznawanie mowy liczy się na Waszym serwerze', 'nagranie nie opuszcza Waszej infrastruktury i nie ma rozpoznawania mówcy. Kilkanaście sekund to CENA tej decyzji — mów o tym jak o argumencie'],
       ],
     },
     {
-      naglowek: 'Sprawiedliwość, która jest egzekwowalna',
+      naglowek: 'Trzy miejsca, w których system przyznaje się do niewiedzy',
       pozycje: [
-        ['Scoring widzi zamkniętą listę 7 sygnałów operacyjnych i nic więcej', 'ALLOWLIST, nie denylist — każdy nieoczekiwany klucz wywala się błędem. Denylist dowodzi tylko, że nazwa jest nieobecna'],
-        ['System przyznaje, gdy nie ma prawa oceniać', 'grupa poniżej 5 osób dostaje „wartość orientacyjna” zamiast pewnego procentu policzonego z dwóch osób'],
-        ['Gdy nie ma dobrego kandydata, AI nie proponuje nikogo', 'wiersz ESKALOWANA mówi „Brak dostępnego zastępcy — obsłuż ręcznie w Grafiku”: system woli oddać sprawę człowiekowi niż zaproponować najmniej złą osobę'],
-      ],
-    },
-    {
-      naglowek: 'Suwerenność danych jako wybór, nie ograniczenie',
-      pozycje: [
-        ['Rozpoznawanie mowy liczy się na Waszym serwerze', 'nagranie głosu nie opuszcza Waszej infrastruktury; kilkanaście sekund to CENA tej decyzji — mów o tym jak o argumencie'],
-        ['W ścieżce o skutkach prawnych nie ma modelu językowego', 'parser deterministyczny: to samo zdanie zawsze daje ten sam wynik i da się to zaudytować. LLM by zgadywał'],
-        ['Asystent mówi „nie wiem”', 'pytanie spoza zakresu odsyła do formularza zamiast wymyślać odpowiedź'],
-      ],
-    },
-    {
-      naglowek: 'Najmocniejszy wyróżnik — i najsłabiej wyeksponowany',
-      pozycje: [
-        ['Pracownik dostaje PYTANIE, nie polecenie', 'propozycja idzie NAJPIERW do pracownika, z datą, miejscem i szacunkiem JEGO dojazdu, i ma przycisk „Odrzuć”. Każdy system potrafi przepiąć zmianę — nasz pyta o zgodę, zanim to zrobi'],
-        ['Koszt decyzji widoczny w momencie decyzji', 'manager widzi „praca 0 zł + dojazd 16,09 zł” ZANIM kliknie, nie w raporcie na koniec miesiąca'],
-        ['Sami wykryliśmy, że nasz własny test był samopotwierdzający', 'krzywa 50→0 wyglądała świetnie, ale wzorzec generowała ta sama funkcja, której używa agent. Zmierzyliśmy niezależnie 96→0 w 17 rundach i opublikowaliśmy OBIE liczby'],
+        ['Za mała grupa porównawcza → „wartość orientacyjna”, nie pewny procent', 'poniżej pięciu osób system schodzi na szerszą grupę i oznacza to znakiem „~” zamiast liczyć percentyl z dwóch osób'],
+        ['Brak dopuszczalnego kandydata → „obsłuż ręcznie w Grafiku”', 'system woli oddać sprawę człowiekowi niż zaproponować najmniej złą osobę — i od razu mówi, co zrobić'],
+        ['Pytanie spoza zakresu → „nie zrozumiałem, użyj formularza”', 'asystent nie wymyśla odpowiedzi. To jedyne zachowanie, którego model językowy nie potrafi zagwarantować'],
       ],
     },
   ],
@@ -261,22 +294,32 @@ const PRZEWAGI = {
   ],
 }
 
-const stronaPrzewag = `
+/** Wspolny szkielet obu stron argumentacyjnych — rozne tresci, identyczny uklad. */
+const stronaArgumentow = (nr, tytul, podpis, dane) => `
 <section class="strona">
   <div class="pas">
-    <div class="pas-lewa"><span class="nr">★</span><span class="tytul">Czym jesteśmy lepsi od konkurencji</span></div>
-    <span class="czas">na każde pytanie</span>
+    <div class="pas-lewa"><span class="nr">${nr}</span><span class="tytul">${esc(tytul)}</span></div>
+    <span class="czas">${esc(podpis)}</span>
   </div>
-  <div class="teza">${esc(PRZEWAGI.teza)}</div>
-  ${PRZEWAGI.grupy
+  <div class="teza">${esc(dane.teza)}</div>
+  ${dane.grupy
     .map(
       (g) => `<div class="grupa"><div class="grupa-naglowek">${esc(g.naglowek)}</div>${g.pozycje
         .map((p) => `<div class="przewaga"><div class="tw">${esc(p[0])}</div><div class="dw">${esc(p[1])}</div></div>`)
         .join('')}</div>`,
     )
     .join('')}
-  <div class="ostrz"><div><b>Czego NIE mówić:</b></div>${PRZEWAGI.nieMowic.map((n) => `<div>▲ ${esc(n)}</div>`).join('')}</div>
+  <div class="ostrz"><div><b>Czego NIE mówić:</b></div>${dane.nieMowic.map((n) => `<div>▲ ${esc(n)}</div>`).join('')}</div>
 </section>`
+
+const stronaPozycjonowania = stronaArgumentow(
+  '◆',
+  'Po co nowy system, skoro jest Comarch',
+  'gdy pyta akcelerator',
+  POZYCJONOWANIE,
+)
+
+const stronaPrzewag = stronaArgumentow('★', 'Czym jesteśmy lepsi od konkurencji', 'na każde pytanie', PRZEWAGI)
 
 const strony = SEKCJE.map(
   (s) => `
@@ -370,7 +413,7 @@ const html = `<!doctype html><html lang="pl"><head><meta charset="utf-8"><title>
   .tw { font-size: 10.5pt; font-weight: 700; color: #12172b; line-height: 1.25; }
   .dw { font-size: 9pt; color: #5A6180; line-height: 1.3; margin-top: 0.5pt; }
   .mono { font-family: Consolas, "Courier New", monospace; }
-</style></head><body>${stronaKonta}${stronaPrzewag}${strony}</body></html>`
+</style></head><body>${stronaKonta}${stronaPozycjonowania}${stronaPrzewag}${strony}</body></html>`
 
 fs.writeFileSync(HTML_PATH, html, 'utf8')
 
