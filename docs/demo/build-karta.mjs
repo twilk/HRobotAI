@@ -350,6 +350,43 @@ const stronaPozycjonowania = stronaArgumentow(
 
 const stronaPrzewag = stronaArgumentow('★', 'Czym jesteśmy lepsi od konkurencji', 'na każde pytanie', PRZEWAGI)
 
+/** Dwanascie polecen — 1:1 z INTENT_CATALOG w apps/tenant-runtime/src/agent-glosowy/intent.util.ts,
+ * ktory jest JEDYNYM zrodlem prawdy (z niego generuje sie tez tresc polecenia POMOC). Gwiazdka =
+ * intencja zapisujaca: zatrzymuje sie na propozycji i czeka na „Potwierdz i wykonaj". */
+const POLECENIA = [
+  ['chcę urlop od piątku do poniedziałku', 'złożenie wniosku urlopowego', true],
+  ['zgłoś L4 na dziś', 'zgłoszenie zwolnienia lekarskiego', true],
+  ['jaki mam grafik jutro', 'sprawdzenie mojego grafiku', false],
+  ['ile mam dni urlopu', 'saldo urlopu wypoczynkowego', false],
+  ['co z moim wnioskiem', 'status ostatniego wniosku', false],
+  ['pomoc', 'lista dostępnych poleceń', false],
+  ['kto dzisiaj pracuje', 'kto dziś pracuje i kto jest nieobecny — zakres zależny od roli', false],
+  ['kiedy mam następną zmianę', 'najbliższa zmiana', false],
+  ['ile przepracowałem godzin w tym tygodniu', 'przepracowane godziny i nadwyżka ponad normę', false],
+  ['anuluj mój wniosek urlopowy', 'anulowanie najnowszego oczekującego wniosku', true],
+  ['chcę oddać zmianę w piątek', 'prośba o zamianę Twojej zmiany w danym dniu', true],
+  ['potrzebuję zastępstwa na moją zmianę w piątek', 'szukanie zastępstwa (rola kadrowa)', true],
+]
+
+const stronaPolecen = `
+<section class="strona">
+  <div class="pas">
+    <div class="pas-lewa"><span class="nr">12</span><span class="tytul">Co rozumie asystent</span></div>
+    <span class="czas">gdy pytają o zakres</span>
+  </div>
+  <div class="opis"><span class="mikro">POWIEDZ</span>Dwanaście poleceń po polsku, wszystkie w zakresie własnych spraw pracownika. Katalog jest jednym miejscem w kodzie — dołożenie polecenia to jeden wpis, nie nowy moduł. Gwiazdka oznacza polecenie zapisujące: zatrzymuje się na propozycji i czeka na „Potwierdź i wykonaj”.</div>
+  <table class="polecenia">
+    <thead><tr><th>Powiedz albo wpisz</th><th>Co zrobi</th></tr></thead>
+    <tbody>${POLECENIA.map(
+      ([fraza, skutek, zapis]) =>
+        `<tr><td class="pol-fraza">„${esc(fraza)}”${zapis ? '<span class="gw">✱</span>' : ''}</td><td class="pol-skutek">${esc(skutek)}</td></tr>`,
+    ).join('')}</tbody>
+  </table>
+  <div class="ostrz"><div class="ostrz-etyk">Gdy to samo zdanie działa tekstem, a nie działa głosem</div>
+    <div>▲ Pewności się MNOŻĄ. Rozpoznanie mowy 75% × intencja 90% = 68%, a próg wynosi 70% — więc asystent odmawia i odsyła do formularza. Tekst pomija pierwszy człon, dlatego to samo zdanie wpisane przechodzi z pewnością 90%. To nie usterka: głos dokłada własną niepewność, a my jej nie ukrywamy w ścieżce o skutku prawnym.</div>
+  </div>
+</section>`
+
 /** Jedna sekcja jako strona. `zPytaniami: false` daje wariant do trzymania w rece przy klikaniu —
  * bez strefy referencyjnej, ktora i tak sie wtedy pomija. */
 const stronaSekcji = (s, { zPytaniami = true } = {}) => `
@@ -498,6 +535,14 @@ const doc = (tytul, body) => `<!doctype html><html lang="pl"><head><meta charset
   .dw { font-size: 9pt; color: #5A6180; line-height: 1.3; margin-top: 0.5pt; }
   .mono { font-family: Consolas, "Courier New", monospace; }
 
+  .polecenia { margin: 2pt 0 9pt; }
+  .polecenia th { background: #1E2761; color: #fff; text-align: left; padding: 4pt 7pt; font-size: 9pt;
+                  letter-spacing: .3pt; }
+  .polecenia td { padding: 4.5pt 7pt; border-bottom: 0.5pt solid #D8DEF2; vertical-align: top; }
+  .pol-fraza { font-size: 10.5pt; font-weight: 700; color: #12172b; width: 54%; }
+  .pol-skutek { font-size: 10pt; color: #5A6180; }
+  .gw { color: #B8720A; font-weight: 700; margin-left: 4pt; }
+
   /* Dokument Q&A: sekcje plyna jedna za druga, ale nie lamia sie w poprzek strony. */
   .qa-sekcja { break-inside: avoid; margin-bottom: 12pt; }
   .qa-pas { border-bottom: 1.5pt solid #1E2761; padding-bottom: 3pt; margin-bottom: 7pt; }
@@ -512,11 +557,11 @@ const doc = (tytul, body) => `<!doctype html><html lang="pl"><head><meta charset
  *  - _QA         : pozycjonowanie, przewagi i wszystkie pytania — to lezy na stole  */
 const WARIANTY = [
   { plik: 'Karta_prowadzacego.pdf', tytul: 'Karta prowadzącego — pełna',
-    body: stronaKonta + stronaPozycjonowania + stronaPrzewag + stronyPelne },
+    body: stronaKonta + stronaPozycjonowania + stronaPrzewag + stronyPelne + stronaPolecen },
   { plik: 'Karta_prowadzacego_demo.pdf', tytul: 'Karta prowadzącego — przebieg demo',
-    body: stronaKonta + stronyBezPytan },
+    body: stronaKonta + stronyBezPytan + stronaPolecen },
   { plik: 'Karta_prowadzacego_QA.pdf', tytul: 'Karta prowadzącego — pytania i odpowiedzi',
-    body: stronaPozycjonowania + stronaPrzewag + stronaQA },
+    body: stronaPozycjonowania + stronaPrzewag + stronaQA + stronaPolecen },
 ]
 
 for (const w of WARIANTY) {
