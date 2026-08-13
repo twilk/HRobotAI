@@ -186,6 +186,71 @@ const stronaKonta = `
   </div>
 </section>`
 
+/**
+ * Strona przewag. Osobny kształt niż sekcje demo: nie ma tu URL-a ani kroków, bo to nie jest ekran
+ * do pokazania, tylko odpowiedź do wypowiedzenia. Każda pozycja ma TWIERDZENIE i DOWÓD — bo pytanie
+ * „czym jesteście lepsi" pada zwykle bez zapowiedzi i bez dowodu brzmi jak folder reklamowy.
+ */
+const PRZEWAGI = {
+  teza: 'Konkurencja obiecuje „człowieka w pętli” w regulaminie. U nas to jest wymuszone architekturą i pilnowane testami, które padają, gdy ktoś tę granicę złamie.',
+  grupy: [
+    {
+      naglowek: 'Gwarancje, których nie da się obejść przez pomyłkę',
+      pozycje: [
+        ['Agent AI fizycznie nie może zmienić grafiku ani kartoteki', 'test skanuje kod modułu i szuka zapisów do zakazanych modeli; ma kontrolę pozytywną, która dowodzi, że skaner w ogóle coś wykrywa'],
+        ['Historii nie da się przepisać — pilnuje baza, nie aplikacja', 'dwa wyzwalacze na audit_log: blokada UPDATE/DELETE i blokada TRUNCATE (tę drugą dziurę większość systemów zostawia otwartą)'],
+        ['Izolacja najemców jest fizyczna, nie filtrem w zapytaniu', 'osobna baza per klient, test integracyjny na dwóch realnych bazach Postgresa'],
+      ],
+    },
+    {
+      naglowek: 'Sprawiedliwość, która jest egzekwowalna',
+      pozycje: [
+        ['Scoring widzi zamkniętą listę 7 sygnałów operacyjnych i nic więcej', 'ALLOWLIST, nie denylist — każdy nieoczekiwany klucz wywala się błędem. Denylist dowodzi tylko, że nazwa jest nieobecna'],
+        ['System przyznaje, gdy nie ma prawa oceniać', 'grupa poniżej 5 osób dostaje „wartość orientacyjna” zamiast pewnego procentu policzonego z dwóch osób'],
+        ['Gdy nie ma dobrego kandydata, AI nie proponuje nikogo', 'wiersze ESKALOWANA mają „—”: system woli powiedzieć „nie znalazłem” niż zaproponować najmniej złą osobę'],
+      ],
+    },
+    {
+      naglowek: 'Suwerenność danych jako wybór, nie ograniczenie',
+      pozycje: [
+        ['Rozpoznawanie mowy liczy się na Waszym serwerze', 'nagranie głosu nie opuszcza Waszej infrastruktury; kilkanaście sekund to CENA tej decyzji — mów o tym jak o argumencie'],
+        ['W ścieżce o skutkach prawnych nie ma modelu językowego', 'parser deterministyczny: to samo zdanie zawsze daje ten sam wynik i da się to zaudytować. LLM by zgadywał'],
+        ['Asystent mówi „nie wiem”', 'pytanie spoza zakresu odsyła do formularza zamiast wymyślać odpowiedź'],
+      ],
+    },
+    {
+      naglowek: 'Najmocniejszy wyróżnik — i najsłabiej wyeksponowany',
+      pozycje: [
+        ['Pracownik dostaje PYTANIE, nie polecenie', 'propozycja idzie NAJPIERW do pracownika, z datą, miejscem i szacunkiem JEGO dojazdu, i ma przycisk „Odrzuć”. Każdy system potrafi przepiąć zmianę — nasz pyta o zgodę, zanim to zrobi'],
+        ['Koszt decyzji widoczny w momencie decyzji', 'manager widzi „praca 0 zł + dojazd 16,09 zł” ZANIM kliknie, nie w raporcie na koniec miesiąca'],
+        ['Sami wykryliśmy, że nasz własny test był samopotwierdzający', 'krzywa 50→0 wyglądała świetnie, ale wzorzec generowała ta sama funkcja, której używa agent. Zmierzyliśmy niezależnie 96→0 w 17 rundach i opublikowaliśmy OBIE liczby'],
+      ],
+    },
+  ],
+  nieMowic: [
+    '„uczenie ze wzmocnieniem” — to scorer preferencji z wsadowym re-fitem; stable_baselines3 nie jest importowany',
+    '„te liczby wyliczył silnik” na Analizie rozwoju — są wpisane',
+    'twardy odpoczynek tygodniowy 35 h i limity nadgodzin — H5 i H6 nie są zaimplementowane',
+  ],
+}
+
+const stronaPrzewag = `
+<section class="strona">
+  <div class="pas">
+    <div class="pas-lewa"><span class="nr">★</span><span class="tytul">Czym jesteśmy lepsi od konkurencji</span></div>
+    <span class="czas">na każde pytanie</span>
+  </div>
+  <div class="teza">${esc(PRZEWAGI.teza)}</div>
+  ${PRZEWAGI.grupy
+    .map(
+      (g) => `<div class="grupa"><div class="grupa-naglowek">${esc(g.naglowek)}</div>${g.pozycje
+        .map((p) => `<div class="przewaga"><div class="tw">${esc(p[0])}</div><div class="dw">${esc(p[1])}</div></div>`)
+        .join('')}</div>`,
+    )
+    .join('')}
+  <div class="ostrz"><div><b>Czego NIE mówić:</b></div>${PRZEWAGI.nieMowic.map((n) => `<div>▲ ${esc(n)}</div>`).join('')}</div>
+</section>`
+
 const strony = SEKCJE.map(
   (s) => `
 <section class="strona">
@@ -274,8 +339,16 @@ const html = `<!doctype html><html lang="pl"><head><meta charset="utf-8"><title>
   .flaga { font-size: 7.5pt; font-weight: 700; letter-spacing: 0.8pt; color: #9E2A2B; margin-bottom: 3pt; }
   .q { font-size: 10.5pt; font-weight: 700; color: #1E2761; }
   .a { font-size: 10.5pt; color: #12172b; margin-top: 2pt; line-height: 1.4; }
+  .teza { background: #1E2761; color: #fff; padding: 10pt 12pt; border-radius: 4pt; font-size: 12pt;
+          font-weight: 700; line-height: 1.3; margin: 8pt 0 9pt; }
+  .grupa { margin-bottom: 8pt; }
+  .grupa-naglowek { font-size: 8.5pt; font-weight: 700; letter-spacing: 0.8pt; color: #9BA0B5;
+                    text-transform: uppercase; margin-bottom: 4pt; }
+  .przewaga { border-left: 2.5pt solid #0C8FA3; padding: 2pt 0 2pt 8pt; margin-bottom: 4.5pt; }
+  .tw { font-size: 10.5pt; font-weight: 700; color: #12172b; line-height: 1.25; }
+  .dw { font-size: 9pt; color: #5A6180; line-height: 1.3; margin-top: 0.5pt; }
   .mono { font-family: Consolas, "Courier New", monospace; }
-</style></head><body>${stronaKonta}${strony}</body></html>`
+</style></head><body>${stronaKonta}${stronaPrzewag}${strony}</body></html>`
 
 fs.writeFileSync(HTML_PATH, html, 'utf8')
 
