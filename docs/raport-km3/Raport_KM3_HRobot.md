@@ -224,7 +224,8 @@ Co zbudowano (mapowanie na realne pliki/API):
   seed zdarzeń RCP dla podzbioru istniejących pracowników, pokrywający
   scenariusze (normalny czas, nadgodziny dobowe/średniotygodniowe, praca
   nocna/niedzielna, przypadek do ZUS, anomalie null-policy), **bez
-  naruszania kotwic demo** (36 pracowników, 832 zmiany).
+  naruszania kotwic demo** — seed jest wyłącznie addytywny i nie modyfikuje
+  ani nie usuwa żadnego istniejącego wiersza.
 
 Kryteria akceptacji: 14 kryteriów **DOK-1 … DOK-14** (SPEC §9), w całości
 odwzorowanych na realne testy w załączonej macierzy
@@ -402,8 +403,14 @@ nie był traktowany jako produkcyjny ponad swój faktyczny stan:
   parser intencji, bramka potwierdzenia i most do API --- dostępny przez
   tekst niezależnie od STT.
 - [Dane syntetyczne.]{.lbl} Wszystkie moduły działają na danych
-  demonstracyjnych/syntetycznych odwzorowujących organizację Odbiorcy;
-  kotwice demo (36 pracowników, 832 zmiany) pozostają nietknięte.
+  demonstracyjnych/syntetycznych odwzorowujących organizację Odbiorcy. Stan
+  środowiska na dzień 12.08.2026: **39 pracowników i 1558 zmian** (Serwisant
+  floty 14, Operator 14, Kierowca 7, Koordynator zmiany 4). Zestaw urósł
+  względem pierwotnych 36 pracowników i 832 zmian wyłącznie przez **addytywne**
+  seedy demonstracyjne kolejnych modułów; 12.08 ujednolicono też nazewnictwo
+  stanowiska „Recepcjonista" na „Operator" w kodzie i w danych. Wpisy
+  historyczne w dzienniku audytu zachowują starą nazwę — dziennik jest
+  append-only i historii nie przepisujemy.
 
 # 6. Wskaźnik odbioru
 

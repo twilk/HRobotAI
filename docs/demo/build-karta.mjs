@@ -59,6 +59,8 @@ const SEKCJE = [
        'Bo nazwy są źle dobrane i nie ma tu dobrej wymówki. Merytorycznie to dwie różne rzeczy — Analityk HR to operacyjny pulpit KPI, Analiza rozwoju to moduł KM3 z czterema wymiarami i trajektorią — ale użytkownik tego z samych nazw nie odczyta. Do poprawy.', 'slaby'],
       ['Czy te liczby wyliczył Wasz algorytm, czy ktoś je wpisał?',
        'Wpisane. Dane demo są syntetyczne i snapshoty też — cały zestaw ma jeden znacznik czasu, więc nie udawaj, że to wynik przebiegu. Silnik, percentyle i wagi są prawdziwe i otestowane, ale liczby na tym ekranie z niego nie wyszły.', 'slaby'],
+      ['A gdzie są ankiety pracownicze i analiza dobrostanu? Harmonogram wymienia je przy Analityku HR.',
+       'Nie ma ich w tej wersji — ani ekranu, ani danych; to, co pokazuję, pracuje na sygnałach operacyjnych i tak zgłaszamy zakres. Nie zasłaniaj tego danymi testowymi ani stagingiem: brak modułu to nie brak danych.', 'slaby'],
     ],
     ostrzezenia: [
       'Pierwsze wejście liczy ~8 s — miej otwarte w drugiej karcie.',
