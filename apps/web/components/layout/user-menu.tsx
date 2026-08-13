@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { IconUser, IconLogout } from '@/components/icons'
+import { IconUser, IconCalendar, IconLogout } from '@/components/icons'
 import { logout } from '@/lib/auth-actions'
 
 export interface UserMenuProps {
@@ -82,6 +82,19 @@ export function UserMenu({ name, role, initials }: UserMenuProps) {
           >
             <IconUser className="w-[16px] h-[16px] text-muted" />
             Mój profil
+          </Link>
+          {/* Zakres osobisty, dlatego TU, a nie w sidebarze: sidebar jest zorganizowany modułami HR,
+              a `/moj-tydzien` nie jest modułem — to osobisty widok na Grafik i Wnioski. Bez bramki
+              ról, bo ekran sam obsługuje konto bez kartoteki pracownika (mobile-week.tsx, gałąź
+              `me === null`) i tłumaczy to zamiast pokazywać pustkę albo błąd. */}
+          <Link
+            href="/moj-tydzien"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-ink hover:bg-canvas transition-colors"
+          >
+            <IconCalendar className="w-[16px] h-[16px] text-muted" />
+            Mój tydzień
           </Link>
           <form action={logout} className="border-t border-line">
             <button
