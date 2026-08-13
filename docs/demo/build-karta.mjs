@@ -84,7 +84,7 @@ const SEKCJE = [
       ['KM1 mówi o „uczeniu ze wzmocnieniem”. To jest RL?',
        'Nie jest i nie próbuj tego bronić. To uczący się scorer preferencji z wsadowym re-fitem — Stable-Baselines3 nie jest importowany w żadnym module. Sformułowanie w KM1 było zbyt szerokie; KM2, czyli raport odbiorczy, RL już nie deklaruje.', 'slaby'],
     ],
-    ostrzezenia: ['Wiersze „ESKALOWANA” mają „—” w decyzji: system nie znalazł nikogo spełniającego twarde reguły i świadomie nie proponuje nikogo na siłę.'],
+    ostrzezenia: ['Wiersz „ESKALOWANA” bez kandydata pokazuje „Brak dostępnego zastępcy — obsłuż ręcznie w Grafiku”. To nie usterka: nikt nie spełnia twardych reguł, a system świadomie nie proponuje nikogo na siłę i od razu mówi, co masz zrobić.'],
   },
   {
     nr: '3c', tytul: 'Pracownik dostaje PYTANIE, nie polecenie', czas: '1,5 min',
