@@ -61,8 +61,45 @@ Zaloguj jako `demo`.
 
 - **Dashboard** — 39 pracowników, 1558 zaplanowanych zmian, 3 jednostki, panel RODO (DB-per-tenant, PESEL AES-256-GCM, append-only audit).
 - **Grafik** (`/grafik`) — bieżący tydzień: 52 zmiany / 38 zapotrzebowań, siatka pracownik × dzień, filtr jednostek. *Talking point:* solver CP-SAT pilnuje twardo pokrycia, braku nakładania, urlopów i 11 h odpoczynku dobowego (K.p. art. 132).
-- **Analityk HR** (`/analityk`) — sekcja „Na co zwrócić uwagę": skok absencji (+4,1 p.p.) i rosnąca kolejka wniosków, liczone na żywych danych, z proweniencją przy każdej liczbie („liczone" vs „planowane?"). Zjedź niżej — wykres nadwyżek pokazuje **imiona i nazwiska**, więc widać z kim rozmawiać.
 - **Dokumenty** (`/dokumenty`) — Ewidencja czasu pracy, Anna Kowalska, 13–19.07.2026 → **Generuj dokument** → nowy wpis „DO ZATWIERDZENIA". *Talking point:* „HRobot liczy ewidencję, nadgodziny i szkielet ZUS, ale niczego nie wysyła — każdy dokument o skutku prawnym zatwierdza człowiek (RODO art. 22)."
+
+### 2d. Analityk HR — kadry w liczbach (3 min)
+
+Menu → **„Analityk HR"**. To operacyjny pulpit wskaźników: zatrudnienie, absencje, czas pracy,
+wykorzystanie urlopów i przepustowość wniosków, w pięciu grupach wykresów. **Nie myl go z „Analizą
+rozwoju"** — tamten ekran (2e) ocenia pojedyncze osoby, ten pokazuje zespoły w agregacie.
+
+Cztery rzeczy do pokazania, w tej kolejności:
+
+1. **Sześć kafli u góry** — 39 os. · absencja 7,7% · 1376 h · nadwyżka ponad normę 68 h · 11 wniosków
+   w toku · mediana czasu do decyzji 0 h. Każdy z porównaniem do poprzedniego okresu.
+2. **„Na co zwrócić uwagę"** — sygnały porównawcze z wagą, nie surowe tabelki: *„Skok absencji —
+   wskaźnik wzrósł o 3,2 p.p., z 4,5 na 7,7"* (waga Wysoka) oraz *„Wzrost nadwyżki ponad normę o
+   55,6 h"* (Średnia). Pod spodem stoi zdanie: *„moduł wyłącznie obserwuje i nie podejmuje żadnych
+   działań kadrowych"*.
+3. **Proweniencja pod każdym kaflem** — wskaż podpis: każdy podaje **źródło** i **rodzaj** liczby:
+   `liczone`, `planowane` albo `odtwarzane`. **Najedź na „Nadwyżka ponad normę"** — podpowiedź
+   przyznaje wprost, że wskaźnik **zaniża** nadgodziny ustawowe w pracy zmianowej, bo stosuje
+   wyłącznie normę tygodniową, a art. 151 §1 K.p. zna też normę dobową.
+4. **Zawężenie zakresu na żywo** — wyloguj, zaloguj jako `manager.demo`, wróć na `/analityk`.
+   **Ten sam ekran pokazuje 14 osób zamiast 39 i 496 h zamiast 1376**, a **filtr jednostek w ogóle
+   nie istnieje** — bo manager nie ma czego przełączać.
+
+> *„Każdy kafel mówi, skąd wzięła się liczba i czego nie obejmuje. Ten tutaj sam ostrzega, że nie są
+> to nadgodziny w rozumieniu Kodeksu pracy i że w pracy zmianowej je zaniża. Nie znam drugiego
+> systemu kadrowego, który ostrzega przed własnym wskaźnikiem."*
+
+**Uwaga na słowa:** nie nazywaj „Nadwyżki ponad normę" nadgodzinami. Ekran broni się sam, ale jeśli
+sam użyjesz złego słowa, ktoś z kadr wychwyci to natychmiast.
+
+**Jeśli ktoś zapyta o medianę 0 h** — w danych demo wnioski rozstrzygano tego samego dnia. Powiedz to
+wprost, zamiast szukać wyjaśnienia na żywo.
+
+**Wisienka (15 s):** wejdź na ten sam adres jako `pracownik.demo`. Anna dostaje **uprzejmą odmowę** —
+*„Zbiorcze wskaźniki kadrowe są dostępne dla działu HR, administratora i kierowników jednostek. Swoje
+własne dane znajdziesz w zakładkach Grafik oraz Wnioski"* — a nie surowy komunikat błędu.
+
+---
 
 ### 2e. ⭐ Strategiczny mózg kadrowy — moduł rozliczany w KM3 (3 min)
 

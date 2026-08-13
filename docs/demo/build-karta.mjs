@@ -77,7 +77,7 @@ const SEKCJE = [
   {
     nr: '2e', tytul: 'Strategiczny mózg kadrowy — moduł KM3', czas: '3 min',
     url: '/analiza  (menu: „Analiza rozwoju”)', konto: 'demo / demo-staging-2026',
-    opis: 'Warstwa strategiczna nad grafikiem: ciągła ocena czterech wymiarów, trajektoria w czasie, sygnały retencji i rekomendacje rekrutacji. Ten sam adres daje trzy różne zakresy — administrator i HR widzą wszystkie 39 osób, manager 14 ze swoich jednostek, a pracownik wyłącznie własną kartę. To nie jest grafik ani raport z KPI; to odpowiedź na pytanie, kto zaraz odejdzie.',
+    opis: 'Warstwa strategiczna nad grafikiem: cztery wymiary, trajektoria, sygnały retencji i rekomendacje rekrutacji. Ten sam adres, trzy zakresy — administrator i HR widzą 39 osób, manager 14 ze swoich jednostek, pracownik tylko własną.',
     kroki: [
       ['Menu → <b>„Analiza rozwoju”</b>', 'ekran policzony wcześniej w drugiej karcie'],
       ['Pokaż <b>Mapę wydajności</b> — <b>39 osób</b>', 'cała firma, nie próbka'],
@@ -362,18 +362,19 @@ const strony = SEKCJE.map(
     <div><span class="etyk">KONTO</span><span class="mono url">${esc(s.konto)}</span></div>
   </div>
 
-  ${s.opis ? `<div class="opis">${esc(s.opis)}</div>` : ''}
+  <div class="sciezka">
+    <div class="sciezka-etyk">To przejdź po kolei</div>
+    ${s.opis ? `<div class="opis"><span class="mikro">NA WEJŚCIU POWIEDZ</span>${esc(s.opis)}</div>` : ''}
+    <ol class="kroki">
+      ${s.kroki.map(([akcja, efekt]) => `<li><div class="akcja">${akcja}</div><div class="efekt">${esc(efekt)}</div></li>`).join('')}
+    </ol>
+    <div class="pointa"><span class="pointa-etyk">NA KONIEC POWIEDZ</span>${esc(s.pointa)}</div>
+  </div>
 
-  <ol class="kroki">
-    ${s.kroki.map(([akcja, efekt]) => `<li><div class="akcja">${akcja}</div><div class="efekt">${esc(efekt)}</div></li>`).join('')}
-  </ol>
-
-  <div class="pointa"><span class="pointa-etyk">POWIEDZ</span>${esc(s.pointa)}</div>
-
-  ${s.ostrzezenia.length ? `<div class="ostrz">${s.ostrzezenia.map((o) => `<div>▲ ${esc(o)}</div>`).join('')}</div>` : ''}
+  ${s.ostrzezenia.length ? `<div class="ostrz"><div class="ostrz-etyk">Przeczytaj, zanim zaczniesz</div>${s.ostrzezenia.map((o) => `<div>▲ ${esc(o)}</div>`).join('')}</div>` : ''}
 
   <div class="pytania">
-    <div class="pyt-naglowek">Jeśli padnie pytanie</div>
+    <div class="pyt-naglowek">Pomiń — sięgnij tu tylko, gdy padnie pytanie</div>
     ${s.pytania
       .map(([q, a]) => `<div class="qa"><div class="q">${esc(q)}</div><div class="a">${esc(a)}</div></div>`)
       .join('')}
@@ -417,27 +418,52 @@ const html = `<!doctype html><html lang="pl"><head><meta charset="utf-8"><title>
   .etyk { font-size: 8pt; font-weight: 700; letter-spacing: 1pt; color: #9BA0B5; margin-right: 6pt; }
   .url { font-size: 12.5pt; font-weight: 700; color: #12172b; }
 
-  /* Wprowadzenie do ekranu — do POWIEDZENIA, nie do klikania. Odrozniamy je od krokow lewa
-     kreska i kolorem, zeby oko w trakcie mowienia nie mylilo go z lista akcji. */
-  .opis { font-size: 10pt; color: #3C4260; line-height: 1.4; margin: -3pt 0 11pt;
-          border-left: 2.5pt solid #0C8FA3; padding-left: 9pt; }
+  /* TRZY POZIOMY, rozpoznawalne bez czytania:
+     1. .sciezka — jasne tlo + gruby granatowy grzbiet = to sie przechodzi po kolei;
+     2. .ostrz   — bursztyn = przeczytaj ZANIM zaczniesz;
+     3. .pytania — szarosc i wcieta ramka = pomijasz, chyba ze ktos zapyta.
+     Kolor niesie tu znaczenie, ale nie jest jedynym nosnikiem — kazdy blok ma tez etykiete
+     slowna, bo karte drukuje sie czasem mono i oglada w zlym swietle. */
+  .sciezka { background: #F6F8FE; border-left: 4pt solid #1E2761; border-radius: 0 4pt 4pt 0;
+             padding: 6pt 9pt 7pt; margin-bottom: 8pt; }
+  .sciezka-etyk { font-size: 7.5pt; font-weight: 700; letter-spacing: 1.2pt; text-transform: uppercase;
+                  color: #1E2761; margin-bottom: 5pt; }
+  /* Inline, NIE blokowo: etykieta plynie w pierwszej linii akapitu, wiec niesie znaczenie
+     za darmo — blokowa kosztowalaby ~10 px na kazdej z osmiu sekcji. */
+  .mikro { font-size: 7pt; font-weight: 700; letter-spacing: 1pt; text-transform: uppercase;
+           color: #0C8FA3; margin-right: 5pt; }
 
-  .kroki { margin: 0 0 12pt; padding-left: 20pt; }
-  .kroki li { margin-bottom: 8pt; }
+  /* Wprowadzenie do ekranu — do POWIEDZENIA, nie do klikania. */
+  .opis { font-size: 10pt; color: #3C4260; line-height: 1.38; margin: 0 0 8pt;
+          border-left: 2.5pt solid #0C8FA3; padding-left: 8pt; }
+
+  /* Numery krokow jako wypelnione kolka — oko lapie sekwencje bez czytania tresci.
+     Pozycjonowane bezwzglednie, wiec nie dokladaja ani jednego punktu wysokosci. */
+  .kroki { margin: 0 0 9pt; padding-left: 21pt; list-style: none; counter-reset: krok; }
+  .kroki li { margin-bottom: 5pt; position: relative; counter-increment: krok; }
+  .kroki li::before { content: counter(krok); position: absolute; left: -21pt; top: 1pt;
+                      width: 14pt; height: 14pt; border-radius: 7pt; background: #1E2761; color: #fff;
+                      font-size: 8.5pt; font-weight: 700; text-align: center; line-height: 14pt; }
   .akcja { font-size: 12pt; }
   .efekt { font-size: 10pt; color: #5A6180; margin-top: 1pt; }
 
-  .pointa { background: #1E2761; color: #fff; padding: 10pt 12pt; border-radius: 4pt;
-            font-size: 12.5pt; font-weight: 700; line-height: 1.35; }
-  .pointa-etyk { display: block; font-size: 8pt; letter-spacing: 1.5pt; color: #CADCFC;
-                 font-weight: 700; margin-bottom: 3pt; }
+  .pointa { background: #1E2761; color: #fff; padding: 8pt 11pt; border-radius: 4pt;
+            font-size: 12.5pt; font-weight: 700; line-height: 1.32; }
+  .pointa-etyk { display: block; font-size: 7.5pt; letter-spacing: 1.5pt; color: #CADCFC;
+                 font-weight: 700; margin-bottom: 2pt; }
 
-  .ostrz { margin-top: 10pt; border-left: 3pt solid #B8720A; background: #FBF3E7;
-           padding: 7pt 10pt; font-size: 10pt; }
+  .ostrz { margin-top: 0; border-left: 4pt solid #B8720A; background: #FBF3E7;
+           border-radius: 0 4pt 4pt 0; padding: 6pt 9pt; font-size: 10pt; }
+  .ostrz-etyk { font-size: 7.5pt; font-weight: 700; letter-spacing: 1.2pt; text-transform: uppercase;
+                color: #B8720A; margin-bottom: 4pt; }
 
-  .pytania { margin-top: 13pt; border-top: 1pt solid #D8DEF2; padding-top: 9pt; }
-  .pyt-naglowek { font-size: 8.5pt; font-weight: 700; letter-spacing: 1pt; color: #9BA0B5; margin-bottom: 7pt; }
-  .qa { margin-bottom: 7pt; break-inside: avoid; }
+  /* Strefa referencyjna: wcieta, wyszarzona, bez ramki od gory — ma wygladac na cofnieta
+     o krok wzgledem sciezki, zeby wzrok w trakcie mowienia sam ja omijal. */
+  .pytania { margin-top: 9pt; background: #F4F5F8; border: 0.75pt solid #E2E5EE;
+             border-radius: 4pt; padding: 6pt 9pt 3pt; }
+  .pyt-naglowek { font-size: 7.5pt; font-weight: 700; letter-spacing: 1.2pt; text-transform: uppercase;
+                  color: #8B90A4; margin-bottom: 6pt; }
+  .qa { margin-bottom: 5pt; break-inside: avoid; }
   .q { font-size: 10.5pt; font-weight: 700; color: #1E2761; }
   .a { font-size: 10.5pt; color: #12172b; margin-top: 2pt; line-height: 1.4; }
   .teza { background: #1E2761; color: #fff; padding: 10pt 12pt; border-radius: 4pt; font-size: 12pt;

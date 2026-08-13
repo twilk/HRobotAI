@@ -34,27 +34,52 @@
   .etyk { font-size: 8pt; font-weight: 700; letter-spacing: 1pt; color: #9BA0B5; margin-right: 6pt; }
   .url { font-size: 12.5pt; font-weight: 700; color: #12172b; }
 
-  /* Wprowadzenie do ekranu — do POWIEDZENIA, nie do klikania. Odrozniamy je od krokow lewa
-     kreska i kolorem, zeby oko w trakcie mowienia nie mylilo go z lista akcji. */
-  .opis { font-size: 10pt; color: #3C4260; line-height: 1.4; margin: -3pt 0 11pt;
-          border-left: 2.5pt solid #0C8FA3; padding-left: 9pt; }
+  /* TRZY POZIOMY, rozpoznawalne bez czytania:
+     1. .sciezka — jasne tlo + gruby granatowy grzbiet = to sie przechodzi po kolei;
+     2. .ostrz   — bursztyn = przeczytaj ZANIM zaczniesz;
+     3. .pytania — szarosc i wcieta ramka = pomijasz, chyba ze ktos zapyta.
+     Kolor niesie tu znaczenie, ale nie jest jedynym nosnikiem — kazdy blok ma tez etykiete
+     slowna, bo karte drukuje sie czasem mono i oglada w zlym swietle. */
+  .sciezka { background: #F6F8FE; border-left: 4pt solid #1E2761; border-radius: 0 4pt 4pt 0;
+             padding: 6pt 9pt 7pt; margin-bottom: 8pt; }
+  .sciezka-etyk { font-size: 7.5pt; font-weight: 700; letter-spacing: 1.2pt; text-transform: uppercase;
+                  color: #1E2761; margin-bottom: 5pt; }
+  /* Inline, NIE blokowo: etykieta plynie w pierwszej linii akapitu, wiec niesie znaczenie
+     za darmo — blokowa kosztowalaby ~10 px na kazdej z osmiu sekcji. */
+  .mikro { font-size: 7pt; font-weight: 700; letter-spacing: 1pt; text-transform: uppercase;
+           color: #0C8FA3; margin-right: 5pt; }
 
-  .kroki { margin: 0 0 12pt; padding-left: 20pt; }
-  .kroki li { margin-bottom: 8pt; }
+  /* Wprowadzenie do ekranu — do POWIEDZENIA, nie do klikania. */
+  .opis { font-size: 10pt; color: #3C4260; line-height: 1.38; margin: 0 0 8pt;
+          border-left: 2.5pt solid #0C8FA3; padding-left: 8pt; }
+
+  /* Numery krokow jako wypelnione kolka — oko lapie sekwencje bez czytania tresci.
+     Pozycjonowane bezwzglednie, wiec nie dokladaja ani jednego punktu wysokosci. */
+  .kroki { margin: 0 0 9pt; padding-left: 21pt; list-style: none; counter-reset: krok; }
+  .kroki li { margin-bottom: 5pt; position: relative; counter-increment: krok; }
+  .kroki li::before { content: counter(krok); position: absolute; left: -21pt; top: 1pt;
+                      width: 14pt; height: 14pt; border-radius: 7pt; background: #1E2761; color: #fff;
+                      font-size: 8.5pt; font-weight: 700; text-align: center; line-height: 14pt; }
   .akcja { font-size: 12pt; }
   .efekt { font-size: 10pt; color: #5A6180; margin-top: 1pt; }
 
-  .pointa { background: #1E2761; color: #fff; padding: 10pt 12pt; border-radius: 4pt;
-            font-size: 12.5pt; font-weight: 700; line-height: 1.35; }
-  .pointa-etyk { display: block; font-size: 8pt; letter-spacing: 1.5pt; color: #CADCFC;
-                 font-weight: 700; margin-bottom: 3pt; }
+  .pointa { background: #1E2761; color: #fff; padding: 8pt 11pt; border-radius: 4pt;
+            font-size: 12.5pt; font-weight: 700; line-height: 1.32; }
+  .pointa-etyk { display: block; font-size: 7.5pt; letter-spacing: 1.5pt; color: #CADCFC;
+                 font-weight: 700; margin-bottom: 2pt; }
 
-  .ostrz { margin-top: 10pt; border-left: 3pt solid #B8720A; background: #FBF3E7;
-           padding: 7pt 10pt; font-size: 10pt; }
+  .ostrz { margin-top: 0; border-left: 4pt solid #B8720A; background: #FBF3E7;
+           border-radius: 0 4pt 4pt 0; padding: 6pt 9pt; font-size: 10pt; }
+  .ostrz-etyk { font-size: 7.5pt; font-weight: 700; letter-spacing: 1.2pt; text-transform: uppercase;
+                color: #B8720A; margin-bottom: 4pt; }
 
-  .pytania { margin-top: 13pt; border-top: 1pt solid #D8DEF2; padding-top: 9pt; }
-  .pyt-naglowek { font-size: 8.5pt; font-weight: 700; letter-spacing: 1pt; color: #9BA0B5; margin-bottom: 7pt; }
-  .qa { margin-bottom: 7pt; break-inside: avoid; }
+  /* Strefa referencyjna: wcieta, wyszarzona, bez ramki od gory — ma wygladac na cofnieta
+     o krok wzgledem sciezki, zeby wzrok w trakcie mowienia sam ja omijal. */
+  .pytania { margin-top: 9pt; background: #F4F5F8; border: 0.75pt solid #E2E5EE;
+             border-radius: 4pt; padding: 6pt 9pt 3pt; }
+  .pyt-naglowek { font-size: 7.5pt; font-weight: 700; letter-spacing: 1.2pt; text-transform: uppercase;
+                  color: #8B90A4; margin-bottom: 6pt; }
+  .qa { margin-bottom: 5pt; break-inside: avoid; }
   .q { font-size: 10.5pt; font-weight: 700; color: #1E2761; }
   .a { font-size: 10.5pt; color: #12172b; margin-top: 2pt; line-height: 1.4; }
   .teza { background: #1E2761; color: #fff; padding: 10pt 12pt; border-radius: 4pt; font-size: 12pt;
@@ -120,18 +145,19 @@
     <div><span class="etyk">KONTO</span><span class="mono url">demo / demo-staging-2026</span></div>
   </div>
 
-  <div class="opis">Trzy ekrany w jednym przejściu: pulpit z twardymi liczbami, siatka grafiku na tydzień i wygenerowanie dokumentu kadrowego. Administrator klienta i HR widzą całą firmę; manager to samo, ale policzone wyłącznie dla swoich jednostek.</div>
+  <div class="sciezka">
+    <div class="sciezka-etyk">To przejdź po kolei</div>
+    <div class="opis"><span class="mikro">NA WEJŚCIU POWIEDZ</span>Trzy ekrany w jednym przejściu: pulpit z twardymi liczbami, siatka grafiku na tydzień i wygenerowanie dokumentu kadrowego. Administrator klienta i HR widzą całą firmę; manager to samo, ale policzone wyłącznie dla swoich jednostek.</div>
+    <ol class="kroki">
+      <li><div class="akcja">Wejdź na <b>/dashboard</b></div><div class="efekt">39 pracowników · 1558 zmian · 3 jednostki · panel ochrony danych</div></li><li><div class="akcja">Wejdź na <b>/grafik</b></div><div class="efekt">siatka tygodnia, 52 zmiany / 38 zapotrzebowań</div></li><li><div class="akcja"><b>/dokumenty</b> → Anna Kowalska, 13–19.07.2026 → „Generuj dokument”</div><div class="efekt">nowy wpis „DO ZATWIERDZENIA”</div></li>
+    </ol>
+    <div class="pointa"><span class="pointa-etyk">NA KONIEC POWIEDZ</span>HRobot liczy ewidencję, nadgodziny i szkielet ZUS — ale niczego nie wysyła. Każdy dokument o skutku prawnym zatwierdza człowiek.</div>
+  </div>
 
-  <ol class="kroki">
-    <li><div class="akcja">Wejdź na <b>/dashboard</b></div><div class="efekt">39 pracowników · 1558 zmian · 3 jednostki · panel ochrony danych</div></li><li><div class="akcja">Wejdź na <b>/grafik</b></div><div class="efekt">siatka tygodnia, 52 zmiany / 38 zapotrzebowań</div></li><li><div class="akcja"><b>/dokumenty</b> → Anna Kowalska, 13–19.07.2026 → „Generuj dokument”</div><div class="efekt">nowy wpis „DO ZATWIERDZENIA”</div></li>
-  </ol>
-
-  <div class="pointa"><span class="pointa-etyk">POWIEDZ</span>HRobot liczy ewidencję, nadgodziny i szkielet ZUS — ale niczego nie wysyła. Każdy dokument o skutku prawnym zatwierdza człowiek.</div>
-
-  <div class="ostrz"><div>▲ NIE klikaj „Generuj grafik” — re-solve kasuje zaseedowaną zamianę demo.</div></div>
+  <div class="ostrz"><div class="ostrz-etyk">Przeczytaj, zanim zaczniesz</div><div>▲ NIE klikaj „Generuj grafik” — re-solve kasuje zaseedowaną zamianę demo.</div></div>
 
   <div class="pytania">
-    <div class="pyt-naglowek">Jeśli padnie pytanie</div>
+    <div class="pyt-naglowek">Pomiń — sięgnij tu tylko, gdy padnie pytanie</div>
     <div class="qa"><div class="q">Czy grafik gwarantuje odpoczynek tygodniowy 35 h i limity nadgodzin?</div><div class="a">Nie te dwie. Twardo egzekwowane są cztery: kwalifikacja, brak kolizji, zatwierdzone nieobecności i 11 h odpoczynku dobowego. Powód jest architektoniczny, nie organizacyjny — grafik liczy się w horyzoncie jednego tygodnia, a 35-godzinnej przerwy rozliczanej w sposób ciągły nie da się w takim horyzoncie wyrazić. Solver dziś ku niej popycha, premiując dwa dni wolne w tygodniu, ale nie nazywam tego gwarancją.</div></div><div class="qa"><div class="q">Dlaczego pokazujesz to na osobnym środowisku, a nie na naszym wdrożeniu?</div><div class="a">Bo na sali nie wolno mi wyświetlić danych osobowych Waszych pracowników — nazwisk, grafików ani ewidencji czasu pracy. Kod i moduły są te same, różnią się wyłącznie dane. Każdy najemca ma własną bazę, więc izolacja jest fizyczna, a nie filtrem w zapytaniu: nic z tego pokazu nie ma jak dotknąć Waszego środowiska.</div></div><div class="qa"><div class="q">Co z naszej wspólnej pracy wchodzi do rozliczenia KM3?</div><div class="a">Trzy moduły: Dokumenty z ewidencją i szkieletem ZUS, Analiza rozwoju z czterema wymiarami i trajektorią, oraz Agent Głosowy z dwunastoma poleceniami po polsku. To sekcje 3.1, 3.2 i 3.3 raportu, a sam wskaźnik odbioru opisuje sekcja 6.</div></div>
   </div>
 </section>
@@ -145,18 +171,19 @@
     <div><span class="etyk">KONTO</span><span class="mono url">demo / demo-staging-2026</span></div>
   </div>
 
-  <div class="opis">Operacyjny pulpit wskaźników kadrowych: zatrudnienie, absencje, czas pracy, wykorzystanie urlopów i przepustowość wniosków, w pięciu grupach wykresów. Dostęp mają HR, administrator klienta i manager. Manager widzi te same wskaźniki policzone tylko dla swoich jednostek — i nie ma filtra jednostek, bo nie ma czego przełączać. Pracownik dostaje uprzejmą odmowę z odesłaniem do własnych ekranów, nie komunikat błędu.</div>
+  <div class="sciezka">
+    <div class="sciezka-etyk">To przejdź po kolei</div>
+    <div class="opis"><span class="mikro">NA WEJŚCIU POWIEDZ</span>Operacyjny pulpit wskaźników kadrowych: zatrudnienie, absencje, czas pracy, wykorzystanie urlopów i przepustowość wniosków, w pięciu grupach wykresów. Dostęp mają HR, administrator klienta i manager. Manager widzi te same wskaźniki policzone tylko dla swoich jednostek — i nie ma filtra jednostek, bo nie ma czego przełączać. Pracownik dostaje uprzejmą odmowę z odesłaniem do własnych ekranów, nie komunikat błędu.</div>
+    <ol class="kroki">
+      <li><div class="akcja">Menu → <b>„Analityk HR”</b></div><div class="efekt">sześć kafli: 39 os. · absencja 7,7% · 1376 h · nadwyżka 68 h · 11 wniosków · mediana 0 h</div></li><li><div class="akcja">Pokaż <b>„Na co zwrócić uwagę”</b> u góry</div><div class="efekt">sygnały porównawcze z wagą: „Skok absencji — wzrost o 3,2 p.p.” (Wysoka)</div></li><li><div class="akcja">Wskaż podpis pod dowolnym kaflem</div><div class="efekt">każdy podaje ŹRÓDŁO i rodzaj: „liczone”, „planowane” albo „odtwarzane”</div></li><li><div class="akcja">Najedź na kafel <b>„Nadwyżka ponad normę”</b></div><div class="efekt">podpowiedź przyznaje, że wskaźnik ZANIŻA nadgodziny ustawowe w pracy zmianowej</div></li><li><div class="akcja">Wyloguj, zaloguj jako <b>manager.demo</b> → <b>/analityk</b></div><div class="efekt">ten sam ekran, ale 14 os. zamiast 39 i BRAK filtra jednostek</div></li>
+    </ol>
+    <div class="pointa"><span class="pointa-etyk">NA KONIEC POWIEDZ</span>Każdy kafel mówi, skąd wzięła się liczba i czego NIE obejmuje. „Nadwyżka ponad normę” sama ostrzega, że nie są to nadgodziny w rozumieniu Kodeksu pracy i że zaniża je w pracy zmianowej. Nie znam drugiego systemu kadrowego, który ostrzega przed własnym wskaźnikiem.</div>
+  </div>
 
-  <ol class="kroki">
-    <li><div class="akcja">Menu → <b>„Analityk HR”</b></div><div class="efekt">sześć kafli: 39 os. · absencja 7,7% · 1376 h · nadwyżka 68 h · 11 wniosków · mediana 0 h</div></li><li><div class="akcja">Pokaż <b>„Na co zwrócić uwagę”</b> u góry</div><div class="efekt">sygnały porównawcze z wagą: „Skok absencji — wzrost o 3,2 p.p.” (Wysoka)</div></li><li><div class="akcja">Wskaż podpis pod dowolnym kaflem</div><div class="efekt">każdy podaje ŹRÓDŁO i rodzaj: „liczone”, „planowane” albo „odtwarzane”</div></li><li><div class="akcja">Najedź na kafel <b>„Nadwyżka ponad normę”</b></div><div class="efekt">podpowiedź przyznaje, że wskaźnik ZANIŻA nadgodziny ustawowe w pracy zmianowej</div></li><li><div class="akcja">Wyloguj, zaloguj jako <b>manager.demo</b> → <b>/analityk</b></div><div class="efekt">ten sam ekran, ale 14 os. zamiast 39 i BRAK filtra jednostek</div></li>
-  </ol>
-
-  <div class="pointa"><span class="pointa-etyk">POWIEDZ</span>Każdy kafel mówi, skąd wzięła się liczba i czego NIE obejmuje. „Nadwyżka ponad normę” sama ostrzega, że nie są to nadgodziny w rozumieniu Kodeksu pracy i że zaniża je w pracy zmianowej. Nie znam drugiego systemu kadrowego, który ostrzega przed własnym wskaźnikiem.</div>
-
-  <div class="ostrz"><div>▲ NIE nazywaj „Nadwyżki ponad normę” nadgodzinami. Ekran sam się przed tym broni, ale ktoś z kadr wychwyci to natychmiast, jeśli sam użyjesz złego słowa.</div><div>▲ „Mediana czasu do decyzji” pokazuje 0 h — w danych demo wnioski rozstrzygano tego samego dnia. Jeśli ktoś zapyta, powiedz to wprost, zamiast szukać wyjaśnienia na żywo.</div></div>
+  <div class="ostrz"><div class="ostrz-etyk">Przeczytaj, zanim zaczniesz</div><div>▲ NIE nazywaj „Nadwyżki ponad normę” nadgodzinami. Ekran sam się przed tym broni, ale ktoś z kadr wychwyci to natychmiast, jeśli sam użyjesz złego słowa.</div><div>▲ „Mediana czasu do decyzji” pokazuje 0 h — w danych demo wnioski rozstrzygano tego samego dnia. Jeśli ktoś zapyta, powiedz to wprost, zamiast szukać wyjaśnienia na żywo.</div></div>
 
   <div class="pytania">
-    <div class="pyt-naglowek">Jeśli padnie pytanie</div>
+    <div class="pyt-naglowek">Pomiń — sięgnij tu tylko, gdy padnie pytanie</div>
     <div class="qa"><div class="q">Dlaczego są dwa podobne ekrany — „Analityk HR” i „Analiza rozwoju”?</div><div class="a">To dwie różne rzeczy: tutaj operacyjny pulpit KPI dla całych zespołów, a „Analiza rozwoju” to moduł KM3 z czterema wymiarami i trajektorią pojedynczych osób. Z samych nazw użytkownik tego nie odczyta i nie mam na to wymówki. Zmiana nazwy jest w backlogu — nie dotyka ani danych, ani uprawnień.</div></div><div class="qa"><div class="q">Czy manager może podejrzeć wskaźniki spoza swoich jednostek?</div><div class="a">Nie ma jak — zakres tnie serwer, nie interfejs: manager widzi 14 osób i 496 godzin tam, gdzie administrator widzi 39 i 1376. Filtr jednostek u managera po prostu nie istnieje, bo nie miałby czego przełączać.</div></div><div class="qa"><div class="q">Czy „Nadwyżka ponad normę” to nasze nadgodziny do wypłaty?</div><div class="a">Nie i ekran mówi to sam. Liczymy wyłącznie normę tygodniową, a art. 151 §1 zna też normę dobową — dwanaście godzin przez trzy dni daje tu zero, a według Kodeksu dwanaście nadgodzin. Do rozliczenia płacowego służy moduł Dokumenty, nie ten kafel.</div></div>
   </div>
 </section>
@@ -170,18 +197,19 @@
     <div><span class="etyk">KONTO</span><span class="mono url">demo / demo-staging-2026</span></div>
   </div>
 
-  <div class="opis">Warstwa strategiczna nad grafikiem: ciągła ocena czterech wymiarów, trajektoria w czasie, sygnały retencji i rekomendacje rekrutacji. Ten sam adres daje trzy różne zakresy — administrator i HR widzą wszystkie 39 osób, manager 14 ze swoich jednostek, a pracownik wyłącznie własną kartę. To nie jest grafik ani raport z KPI; to odpowiedź na pytanie, kto zaraz odejdzie.</div>
+  <div class="sciezka">
+    <div class="sciezka-etyk">To przejdź po kolei</div>
+    <div class="opis"><span class="mikro">NA WEJŚCIU POWIEDZ</span>Warstwa strategiczna nad grafikiem: cztery wymiary, trajektoria, sygnały retencji i rekomendacje rekrutacji. Ten sam adres, trzy zakresy — administrator i HR widzą 39 osób, manager 14 ze swoich jednostek, pracownik tylko własną.</div>
+    <ol class="kroki">
+      <li><div class="akcja">Menu → <b>„Analiza rozwoju”</b></div><div class="efekt">ekran policzony wcześniej w drugiej karcie</div></li><li><div class="akcja">Pokaż <b>Mapę wydajności</b> — <b>39 osób</b></div><div class="efekt">cała firma, nie próbka</div></li><li><div class="akcja">Wskaż kolumnę <b>Wydajność</b> i najedź na wynik</div><div class="efekt">pozycja 0–100 w grupie, nie liczba zleceń; podpowiedź podaje, kogo z kim porównano</div></li><li><div class="akcja">Kliknij wiersz <b>Rafał Adamczyk</b></div><div class="efekt">karta: trajektoria 86 → 66 w 4 oknach (−20 pkt), wyraźny zjazd</div></li><li><div class="akcja">Pokaż <b>Rekomendacje rekrutacji</b></div><div class="efekt">„Luka kadrowa w Regionie Centrum… brak 2 osób”</div></li><li><div class="akcja">Wskaż podpis pod przyciskiem</div><div class="efekt">„Rejestruje decyzję — nie wykonuje działań kadrowych”</div></li>
+    </ol>
+    <div class="pointa"><span class="pointa-etyk">NA KONIEC POWIEDZ</span>Rafał zamyka 15 zleceń — najwięcej w swojej grupie. Raport pochwaliłby go. Ten moduł widzi, że jego wynik spadł z 86 na 66 w cztery okna, i nazywa to ryzykiem odejścia, zanim złoży wypowiedzenie.</div>
+  </div>
 
-  <ol class="kroki">
-    <li><div class="akcja">Menu → <b>„Analiza rozwoju”</b></div><div class="efekt">ekran policzony wcześniej w drugiej karcie</div></li><li><div class="akcja">Pokaż <b>Mapę wydajności</b> — <b>39 osób</b></div><div class="efekt">cała firma, nie próbka</div></li><li><div class="akcja">Wskaż kolumnę <b>Wydajność</b> i najedź na wynik</div><div class="efekt">pozycja 0–100 w grupie, nie liczba zleceń; podpowiedź podaje, kogo z kim porównano</div></li><li><div class="akcja">Kliknij wiersz <b>Rafał Adamczyk</b></div><div class="efekt">karta: trajektoria 86 → 66 w 4 oknach (−20 pkt), wyraźny zjazd</div></li><li><div class="akcja">Pokaż <b>Rekomendacje rekrutacji</b></div><div class="efekt">„Luka kadrowa w Regionie Centrum… brak 2 osób”</div></li><li><div class="akcja">Wskaż podpis pod przyciskiem</div><div class="efekt">„Rejestruje decyzję — nie wykonuje działań kadrowych”</div></li>
-  </ol>
-
-  <div class="pointa"><span class="pointa-etyk">POWIEDZ</span>Rafał zamyka 15 zleceń — najwięcej w swojej grupie. Raport pochwaliłby go. Ten moduł widzi, że jego wynik spadł z 86 na 66 w cztery okna, i nazywa to ryzykiem odejścia, zanim złoży wypowiedzenie.</div>
-
-  <div class="ostrz"><div>▲ Pierwsze wejście liczy ~8 s — miej otwarte w drugiej karcie.</div><div>▲ Kolumna „Wydajność” to pozycja 0–100, NIE procent normy i NIE liczba zleceń. Jeśli sam ją źle nazwiesz, ktoś to wychwyci.</div><div>▲ Role: Serwisant floty 14 · OPERATOR 14 · Kierowca 7 · Koordynator zmiany 4. Stanowisko „Recepcjonista” przemianowano na „Operator” 12.08. Starą nazwę zobaczysz jeszcze w dzienniku audytu i to jest poprawne — dziennik jest append-only, historii nie przepisujemy.</div></div>
+  <div class="ostrz"><div class="ostrz-etyk">Przeczytaj, zanim zaczniesz</div><div>▲ Pierwsze wejście liczy ~8 s — miej otwarte w drugiej karcie.</div><div>▲ Kolumna „Wydajność” to pozycja 0–100, NIE procent normy i NIE liczba zleceń. Jeśli sam ją źle nazwiesz, ktoś to wychwyci.</div><div>▲ Role: Serwisant floty 14 · OPERATOR 14 · Kierowca 7 · Koordynator zmiany 4. Stanowisko „Recepcjonista” przemianowano na „Operator” 12.08. Starą nazwę zobaczysz jeszcze w dzienniku audytu i to jest poprawne — dziennik jest append-only, historii nie przepisujemy.</div></div>
 
   <div class="pytania">
-    <div class="pyt-naglowek">Jeśli padnie pytanie</div>
+    <div class="pyt-naglowek">Pomiń — sięgnij tu tylko, gdy padnie pytanie</div>
     <div class="qa"><div class="q">Czy te liczby wyliczył Wasz algorytm, czy ktoś je wpisał?</div><div class="a">Silnik jest prawdziwy i otestowany: percentyle, wagi i drabina grup porównawczych mają testy jednostkowe. Snapshoty na tym ekranie są wygenerowane — z tego samego powodu, dla którego całe środowisko jest osobne: nie pokazuję tu ocen Waszych ludzi. Rozróżnienie jest wpisane do raportu KM3, sekcja 5.</div></div><div class="qa"><div class="q">A gdzie są ankiety pracownicze i analiza dobrostanu? Harmonogram wymienia je przy Analityku HR.</div><div class="a">To, co pokazuję, liczy wyłącznie z zamkniętej listy siedmiu sygnałów operacyjnych — żadnych danych deklaratywnych. Ankiet i analizy dobrostanu nie ma w tej wersji: ani ekranu, ani danych. Zakres zgłaszamy tak, jak jest, a kształt ankiety to decyzja Waszej polityki kadrowej, nie naszego backlogu — dlatego chcemy ją projektować z Wami, a nie za Was.</div></div><div class="qa"><div class="q">Co się dzieje, gdy grupa porównawcza jest za mała?</div><div class="a">Poniżej pięciu osób system nie podaje pewnego wyniku — schodzi na szerszą grupę, oznacza wynik znakiem „~”, a podpowiedź w wierszu mówi, kogo z kim porównał. Próg jest ustawieniem najemcy, nie stałą w kodzie.</div></div>
   </div>
 </section>
@@ -195,18 +223,19 @@
     <div><span class="etyk">KONTO</span><span class="mono url">manager.demo / Manager!2026</span></div>
   </div>
 
-  <div class="opis">System sam znajduje lukę w grafiku i proponuje zastępstwo — z uzasadnieniem, dystansem i kosztem. Skrzynkę propozycji widzą managerowie w granicach swoich jednostek, HR i administrator; pracownik nigdy nie ogląda cudzych kandydatur ani rankingu.</div>
+  <div class="sciezka">
+    <div class="sciezka-etyk">To przejdź po kolei</div>
+    <div class="opis"><span class="mikro">NA WEJŚCIU POWIEDZ</span>System sam znajduje lukę w grafiku i proponuje zastępstwo — z uzasadnieniem, dystansem i kosztem. Skrzynkę propozycji widzą managerowie w granicach swoich jednostek, HR i administrator; pracownik nigdy nie ogląda cudzych kandydatur ani rankingu.</div>
+    <ol class="kroki">
+      <li><div class="akcja"><b>Wykrywanie wypadnięć</b> → od <b>2026-08-17</b> do <b>2026-08-23</b> → „Skanuj”</div><div class="efekt">dokładnie 1 wynik: czw 20.08, Anna Kowalska</div></li><li><div class="akcja">Przewiń do <b>Skrzynki managera</b></div><div class="efekt">ten sam wakat, z kandydatem</div></li><li><div class="akcja">Przeczytaj wiersz na głos</div><div class="efekt">ranga 1 · CROSS-UNIT ~7 km ~7 min · praca 0 zł + dojazd 16,09 zł</div></li><li><div class="akcja">Pokaż <b>Poziom autonomii</b> (góra strony)</div><div class="efekt">4 stopnie: od „tylko sugestie” po „automatycznie po zatwierdzeniu”</div></li>
+    </ol>
+    <div class="pointa"><span class="pointa-etyk">NA KONIEC POWIEDZ</span>AI nie mówi „zrób tak”. Mówi „proponuję Katarzynę, bo jest najlepiej dopasowana, 7 km dojazdu, 16 złotych więcej”. Ta różnica jest widoczna w audycie.</div>
+  </div>
 
-  <ol class="kroki">
-    <li><div class="akcja"><b>Wykrywanie wypadnięć</b> → od <b>2026-08-17</b> do <b>2026-08-23</b> → „Skanuj”</div><div class="efekt">dokładnie 1 wynik: czw 20.08, Anna Kowalska</div></li><li><div class="akcja">Przewiń do <b>Skrzynki managera</b></div><div class="efekt">ten sam wakat, z kandydatem</div></li><li><div class="akcja">Przeczytaj wiersz na głos</div><div class="efekt">ranga 1 · CROSS-UNIT ~7 km ~7 min · praca 0 zł + dojazd 16,09 zł</div></li><li><div class="akcja">Pokaż <b>Poziom autonomii</b> (góra strony)</div><div class="efekt">4 stopnie: od „tylko sugestie” po „automatycznie po zatwierdzeniu”</div></li>
-  </ol>
-
-  <div class="pointa"><span class="pointa-etyk">POWIEDZ</span>AI nie mówi „zrób tak”. Mówi „proponuję Katarzynę, bo jest najlepiej dopasowana, 7 km dojazdu, 16 złotych więcej”. Ta różnica jest widoczna w audycie.</div>
-
-  <div class="ostrz"><div>▲ Wiersz „ESKALOWANA” bez kandydata pokazuje „Brak dostępnego zastępcy — obsłuż ręcznie w Grafiku”. To nie usterka: nikt nie spełnia twardych reguł, a system świadomie nie proponuje nikogo na siłę i od razu mówi, co masz zrobić.</div></div>
+  <div class="ostrz"><div class="ostrz-etyk">Przeczytaj, zanim zaczniesz</div><div>▲ Wiersz „ESKALOWANA” bez kandydata pokazuje „Brak dostępnego zastępcy — obsłuż ręcznie w Grafiku”. To nie usterka: nikt nie spełnia twardych reguł, a system świadomie nie proponuje nikogo na siłę i od razu mówi, co masz zrobić.</div></div>
 
   <div class="pytania">
-    <div class="pyt-naglowek">Jeśli padnie pytanie</div>
+    <div class="pyt-naglowek">Pomiń — sięgnij tu tylko, gdy padnie pytanie</div>
     <div class="qa"><div class="q">W KM2 podajecie zbieżność 50 → 0 w 6 rundach, monotonicznie. To dowód, że agent uczy się preferencji?</div><div class="a">Nie w tej formie i mówimy to sami. Wzorzec był generowany tą samą funkcją, której używa agent, więc zbieżność wynikała częściowo z konstrukcji testu. Scenariusz niezależny daje 96 → 0 w 17 rundach, niemonotonicznie, przy płaskiej próbie kontrolnej.</div></div><div class="qa"><div class="q">KM1 mówi o „uczeniu ze wzmocnieniem”. To jest RL?</div><div class="a">To uczący się scorer preferencji z wsadowym re-fitem — działa, mierzy się i ma testy. Uczeniem ze wzmocnieniem nie jest: Stable-Baselines3 nie jest importowany w żadnym module, a sformułowanie w KM1 było za szerokie. KM2, czyli raport odbiorczy, RL już nie deklaruje — poprawiliśmy to sami, zanim ktokolwiek zapytał.</div></div><div class="qa"><div class="q">Kto odpowiada, gdy AI zaproponuje niewłaściwą osobę?</div><div class="a">Człowiek — propozycja bez zatwierdzenia managera nie zmienia niczego w grafiku, a w dzienniku audytu zostaje, kto zatwierdził i kiedy. Odrzucenie zapisuje się tak samo, z identyfikatorem managera.</div></div><div class="qa"><div class="q">Na którym poziomie autonomii to chodzi i czy zmiana wymaga wdrożenia?</div><div class="a">Poziomy są cztery: tylko sugestie, powiadomienie, pytanie o zgodę pracownika, zapis po zatwierdzeniu. To środowisko chodzi na trzecim. Poziom jest wpisem w konfiguracji najemcy, czytanym przy każdej nowej propozycji — obowiązuje od następnej, bez wydawania nowej wersji.</div></div>
   </div>
 </section>
@@ -220,18 +249,19 @@
     <div><span class="etyk">KONTO</span><span class="mono url">pracownica.demo / Pracownica!2026</span></div>
   </div>
 
-  <div class="opis">Ta sama propozycja oczami pracownika: pytanie o zgodę, nie polecenie służbowe. Pracownik widzi wyłącznie skierowaną do siebie propozycję i szacunek własnego dojazdu — nie widzi, kogo jeszcze system rozważał ani jak został oceniony.</div>
-
-  <ol class="kroki">
-    <li><div class="akcja">Wyloguj, zaloguj jako <b>pracownica.demo</b> → <b>/zamiany</b></div><div class="efekt">sekcja „Propozycje AI — zastępstwo wymaga Twojej zgody”</div></li><li><div class="akcja">Przeczytaj wiersz</div><div class="efekt">czw 20.08 · 14:00–22:00 · KOORDYNATOR · Lotnisko Chopina · dojazd ~7 km</div></li><li><div class="akcja">Wskaż przycisk <b>„Odrzuć”</b></div><div class="efekt">pracownik MOŻE odmówić</div></li><li><div class="akcja">Kliknij <b>„Akceptuj”</b></div><div class="efekt">propozycja przechodzi do skrzynki managera</div></li>
-  </ol>
-
-  <div class="pointa"><span class="pointa-etyk">POWIEDZ</span>Pracownik nie dostaje polecenia. Dostaje pytanie — z datą, miejscem i szacunkiem własnego dojazdu, żeby mógł świadomie odpowiedzieć.</div>
+  <div class="sciezka">
+    <div class="sciezka-etyk">To przejdź po kolei</div>
+    <div class="opis"><span class="mikro">NA WEJŚCIU POWIEDZ</span>Ta sama propozycja oczami pracownika: pytanie o zgodę, nie polecenie służbowe. Pracownik widzi wyłącznie skierowaną do siebie propozycję i szacunek własnego dojazdu — nie widzi, kogo jeszcze system rozważał ani jak został oceniony.</div>
+    <ol class="kroki">
+      <li><div class="akcja">Wyloguj, zaloguj jako <b>pracownica.demo</b> → <b>/zamiany</b></div><div class="efekt">sekcja „Propozycje AI — zastępstwo wymaga Twojej zgody”</div></li><li><div class="akcja">Przeczytaj wiersz</div><div class="efekt">czw 20.08 · 14:00–22:00 · KOORDYNATOR · Lotnisko Chopina · dojazd ~7 km</div></li><li><div class="akcja">Wskaż przycisk <b>„Odrzuć”</b></div><div class="efekt">pracownik MOŻE odmówić</div></li><li><div class="akcja">Kliknij <b>„Akceptuj”</b></div><div class="efekt">propozycja przechodzi do skrzynki managera</div></li>
+    </ol>
+    <div class="pointa"><span class="pointa-etyk">NA KONIEC POWIEDZ</span>Pracownik nie dostaje polecenia. Dostaje pytanie — z datą, miejscem i szacunkiem własnego dojazdu, żeby mógł świadomie odpowiedzieć.</div>
+  </div>
 
   
 
   <div class="pytania">
-    <div class="pyt-naglowek">Jeśli padnie pytanie</div>
+    <div class="pyt-naglowek">Pomiń — sięgnij tu tylko, gdy padnie pytanie</div>
     <div class="qa"><div class="q">Czy pracownik widzi dane innych osób? A manager — czyje?</div><div class="a">Zakres tnie serwer w zapytaniu, nie ukrycie w interfejsie: pracownik widzi 104 własne zmiany tam, gdzie administrator widzi 1558, a w module rozwoju wyłącznie własną kartę. Manager widzi tylko swoją jednostkę — Region Centrum to 14 osób z 39.</div></div><div class="qa"><div class="q">Co z RODO przy dojeździe — wyliczacie trasę z adresu domowego?</div><div class="a">Trzymamy współrzędne domu i to jest jedyny powód, dla którego tam są: bez nich nie da się uczciwie policzyć dojazdu, a system woli wtedy odrzucić kandydata niż zgadywać. Z serwera wychodzą wyłącznie zaokrąglone kilometry i minuty — ani współrzędne, ani adres nie opuszczają bazy, a na ekranie widać „~7 km”, nie trasę.</div></div><div class="qa"><div class="q">Co się stanie, jeśli pracownik po prostu nie odpowie?</div><div class="a">Propozycja wygasa i wraca do managera jako eskalacja z powodem „upłynął czas na zgodę” — nikt nie zostaje przepięty milczeniem. Domyślnie to 24 godziny, ustawiane per klient w zakresie od godziny do siedmiu dni.</div></div><div class="qa"><div class="q">A jeśli odmówi — czy to mu się gdzieś odłoży?</div><div class="a">Nie ma jak. Scoring czyta zamkniętą listę siedmiu sygnałów operacyjnych i wywala się błędem na każdym kluczu spoza niej — zgody i odmowy na tej liście nie ma. System po odmowie promuje kolejnego kandydata z rankingu, a gdy odmówią wszyscy, oddaje sprawę managerowi.</div></div>
   </div>
 </section>
@@ -245,18 +275,19 @@
     <div><span class="etyk">KONTO</span><span class="mono url">manager.demo / Manager!2026</span></div>
   </div>
 
-  <div class="opis">Domknięcie pętli: manager zatwierdza, optymalizator drugi raz sprawdza reguły prawa pracy, a decyzja ląduje w niezmiennym dzienniku audytu. Zatwierdzać mogą managerowie w swoich jednostkach, HR i administrator klienta.</div>
+  <div class="sciezka">
+    <div class="sciezka-etyk">To przejdź po kolei</div>
+    <div class="opis"><span class="mikro">NA WEJŚCIU POWIEDZ</span>Domknięcie pętli: manager zatwierdza, optymalizator drugi raz sprawdza reguły prawa pracy, a decyzja ląduje w niezmiennym dzienniku audytu. Zatwierdzać mogą managerowie w swoich jednostkach, HR i administrator klienta.</div>
+    <ol class="kroki">
+      <li><div class="akcja">Zaloguj jako <b>manager.demo</b> → <b>/ai-grafik-manager</b></div><div class="efekt">propozycja ma status „CZEKA NA MANAGERA”</div></li><li><div class="akcja">Kliknij <b>„Zatwierdź”</b></div><div class="efekt">zmiana przepina się atomowo + wpis do dziennika audytu</div></li>
+    </ol>
+    <div class="pointa"><span class="pointa-etyk">NA KONIEC POWIEDZ</span>Trzy różne role i ani razu AI nie podjęła decyzji kadrowej za człowieka. To granica wymuszona architekturą, nie regulaminem.</div>
+  </div>
 
-  <ol class="kroki">
-    <li><div class="akcja">Zaloguj jako <b>manager.demo</b> → <b>/ai-grafik-manager</b></div><div class="efekt">propozycja ma status „CZEKA NA MANAGERA”</div></li><li><div class="akcja">Kliknij <b>„Zatwierdź”</b></div><div class="efekt">zmiana przepina się atomowo + wpis do dziennika audytu</div></li>
-  </ol>
-
-  <div class="pointa"><span class="pointa-etyk">POWIEDZ</span>Trzy różne role i ani razu AI nie podjęła decyzji kadrowej za człowieka. To granica wymuszona architekturą, nie regulaminem.</div>
-
-  <div class="ostrz"><div>▲ Jeśli 3c zawiodło — w skrzynce czeka DRUGA propozycja gotowa do zatwierdzenia. Zatwierdź ją i mów dalej.</div></div>
+  <div class="ostrz"><div class="ostrz-etyk">Przeczytaj, zanim zaczniesz</div><div>▲ Jeśli 3c zawiodło — w skrzynce czeka DRUGA propozycja gotowa do zatwierdzenia. Zatwierdź ją i mów dalej.</div></div>
 
   <div class="pytania">
-    <div class="pyt-naglowek">Jeśli padnie pytanie</div>
+    <div class="pyt-naglowek">Pomiń — sięgnij tu tylko, gdy padnie pytanie</div>
     <div class="qa"><div class="q">Czy wszystkie propozycje automatyzacji są zgodne z prawem pracy?</div><div class="a">Zgodność gwarantujemy w czterech nazwanych punktach: kwalifikacja na stanowisko, brak nakładających się zmian, zatwierdzone nieobecności i 11 h odpoczynku dobowego — ta ostatnia jest w kodzie solvera opisana artykułem 132 Kodeksu pracy. Poza tymi czterema system zgodności nie obiecuje. Gdy którejś nie da się spełnić, nikt nie zostaje podstawiony — wiersz idzie do managera jako eskalacja z komunikatem, co zrobić ręcznie.</div></div><div class="qa"><div class="q">Kiedy sprawdzane są te reguły — przy propozycji czy przy zatwierdzeniu?</div><div class="a">W obu momentach. Kandydat nie trafi na listę, jeśli nie przejdzie czterech twardych reguł, a przy zatwierdzaniu ta sama walidacja idzie po raz drugi — bo między propozycją a decyzją managera świat mógł się zmienić. Sam zapis idzie w jednej transakcji, więc nie ma stanu pośredniego z połową przepiętego grafiku.</div></div><div class="qa"><div class="q">Co, jeżeli prawo pracy się zmieni?</div><div class="a">Reguły nie są rozsiane po aplikacji: twarde ograniczenia siedzą w solverze, a próg odpoczynku jest nazwaną stałą opatrzoną artykułem, którego dotyczy — powtórzoną świadomie w filtrze kandydatów, bo tam dochodzi jeszcze czas dojazdu. Sami z ekranu tego nie przestawicie: zmiana progu to poprawka w kodzie i nowe wydanie. Za to wiadomo z góry, która zmiana jest tania — inny próg — a która droga: reguła liczona w dłuższym horyzoncie, jak 35 h tygodniowo.</div></div><div class="qa"><div class="q">Czy da się cofnąć taką decyzję?</div><div class="a">Obsadę zmiany manager poprawia ręcznie w Grafiku, jak każdą inną. Nie cofa się natomiast wpis w dzienniku audytu — jest append-only, z wyzwalaczem blokującym UPDATE i DELETE. Ślad po decyzji zostaje, nawet gdy sama decyzja zostanie odwrócona, i to jest celowe.</div></div><div class="qa"><div class="q">Co dokładnie zapisujecie w tym dzienniku?</div><div class="a">Kto, co, na czym, z jakiego adresu IP i kiedy — plus ładunek żądania, z którego dziewięć wrażliwych kluczy (PESEL, hasła, tokeny) jest rekurencyjnie zamienianych na gwiazdki. Na tym środowisku jest 701 wpisów i żadnego nie da się usunąć: pilnują tego dwa wyzwalacze bazy, osobno na UPDATE/DELETE i osobno na TRUNCATE.</div></div>
   </div>
 </section>
@@ -270,18 +301,19 @@
     <div><span class="etyk">KONTO</span><span class="mono url">pracownik.demo / Pracownik!2026</span></div>
   </div>
 
-  <div class="opis">Asystent w języku naturalnym — tekstem albo głosem — dostępny dla każdego pracownika, ale wyłącznie w zakresie jego własnych spraw. Dwanaście poleceń po polsku; żadne nie zapisuje niczego bez jawnego potwierdzenia.</div>
+  <div class="sciezka">
+    <div class="sciezka-etyk">To przejdź po kolei</div>
+    <div class="opis"><span class="mikro">NA WEJŚCIU POWIEDZ</span>Asystent w języku naturalnym — tekstem albo głosem — dostępny dla każdego pracownika, ale wyłącznie w zakresie jego własnych spraw. Dwanaście poleceń po polsku; żadne nie zapisuje niczego bez jawnego potwierdzenia.</div>
+    <ol class="kroki">
+      <li><div class="akcja">Wpisz: <b>„Chcę wziąć urlop wypoczynkowy od 20 sierpnia do 21 sierpnia”</b></div><div class="efekt">intencja + PEWNOŚĆ 90% + przycisk potwierdzenia</div></li><li><div class="akcja">Wskaż, że <b>nic się nie zapisało</b></div><div class="efekt">wymagane kliknięcie „Potwierdź i wykonaj”</div></li><li><div class="akcja">Celowo wpisz: <b>„Ile osób pracuje jutro na lotnisku?”</b></div><div class="efekt">„Nie zrozumiałem — użyj formularza”</div></li>
+    </ol>
+    <div class="pointa"><span class="pointa-etyk">NA KONIEC POWIEDZ</span>Gdybyśmy podpięli tu duży model językowy, wymyśliłby odpowiedź. Wolimy, żeby system powiedział „nie wiem” — bo to ścieżka o skutkach prawnych.</div>
+  </div>
 
-  <ol class="kroki">
-    <li><div class="akcja">Wpisz: <b>„Chcę wziąć urlop wypoczynkowy od 20 sierpnia do 21 sierpnia”</b></div><div class="efekt">intencja + PEWNOŚĆ 90% + przycisk potwierdzenia</div></li><li><div class="akcja">Wskaż, że <b>nic się nie zapisało</b></div><div class="efekt">wymagane kliknięcie „Potwierdź i wykonaj”</div></li><li><div class="akcja">Celowo wpisz: <b>„Ile osób pracuje jutro na lotnisku?”</b></div><div class="efekt">„Nie zrozumiałem — użyj formularza”</div></li>
-  </ol>
-
-  <div class="pointa"><span class="pointa-etyk">POWIEDZ</span>Gdybyśmy podpięli tu duży model językowy, wymyśliłby odpowiedź. Wolimy, żeby system powiedział „nie wiem” — bo to ścieżka o skutkach prawnych.</div>
-
-  <div class="ostrz"><div>▲ Głos: jeśli mikrofon nie był testowany w tej sali — prowadź tekstem.</div><div>▲ Po kliknięciu „Stop” masz od 12 do 26 SEKUND CISZY — rozrzut jest duży i nieprzewidywalny (10 pomiarów na tym samym nagraniu: 11,8 · 13,1 · 13,4 · 15,3 · 15,5 · 18,5 · 23,4 · 25,3 · 26,6). Zakładaj GÓRNĄ granicę. Nie czekaj w milczeniu — mów wtedy: „nagranie jest właśnie przetwarzane na naszym serwerze, nie w chmurze dostawcy; te kilkanaście sekund to cena za to, że głos pracownika nie opuszcza Waszej infrastruktury”.</div><div>▲ Jeśli model pokaże „loaded”: false, PIERWSZA transkrypcja potrwa ~40 s (ładowanie modelu ~490 MB). Zrób jedno próbne nagranie zanim wejdzie odbiorca.</div></div>
+  <div class="ostrz"><div class="ostrz-etyk">Przeczytaj, zanim zaczniesz</div><div>▲ Głos: jeśli mikrofon nie był testowany w tej sali — prowadź tekstem.</div><div>▲ Po kliknięciu „Stop” masz od 12 do 26 SEKUND CISZY — rozrzut jest duży i nieprzewidywalny (10 pomiarów na tym samym nagraniu: 11,8 · 13,1 · 13,4 · 15,3 · 15,5 · 18,5 · 23,4 · 25,3 · 26,6). Zakładaj GÓRNĄ granicę. Nie czekaj w milczeniu — mów wtedy: „nagranie jest właśnie przetwarzane na naszym serwerze, nie w chmurze dostawcy; te kilkanaście sekund to cena za to, że głos pracownika nie opuszcza Waszej infrastruktury”.</div><div>▲ Jeśli model pokaże „loaded”: false, PIERWSZA transkrypcja potrwa ~40 s (ładowanie modelu ~490 MB). Zrób jedno próbne nagranie zanim wejdzie odbiorca.</div></div>
 
   <div class="pytania">
-    <div class="pyt-naglowek">Jeśli padnie pytanie</div>
+    <div class="pyt-naglowek">Pomiń — sięgnij tu tylko, gdy padnie pytanie</div>
     <div class="qa"><div class="q">Dlaczego transkrypcja trwa kilkanaście sekund?</div><div class="a">Bo liczy się na Waszym serwerze, na CPU — model faster-whisper „small”, 490 MB, i nagranie nie wychodzi do chmury dostawcy. Cena tego wyboru to zmierzone 12–26 sekund, z dużym rozrzutem. Na produkcji skraca to GPU albo mniejszy model — to decyzja o sprzęcie, nie o architekturze.</div></div><div class="qa"><div class="q">Ile poleceń rozumie ten asystent?</div><div class="a">Dwanaście, wszystkie po polsku — od wniosku urlopowego i L4, przez saldo urlopu i ewidencję godzin, po zamianę zmiany i wyszukanie zastępstwa. Katalog jest jednym miejscem w kodzie, więc dołożenie polecenia to jeden wpis, nie nowy moduł.</div></div><div class="qa"><div class="q">Czy z nagrania rozpoznajecie, kto mówi?</div><div class="a">Nie. Usługa robi wyłącznie transkrypcję — nie ma rozpoznawania mówcy, odcisku głosu ani żadnego profilowania biometrycznego. Tożsamość bierze się z zalogowanej sesji, nie z głosu.</div></div>
   </div>
 </section>
@@ -295,18 +327,19 @@
     <div><span class="etyk">KONTO</span><span class="mono url">pracownik.demo → manager.demo</span></div>
   </div>
 
-  <div class="opis">Dwa spojrzenia na koniec: pracownik w terenie na telefonie i manager patrzący na koszt tygodnia wobec budżetu. Koszt i budżet widzą managerowie, HR i administrator; katalog stawek zmienia wyłącznie HR albo administrator.</div>
-
-  <ol class="kroki">
-    <li><div class="akcja">Jako <b>pracownik.demo</b> → <b>/moj-tydzien</b></div><div class="efekt">jedna mobilna trasa, przyciski min. 44 px</div></li><li><div class="akcja">Zaloguj jako <b>manager.demo</b> → <b>/dashboard</b></div><div class="efekt">skrzynka decyzji + koszt tygodnia 7656 zł „W BUDŻECIE”</div></li>
-  </ol>
-
-  <div class="pointa"><span class="pointa-etyk">POWIEDZ</span>Reszta systemu jest desktopowa, bo HR pracuje przy biurku. Ale pracownik fizyczny stoi przy samochodzie — to jest jego jedyny ekran.</div>
+  <div class="sciezka">
+    <div class="sciezka-etyk">To przejdź po kolei</div>
+    <div class="opis"><span class="mikro">NA WEJŚCIU POWIEDZ</span>Dwa spojrzenia na koniec: pracownik w terenie na telefonie i manager patrzący na koszt tygodnia wobec budżetu. Koszt i budżet widzą managerowie, HR i administrator; katalog stawek zmienia wyłącznie HR albo administrator.</div>
+    <ol class="kroki">
+      <li><div class="akcja">Jako <b>pracownik.demo</b> → <b>/moj-tydzien</b></div><div class="efekt">jedna mobilna trasa, przyciski min. 44 px</div></li><li><div class="akcja">Zaloguj jako <b>manager.demo</b> → <b>/dashboard</b></div><div class="efekt">skrzynka decyzji + koszt tygodnia 7656 zł „W BUDŻECIE”</div></li>
+    </ol>
+    <div class="pointa"><span class="pointa-etyk">NA KONIEC POWIEDZ</span>Reszta systemu jest desktopowa, bo HR pracuje przy biurku. Ale pracownik fizyczny stoi przy samochodzie — to jest jego jedyny ekran.</div>
+  </div>
 
   
 
   <div class="pytania">
-    <div class="pyt-naglowek">Jeśli padnie pytanie</div>
+    <div class="pyt-naglowek">Pomiń — sięgnij tu tylko, gdy padnie pytanie</div>
     <div class="qa"><div class="q">Czy aplikacja spełnia standardy dostępności?</div><div class="a">Zmierzyliśmy to sami i mamy liczby, a nie deklarację: cele dotykowe mają wymagane 44 px, kontrast treści głównej jest zgodny. Dwa miejsca normy nie spełniają — etykiety pomocnicze mają kontrast 2,97:1 przy wymaganych 4,5:1, a siatka grafiku nie ma widocznego focusa klawiaturowego. Oba są w backlogu jako zmiany stylów, bez ruszania logiki.</div></div><div class="qa"><div class="q">Jak wypuścimy to kierowcom w terenie — przez sklep z aplikacjami?</div><div class="a">Nie ma czego wypuszczać: to ten sam adres w przeglądarce telefonu, z osobnym układem mobilnym i przyciskami minimum 44 px. Bez sklepu, bez wymuszania aktualizacji, bez drugiego kodu do utrzymania.</div></div><div class="qa"><div class="q">Skąd bierze się koszt tygodnia i kto ustala stawki?</div><div class="a">Koszt to realne godziny zmian razy stawka na stanowisku, bez nadgodzin. Katalog stawek prowadzi HR — tu jest dziesięć pozycji — i tylko HR albo administrator może go zmienić. Gdy stawki brakuje, ekran wypisuje to jako brak, żeby nikt nie podjął decyzji na zaniżonym koszcie.</div></div>
   </div>
 </section></body></html>
