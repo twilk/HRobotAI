@@ -283,6 +283,11 @@ sprawny i uczciwie opisany w `docs/demo/2026-08-10-demo-4mobility-parp.md`), a p
       To luka modelu danych, nie warstwy wyświetlania: `/api/employees` fizycznie nie ma czego zwrócić,
       a projekcja `SAFE_SELECT` nie wystawia `userId`. Wymaga decyzji produktowej: czy konto operacyjne
       ma mieć kartotekę pracownika, czy w tym miejscu pokazywać roli/e-mail zamiast nazwiska.
+
+      **Dokładne miejsca, zmierzone audytem 13.08** (oba POZA ścieżką demo, stąd priorytet P2):
+      `/analityk` → `Akceptujący: #8ce7b92f` · `/ustawienia` → `manager: 8ce7b92f`.
+      To jedyne dwa surowe identyfikatory pozostałe w całej aplikacji — przemiatarka 17 widoków
+      w czterech rolach nie znalazła żadnego innego.
 - [ ] **P2 — Brak drill-downu z sygnału do danych źródłowych.** „Skok absencji +4,1 p.p." nie prowadzi do
       listy wniosków ani osób, które ten skok tworzą — manager musi szukać ręcznie w innym module, co
       niweczy sens sekcji „Na co zwrócić uwagę".
