@@ -28,11 +28,15 @@ const KONTA = {
   pracownik: ['pracownik.demo', 'Pracownik!2026'],
 }
 
+/** Wpis trasy to string ALBO { trasa, odmowa: true }. Wariant z `odmowa` odwraca kryterium: na tym
+ * ekranie odmowa dostępu jest POPRAWNYM wynikiem i to jej BRAK jest usterką. Bez tego rozróżnienia
+ * `/analityk` u pracownika wpadłby w regułę „banner błędu” (heurystyka łapie „Brak dostępu”), a to
+ * jest krok demo — sekcja 2d pokazuje właśnie, że odmowa jest uprzejma i kieruje dalej. */
 const PLAN = [
-  [KONTA.admin, ['/dashboard', '/grafik', '/analiza', '/dokumenty']],
-  [KONTA.manager, ['/ai-grafik-manager', '/dashboard']],
+  [KONTA.admin, ['/dashboard', '/grafik', '/analityk', '/analiza', '/dokumenty']],
+  [KONTA.manager, ['/ai-grafik-manager', '/analityk', '/dashboard']],
   [KONTA.pracownica, ['/zamiany']],
-  [KONTA.pracownik, ['/asystent', '/moj-tydzien']],
+  [KONTA.pracownik, ['/asystent', '/moj-tydzien', { trasa: '/analityk', odmowa: true }]],
 ]
 
 const wyniki = []
@@ -129,9 +133,11 @@ for (const [[login, haslo], trasy] of PLAN) {
     continue
   }
 
-  for (const t of trasy) {
+  for (const wpis of trasy) {
+    const t = typeof wpis === 'string' ? wpis : wpis.trasa
+    const oczekujOdmowy = typeof wpis === 'object' && wpis.odmowa === true
     await page.goto(BASE + t, { waitUntil: 'domcontentloaded', timeout: 45000 })
-    await page.waitForTimeout(t === '/analiza' ? 9000 : 3500)
+    await page.waitForTimeout(t === '/analiza' || t === '/analityk' ? 9000 : 3500)
     const d = await page.evaluate(() => {
       const m = document.querySelector('main')
       const txt = m ? m.innerText : ''
@@ -139,6 +145,7 @@ for (const [[login, haslo], trasy] of PLAN) {
         goleId: (txt.match(/#?\b[0-9a-f]{8}\b/g) || []).filter((s) => !/^\d+$/.test(s)),
         stanowisko: (txt.match(/recepcj/gi) || []).length,
         blad: /Nie udało się|Brak dostępu|Coś poszło nie tak|HTTP \d{3}|Application error/i.test(txt),
+        odmowa: /Brak dostępu do analityki kadrowej/i.test(txt),
         pusto: txt.trim().length < 120,
         smieci: /undefined|NaN/.test(txt),
       }
@@ -146,11 +153,16 @@ for (const [[login, haslo], trasy] of PLAN) {
     const problemy = []
     if (d.goleId.length) problemy.push(`surowe ID (${d.goleId.slice(0, 2).join(', ')})`)
     if (d.stanowisko) problemy.push(`stara nazwa stanowiska x${d.stanowisko}`)
-    if (d.blad) problemy.push('banner błędu')
+    if (oczekujOdmowy) {
+      // WYCIEK, nie usterka kosmetyczna: pracownik zobaczyłby zbiorcze dane kadrowe cudzych zespołów.
+      if (!d.odmowa) problemy.push('BRAK oczekiwanej odmowy — pracownik widzi analitykę kadrową')
+    } else {
+      if (d.blad) problemy.push('banner błędu')
+    }
     if (d.pusto) problemy.push('pusty ekran')
     if (d.smieci) problemy.push('undefined/NaN w treści')
     if (bledy5xx.length) problemy.push(`5xx: ${bledy5xx.slice(0, 2).join(', ')}`)
-    dodaj(`${login} ${t}`, problemy.length === 0, problemy.join(' | ') || 'czysto')
+    dodaj(`${login} ${t}${oczekujOdmowy ? ' (ma odmówić)' : ''}`, problemy.length === 0, problemy.join(' | ') || 'czysto')
     bledy5xx.length = 0
   }
   await ctx.close()

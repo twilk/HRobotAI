@@ -8,7 +8,6 @@ import path from 'node:path'
 const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
 const ROOT = import.meta.dirname
 const HTML_PATH = path.join(ROOT, 'karta-prowadzacego.html')
-const OUT = path.join(ROOT, 'Karta_prowadzacego_demo.pdf')
 const PORT = 9345
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -52,7 +51,7 @@ const SEKCJE = [
   {
     nr: '2d', tytul: 'Analityk HR — kadry w liczbach', czas: '3 min',
     url: '/analityk  (menu: „Analityk HR”)', konto: 'demo / demo-staging-2026',
-    opis: 'Operacyjny pulpit wskaźników kadrowych: zatrudnienie, absencje, czas pracy, wykorzystanie urlopów i przepustowość wniosków, w pięciu grupach wykresów. Dostęp mają HR, administrator klienta i manager. Manager widzi te same wskaźniki policzone tylko dla swoich jednostek — i nie ma filtra jednostek, bo nie ma czego przełączać. Pracownik dostaje uprzejmą odmowę z odesłaniem do własnych ekranów, nie komunikat błędu.',
+    opis: 'Operacyjny pulpit wskaźników kadrowych: zatrudnienie, absencje, czas pracy, wykorzystanie urlopów i przepustowość wniosków. Dostęp mają HR, administrator i manager — ten ostatni widzi to samo, ale policzone dla swoich jednostek, i nie ma filtra jednostek, bo nie ma czego przełączać. Pracownik dostaje uprzejmą odmowę, nie komunikat błędu.',
     kroki: [
       ['Menu → <b>„Analityk HR”</b>', 'sześć kafli: 39 os. · absencja 7,7% · 1376 h · nadwyżka 68 h · 11 wniosków · mediana 0 h'],
       ['Pokaż <b>„Na co zwrócić uwagę”</b> u góry', 'sygnały porównawcze z wagą: „Skok absencji — wzrost o 3,2 p.p.” (Wysoka)'],
@@ -72,6 +71,7 @@ const SEKCJE = [
     ostrzezenia: [
       'NIE nazywaj „Nadwyżki ponad normę” nadgodzinami. Ekran sam się przed tym broni, ale ktoś z kadr wychwyci to natychmiast, jeśli sam użyjesz złego słowa.',
       '„Mediana czasu do decyzji” pokazuje 0 h — w danych demo wnioski rozstrzygano tego samego dnia. Jeśli ktoś zapyta, powiedz to wprost, zamiast szukać wyjaśnienia na żywo.',
+      'NIE zjeżdżaj na sam dół do „Wąskich gardeł akceptacji” — przy Regionie Centrum stoi tam „Akceptujący: #8ce7b92f”. Jeśli ktoś wypatrzy: to identyfikator KONTA, nie pracownika — konta mają e-mail, nie nazwisko. Kosmetyczna luka, zapisana.',
     ],
   },
   {
@@ -350,8 +350,9 @@ const stronaPozycjonowania = stronaArgumentow(
 
 const stronaPrzewag = stronaArgumentow('★', 'Czym jesteśmy lepsi od konkurencji', 'na każde pytanie', PRZEWAGI)
 
-const strony = SEKCJE.map(
-  (s) => `
+/** Jedna sekcja jako strona. `zPytaniami: false` daje wariant do trzymania w rece przy klikaniu —
+ * bez strefy referencyjnej, ktora i tak sie wtedy pomija. */
+const stronaSekcji = (s, { zPytaniami = true } = {}) => `
 <section class="strona">
   <div class="pas">
     <div class="pas-lewa"><span class="nr">${esc(s.nr)}</span><span class="tytul">${esc(s.tytul)}</span></div>
@@ -373,16 +374,37 @@ const strony = SEKCJE.map(
 
   ${s.ostrzezenia.length ? `<div class="ostrz"><div class="ostrz-etyk">Przeczytaj, zanim zaczniesz</div>${s.ostrzezenia.map((o) => `<div>▲ ${esc(o)}</div>`).join('')}</div>` : ''}
 
-  <div class="pytania">
+  ${
+    zPytaniami
+      ? `<div class="pytania">
     <div class="pyt-naglowek">Pomiń — sięgnij tu tylko, gdy padnie pytanie</div>
-    ${s.pytania
-      .map(([q, a]) => `<div class="qa"><div class="q">${esc(q)}</div><div class="a">${esc(a)}</div></div>`)
-      .join('')}
-  </div>
-</section>`,
-).join('')
+    ${s.pytania.map(([q, a]) => `<div class="qa"><div class="q">${esc(q)}</div><div class="a">${esc(a)}</div></div>`).join('')}
+  </div>`
+      : ''
+  }
+</section>`
 
-const html = `<!doctype html><html lang="pl"><head><meta charset="utf-8"><title>Karta prowadzącego</title><style>
+/** Blok pytan do osobnego dokumentu Q&A. Plynie, a nie lamie sie po jednej sekcji na strone —
+ * to material do przegladania na stole, nie do zerkania w trakcie mowienia. */
+const blokQA = (s) => `
+<div class="qa-sekcja">
+  <div class="qa-pas"><span class="qa-nr">${esc(s.nr)}</span><span class="qa-tytul">${esc(s.tytul)}</span>
+    <span class="qa-url mono">${esc(s.url)}</span></div>
+  ${s.pytania.map(([q, a]) => `<div class="qa"><div class="q">${esc(q)}</div><div class="a">${esc(a)}</div></div>`).join('')}
+</div>`
+
+const stronyPelne = SEKCJE.map((s) => stronaSekcji(s)).join('')
+const stronyBezPytan = SEKCJE.map((s) => stronaSekcji(s, { zPytaniami: false })).join('')
+const stronaQA = `
+<section class="strona">
+  <div class="pas">
+    <div class="pas-lewa"><span class="nr">?</span><span class="tytul">Pytania i odpowiedzi</span></div>
+    <span class="czas">${SEKCJE.reduce((n, s) => n + s.pytania.length, 0)} pytań</span>
+  </div>
+  ${SEKCJE.map(blokQA).join('')}
+</section>`
+
+const doc = (tytul, body) => `<!doctype html><html lang="pl"><head><meta charset="utf-8"><title>${esc(tytul)}</title><style>
   * { box-sizing: border-box; }
   body { font-family: Calibri, Arial, sans-serif; color: #12172b; margin: 0; font-size: 11pt; }
   .strona { page-break-after: always; padding: 0; }
@@ -475,9 +497,33 @@ const html = `<!doctype html><html lang="pl"><head><meta charset="utf-8"><title>
   .tw { font-size: 10.5pt; font-weight: 700; color: #12172b; line-height: 1.25; }
   .dw { font-size: 9pt; color: #5A6180; line-height: 1.3; margin-top: 0.5pt; }
   .mono { font-family: Consolas, "Courier New", monospace; }
-</style></head><body>${stronaKonta}${stronaPozycjonowania}${stronaPrzewag}${strony}</body></html>`
 
-fs.writeFileSync(HTML_PATH, html, 'utf8')
+  /* Dokument Q&A: sekcje plyna jedna za druga, ale nie lamia sie w poprzek strony. */
+  .qa-sekcja { break-inside: avoid; margin-bottom: 12pt; }
+  .qa-pas { border-bottom: 1.5pt solid #1E2761; padding-bottom: 3pt; margin-bottom: 7pt; }
+  .qa-nr { font-family: Cambria, Georgia, serif; font-size: 14pt; font-weight: 700; color: #1E2761; margin-right: 7pt; }
+  .qa-tytul { font-family: Cambria, Georgia, serif; font-size: 12.5pt; font-weight: 700; color: #1E2761; }
+  .qa-url { font-size: 9pt; color: #8B90A4; margin-left: 7pt; }
+</style></head><body>${body}</body></html>`
+
+/* TRZY PLIKI z jednego zrodla — zeby nie rozjechaly sie tresciowo:
+ *  - pelna       : wszystko, do przygotowania i do druku archiwalnego
+ *  - _demo       : konta + sciezki bez pytan — to trzymasz w rece i klikasz
+ *  - _QA         : pozycjonowanie, przewagi i wszystkie pytania — to lezy na stole  */
+const WARIANTY = [
+  { plik: 'Karta_prowadzacego.pdf', tytul: 'Karta prowadzącego — pełna',
+    body: stronaKonta + stronaPozycjonowania + stronaPrzewag + stronyPelne },
+  { plik: 'Karta_prowadzacego_demo.pdf', tytul: 'Karta prowadzącego — przebieg demo',
+    body: stronaKonta + stronyBezPytan },
+  { plik: 'Karta_prowadzacego_QA.pdf', tytul: 'Karta prowadzącego — pytania i odpowiedzi',
+    body: stronaPozycjonowania + stronaPrzewag + stronaQA },
+]
+
+for (const w of WARIANTY) {
+  w.htmlPath = path.join(ROOT, w.plik.replace(/\.pdf$/, '.html'))
+  fs.writeFileSync(w.htmlPath, doc(w.tytul, w.body), 'utf8')
+}
+fs.writeFileSync(HTML_PATH, doc('Karta prowadzącego', WARIANTY[0].body), 'utf8')
 
 const chrome = spawn(CHROME, [
   '--headless=new', '--disable-gpu', '--no-sandbox', '--no-first-run', '--hide-scrollbars',
@@ -505,12 +551,25 @@ const rpc = (s, id, m, p) =>
 const sock = new WebSocket(await ws())
 await new Promise((r, j) => { sock.addEventListener('open', r); sock.addEventListener('error', j) })
 await rpc(sock, 1, 'Page.enable', {})
-await sleep(2500)
-const res = await rpc(sock, 2, 'Page.printToPDF', {
-  printBackground: true, displayHeaderFooter: true, headerTemplate: '<div></div>',
-  footerTemplate: '<div style="width:100%;font-size:8px;color:#9BA0B5;text-align:center;padding:0 12mm;">Karta prowadzącego · HRobot.AI dla 4Mobility · str. <span class="pageNumber"></span>/<span class="totalPages"></span></div>',
-  paperWidth: 8.27, paperHeight: 11.69, marginTop: 0.45, marginBottom: 0.5, marginLeft: 0.6, marginRight: 0.6,
-})
-fs.writeFileSync(OUT, Buffer.from(res.data, 'base64'))
-console.log('ZAPISANO', OUT, (fs.statSync(OUT).size / 1024).toFixed(0) + ' KB')
+await sleep(2000)
+
+const stopka = (podpis) =>
+  `<div style="width:100%;font-size:8px;color:#9BA0B5;text-align:center;padding:0 12mm;">${podpis} · HRobot.AI dla 4Mobility · str. <span class="pageNumber"></span>/<span class="totalPages"></span></div>`
+
+let id = 1
+for (const w of WARIANTY) {
+  // Ta sama karta w Chrome, tylko nawigowana pod kolejny plik — jedno uruchomienie przegladarki
+  // zamiast trzech. `Page.navigate` nie czeka na uklad, stad jawny odstep przed drukiem.
+  await rpc(sock, ++id, 'Page.navigate', { url: 'file:///' + w.htmlPath.replace(/\\/g, '/') })
+  await sleep(2200)
+  const res = await rpc(sock, ++id, 'Page.printToPDF', {
+    printBackground: true, displayHeaderFooter: true, headerTemplate: '<div></div>',
+    footerTemplate: stopka(w.tytul),
+    paperWidth: 8.27, paperHeight: 11.69, marginTop: 0.45, marginBottom: 0.5, marginLeft: 0.6, marginRight: 0.6,
+  })
+  const sciezka = path.join(ROOT, w.plik)
+  fs.writeFileSync(sciezka, Buffer.from(res.data, 'base64'))
+  const stron = (Buffer.from(res.data, 'base64').toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length
+  console.log(`ZAPISANO ${w.plik.padEnd(32)} ${String(stron).padStart(2)} str.  ${(fs.statSync(sciezka).size / 1024).toFixed(0)} KB`)
+}
 sock.close(); chrome.kill(); process.exit(0)
