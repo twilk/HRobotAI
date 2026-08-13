@@ -24,11 +24,15 @@ const KONTA = [
 // jednym rzeczowym zdaniem, (c) co dalej. Odpowiedz KONCZY sie na (a) albo (c), nigdy na (b):
 // prowadzacy ma zejsc z pytania na twardym gruncie, a nie na przyznaniu sie. Zadna liczba i zadna
 // nazwa ekranu nie trafia tu bez sprawdzenia w kodzie albo na dzialajacym srodowisku.
-/** sekcja: { nr, tytul, czas, url, konto, kroki[], pointa, pytania[[q,a]], ostrzezenia[] } */
+/** `opis` to dwa-trzy zdania DO POWIEDZENIA na wejsciu w ekran: czym ten ekran jest i KTO co na nim
+ * widzi. Osobne pole, a nie czesc pointy, bo pointa jest puenta na koniec, a to jest wprowadzenie —
+ * prowadzacy ma z czego plynnie zaczac, zanim zacznie klikac. */
+/** sekcja: { nr, tytul, czas, url, konto, opis, kroki[], pointa, pytania[[q,a]], ostrzezenia[] } */
 const SEKCJE = [
   {
     nr: '2', tytul: 'Pełny obraz organizacji', czas: '4 min',
     url: '/dashboard → /grafik → /dokumenty', konto: 'demo / demo-staging-2026',
+    opis: 'Trzy ekrany w jednym przejściu: pulpit z twardymi liczbami, siatka grafiku na tydzień i wygenerowanie dokumentu kadrowego. Administrator klienta i HR widzą całą firmę; manager to samo, ale policzone wyłącznie dla swoich jednostek.',
     kroki: [
       ['Wejdź na <b>/dashboard</b>', '39 pracowników · 1558 zmian · 3 jednostki · panel ochrony danych'],
       ['Wejdź na <b>/grafik</b>', 'siatka tygodnia, 52 zmiany / 38 zapotrzebowań'],
@@ -46,8 +50,34 @@ const SEKCJE = [
     ostrzezenia: ['NIE klikaj „Generuj grafik” — re-solve kasuje zaseedowaną zamianę demo.'],
   },
   {
+    nr: '2d', tytul: 'Analityk HR — kadry w liczbach', czas: '3 min',
+    url: '/analityk  (menu: „Analityk HR”)', konto: 'demo / demo-staging-2026',
+    opis: 'Operacyjny pulpit wskaźników kadrowych: zatrudnienie, absencje, czas pracy, wykorzystanie urlopów i przepustowość wniosków, w pięciu grupach wykresów. Dostęp mają HR, administrator klienta i manager. Manager widzi te same wskaźniki policzone tylko dla swoich jednostek — i nie ma filtra jednostek, bo nie ma czego przełączać. Pracownik dostaje uprzejmą odmowę z odesłaniem do własnych ekranów, nie komunikat błędu.',
+    kroki: [
+      ['Menu → <b>„Analityk HR”</b>', 'sześć kafli: 39 os. · absencja 7,7% · 1376 h · nadwyżka 68 h · 11 wniosków · mediana 0 h'],
+      ['Pokaż <b>„Na co zwrócić uwagę”</b> u góry', 'sygnały porównawcze z wagą: „Skok absencji — wzrost o 3,2 p.p.” (Wysoka)'],
+      ['Wskaż podpis pod dowolnym kaflem', 'każdy podaje ŹRÓDŁO i rodzaj: „liczone”, „planowane” albo „odtwarzane”'],
+      ['Najedź na kafel <b>„Nadwyżka ponad normę”</b>', 'podpowiedź przyznaje, że wskaźnik ZANIŻA nadgodziny ustawowe w pracy zmianowej'],
+      ['Wyloguj, zaloguj jako <b>manager.demo</b> → <b>/analityk</b>', 'ten sam ekran, ale 14 os. zamiast 39 i BRAK filtra jednostek'],
+    ],
+    pointa: 'Każdy kafel mówi, skąd wzięła się liczba i czego NIE obejmuje. „Nadwyżka ponad normę” sama ostrzega, że nie są to nadgodziny w rozumieniu Kodeksu pracy i że zaniża je w pracy zmianowej. Nie znam drugiego systemu kadrowego, który ostrzega przed własnym wskaźnikiem.',
+    pytania: [
+      ['Dlaczego są dwa podobne ekrany — „Analityk HR” i „Analiza rozwoju”?',
+       'To dwie różne rzeczy: tutaj operacyjny pulpit KPI dla całych zespołów, a „Analiza rozwoju” to moduł KM3 z czterema wymiarami i trajektorią pojedynczych osób. Z samych nazw użytkownik tego nie odczyta i nie mam na to wymówki. Zmiana nazwy jest w backlogu — nie dotyka ani danych, ani uprawnień.'],
+      ['Czy manager może podejrzeć wskaźniki spoza swoich jednostek?',
+       'Nie ma jak — zakres tnie serwer, nie interfejs: manager widzi 14 osób i 496 godzin tam, gdzie administrator widzi 39 i 1376. Filtr jednostek u managera po prostu nie istnieje, bo nie miałby czego przełączać.'],
+      ['Czy „Nadwyżka ponad normę” to nasze nadgodziny do wypłaty?',
+       'Nie i ekran mówi to sam. Liczymy wyłącznie normę tygodniową, a art. 151 §1 zna też normę dobową — dwanaście godzin przez trzy dni daje tu zero, a według Kodeksu dwanaście nadgodzin. Do rozliczenia płacowego służy moduł Dokumenty, nie ten kafel.'],
+    ],
+    ostrzezenia: [
+      'NIE nazywaj „Nadwyżki ponad normę” nadgodzinami. Ekran sam się przed tym broni, ale ktoś z kadr wychwyci to natychmiast, jeśli sam użyjesz złego słowa.',
+      '„Mediana czasu do decyzji” pokazuje 0 h — w danych demo wnioski rozstrzygano tego samego dnia. Jeśli ktoś zapyta, powiedz to wprost, zamiast szukać wyjaśnienia na żywo.',
+    ],
+  },
+  {
     nr: '2e', tytul: 'Strategiczny mózg kadrowy — moduł KM3', czas: '3 min',
     url: '/analiza  (menu: „Analiza rozwoju”)', konto: 'demo / demo-staging-2026',
+    opis: 'Warstwa strategiczna nad grafikiem: ciągła ocena czterech wymiarów, trajektoria w czasie, sygnały retencji i rekomendacje rekrutacji. Ten sam adres daje trzy różne zakresy — administrator i HR widzą wszystkie 39 osób, manager 14 ze swoich jednostek, a pracownik wyłącznie własną kartę. To nie jest grafik ani raport z KPI; to odpowiedź na pytanie, kto zaraz odejdzie.',
     kroki: [
       ['Menu → <b>„Analiza rozwoju”</b>', 'ekran policzony wcześniej w drugiej karcie'],
       ['Pokaż <b>Mapę wydajności</b> — <b>39 osób</b>', 'cała firma, nie próbka'],
@@ -58,8 +88,6 @@ const SEKCJE = [
     ],
     pointa: 'Rafał zamyka 15 zleceń — najwięcej w swojej grupie. Raport pochwaliłby go. Ten moduł widzi, że jego wynik spadł z 86 na 66 w cztery okna, i nazywa to ryzykiem odejścia, zanim złoży wypowiedzenie.',
     pytania: [
-      ['Dlaczego są dwa podobne ekrany — „Analityk HR” i „Analiza rozwoju”?',
-       'To dwie różne rzeczy: Analityk HR to operacyjny pulpit KPI, Analiza rozwoju to moduł KM3 z czterema wymiarami i trajektorią. Z samych nazw użytkownik tego nie odczyta i nie mam na to wymówki. Zmiana nazwy jest w backlogu — nie dotyka ani danych, ani uprawnień.'],
       ['Czy te liczby wyliczył Wasz algorytm, czy ktoś je wpisał?',
        'Silnik jest prawdziwy i otestowany: percentyle, wagi i drabina grup porównawczych mają testy jednostkowe. Snapshoty na tym ekranie są wygenerowane — z tego samego powodu, dla którego całe środowisko jest osobne: nie pokazuję tu ocen Waszych ludzi. Rozróżnienie jest wpisane do raportu KM3, sekcja 5.'],
       ['A gdzie są ankiety pracownicze i analiza dobrostanu? Harmonogram wymienia je przy Analityku HR.',
@@ -76,6 +104,7 @@ const SEKCJE = [
   {
     nr: '3a–3b', tytul: 'AI wykrywa problem i uzasadnia propozycję', czas: '3 min',
     url: '/ai-grafik-manager', konto: 'manager.demo / Manager!2026',
+    opis: 'System sam znajduje lukę w grafiku i proponuje zastępstwo — z uzasadnieniem, dystansem i kosztem. Skrzynkę propozycji widzą managerowie w granicach swoich jednostek, HR i administrator; pracownik nigdy nie ogląda cudzych kandydatur ani rankingu.',
     kroki: [
       ['<b>Wykrywanie wypadnięć</b> → od <b>2026-08-17</b> do <b>2026-08-23</b> → „Skanuj”', 'dokładnie 1 wynik: czw 20.08, Anna Kowalska'],
       ['Przewiń do <b>Skrzynki managera</b>', 'ten sam wakat, z kandydatem'],
@@ -98,6 +127,7 @@ const SEKCJE = [
   {
     nr: '3c', tytul: 'Pracownik dostaje PYTANIE, nie polecenie', czas: '1,5 min',
     url: '/zamiany', konto: 'pracownica.demo / Pracownica!2026',
+    opis: 'Ta sama propozycja oczami pracownika: pytanie o zgodę, nie polecenie służbowe. Pracownik widzi wyłącznie skierowaną do siebie propozycję i szacunek własnego dojazdu — nie widzi, kogo jeszcze system rozważał ani jak został oceniony.',
     kroki: [
       ['Wyloguj, zaloguj jako <b>pracownica.demo</b> → <b>/zamiany</b>', 'sekcja „Propozycje AI — zastępstwo wymaga Twojej zgody”'],
       ['Przeczytaj wiersz', 'czw 20.08 · 14:00–22:00 · KOORDYNATOR · Lotnisko Chopina · dojazd ~7 km'],
@@ -120,6 +150,7 @@ const SEKCJE = [
   {
     nr: '3d', tytul: 'Manager decyduje, solver weryfikuje prawo', czas: '1,5 min',
     url: '/ai-grafik-manager', konto: 'manager.demo / Manager!2026',
+    opis: 'Domknięcie pętli: manager zatwierdza, optymalizator drugi raz sprawdza reguły prawa pracy, a decyzja ląduje w niezmiennym dzienniku audytu. Zatwierdzać mogą managerowie w swoich jednostkach, HR i administrator klienta.',
     kroki: [
       ['Zaloguj jako <b>manager.demo</b> → <b>/ai-grafik-manager</b>', 'propozycja ma status „CZEKA NA MANAGERA”'],
       ['Kliknij <b>„Zatwierdź”</b>', 'zmiana przepina się atomowo + wpis do dziennika audytu'],
@@ -142,6 +173,7 @@ const SEKCJE = [
   {
     nr: '4', tytul: 'Asystent — i jego świadoma granica', czas: '3 min',
     url: '/asystent', konto: 'pracownik.demo / Pracownik!2026',
+    opis: 'Asystent w języku naturalnym — tekstem albo głosem — dostępny dla każdego pracownika, ale wyłącznie w zakresie jego własnych spraw. Dwanaście poleceń po polsku; żadne nie zapisuje niczego bez jawnego potwierdzenia.',
     kroki: [
       ['Wpisz: <b>„Chcę wziąć urlop wypoczynkowy od 20 sierpnia do 21 sierpnia”</b>', 'intencja + PEWNOŚĆ 90% + przycisk potwierdzenia'],
       ['Wskaż, że <b>nic się nie zapisało</b>', 'wymagane kliknięcie „Potwierdź i wykonaj”'],
@@ -165,6 +197,7 @@ const SEKCJE = [
   {
     nr: '5–6', tytul: 'Pracownik w terenie · koszt dla managera', czas: '3 min',
     url: '/moj-tydzien  ·  /dashboard', konto: 'pracownik.demo → manager.demo',
+    opis: 'Dwa spojrzenia na koniec: pracownik w terenie na telefonie i manager patrzący na koszt tygodnia wobec budżetu. Koszt i budżet widzą managerowie, HR i administrator; katalog stawek zmienia wyłącznie HR albo administrator.',
     kroki: [
       ['Jako <b>pracownik.demo</b> → <b>/moj-tydzien</b>', 'jedna mobilna trasa, przyciski min. 44 px'],
       ['Zaloguj jako <b>manager.demo</b> → <b>/dashboard</b>', 'skrzynka decyzji + koszt tygodnia 7656 zł „W BUDŻECIE”'],
@@ -329,6 +362,8 @@ const strony = SEKCJE.map(
     <div><span class="etyk">KONTO</span><span class="mono url">${esc(s.konto)}</span></div>
   </div>
 
+  ${s.opis ? `<div class="opis">${esc(s.opis)}</div>` : ''}
+
   <ol class="kroki">
     ${s.kroki.map(([akcja, efekt]) => `<li><div class="akcja">${akcja}</div><div class="efekt">${esc(efekt)}</div></li>`).join('')}
   </ol>
@@ -381,6 +416,11 @@ const html = `<!doctype html><html lang="pl"><head><meta charset="utf-8"><title>
   .kontekst { display: flex; gap: 22pt; margin: 9pt 0 12pt; }
   .etyk { font-size: 8pt; font-weight: 700; letter-spacing: 1pt; color: #9BA0B5; margin-right: 6pt; }
   .url { font-size: 12.5pt; font-weight: 700; color: #12172b; }
+
+  /* Wprowadzenie do ekranu — do POWIEDZENIA, nie do klikania. Odrozniamy je od krokow lewa
+     kreska i kolorem, zeby oko w trakcie mowienia nie mylilo go z lista akcji. */
+  .opis { font-size: 10pt; color: #3C4260; line-height: 1.4; margin: -3pt 0 11pt;
+          border-left: 2.5pt solid #0C8FA3; padding-left: 9pt; }
 
   .kroki { margin: 0 0 12pt; padding-left: 20pt; }
   .kroki li { margin-bottom: 8pt; }
