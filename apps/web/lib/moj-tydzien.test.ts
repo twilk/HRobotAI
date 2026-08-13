@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { addDays, dayLabel, groupByDay, nextShiftAfterWeek, todayIso, weekDays, type WeekShift } from './moj-tydzien'
+import {
+  addDays,
+  dayLabel,
+  groupByDay,
+  nextShiftAfterWeek,
+  todayIso,
+  toNameMap,
+  weekDays,
+  type WeekShift,
+} from './moj-tydzien'
 
 const shift = (id: string, date: string, start: string, end = '16:00'): WeekShift => ({ id, date, start, end })
 
@@ -143,5 +152,41 @@ describe('nextShiftAfterWeek', () => {
 
   it('zwraca null dla pustej listy', () => {
     expect(nextShiftAfterWeek([], '2026-03-12')).toBeNull()
+  })
+})
+
+describe('toNameMap', () => {
+  it('mapuje id -> nazwa dla poprawnej odpowiedzi API', () => {
+    const m = toNameMap([
+      { id: 'lok-1', name: 'Lotnisko Chopina — Warszawa' },
+      { id: 'lok-2', name: 'Stacja Mobilności — Lublin' },
+    ])
+    expect(m.get('lok-1')).toBe('Lotnisko Chopina — Warszawa')
+    expect(m.size).toBe(2)
+  })
+
+  // Kazdy z ponizszych przypadkow to awaria slownika nazw, nie awaria grafiku. Ekran ma stracic
+  // podpis, a nie godziny — wiec zadne z tych wejsc nie moze rzucic.
+  it('zwraca pusta mape dla czegokolwiek, co nie jest tablica', () => {
+    for (const bad of [null, undefined, {}, 'blad', 42]) {
+      expect(toNameMap(bad).size).toBe(0)
+    }
+  })
+
+  it('pomija wpisy bez uzytecznego id albo name', () => {
+    const m = toNameMap([
+      { id: 'ok', name: 'Dobra' },
+      { id: 'bez-nazwy' },
+      { name: 'bez id' },
+      { id: 'pusta', name: '' },
+      { id: 7, name: 'zle id' },
+      null,
+      'wcale nie obiekt',
+    ])
+    expect([...m.keys()]).toEqual(['ok'])
+  })
+
+  it('zwraca pusta mape dla pustej listy', () => {
+    expect(toNameMap([]).size).toBe(0)
   })
 })

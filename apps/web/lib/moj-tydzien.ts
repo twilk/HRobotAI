@@ -17,7 +17,33 @@ export interface WeekShift {
   date: string
   start: string
   end: string
+  /** Uppercase, e.g. "KOORDYNATOR". Free-form on the wire, so treat an unknown value as valid. */
+  role?: string | null
   lokalizacjaId?: string | null
+}
+
+/** `{ id, name }` rows as `/grafik/lokalizacje` and `/grafik/units` return them. */
+export interface NamedRow {
+  id: string
+  name: string
+}
+
+/**
+ * Turn a name-lookup response into a map, tolerating anything.
+ *
+ * This feeds a caption, never the answer the screen exists to give. A malformed or missing
+ * dictionary must degrade to "no caption", never to a thrown error that takes the whole week's
+ * hours down with it — so every bad shape here resolves to an empty map instead.
+ */
+export function toNameMap(rows: unknown): Map<string, string> {
+  const map = new Map<string, string>()
+  if (!Array.isArray(rows)) return map
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue
+    const { id, name } = row as Partial<NamedRow>
+    if (typeof id === 'string' && typeof name === 'string' && name !== '') map.set(id, name)
+  }
+  return map
 }
 
 export interface DayGroup {

@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { LEAVE_TYPES, leaveTypeLabel, validateLeaveRange } from '@/lib/wnioski'
-import { dayLabel, groupByDay, nextShiftAfterWeek, todayIso, type DayGroup, type WeekShift } from '@/lib/moj-tydzien'
+import {
+  dayLabel,
+  groupByDay,
+  nextShiftAfterWeek,
+  todayIso,
+  toNameMap,
+  type DayGroup,
+  type WeekShift,
+} from '@/lib/moj-tydzien'
+import { roleBar } from '@/lib/grafik-roles'
 
 /**
  * The employee's week on a phone. One column, large targets, two answers only: when am I working,
@@ -24,6 +33,8 @@ interface LeaveRow {
 interface MeResponse {
   firstName?: string
   etat?: string | number
+  /** The employee's organizational unit. A property of the person, never of a single shift. */
+  unitId?: string | null
 }
 
 async function getJson<T>(url: string): Promise<T> {
@@ -47,6 +58,23 @@ async function getJsonOrNull<T>(url: string): Promise<T | null> {
   return (await res.json()) as T
 }
 
+/**
+ * Fetch a name dictionary, swallowing every failure.
+ *
+ * These lookups only ever caption a shift; the answer this screen exists to give is the hours. They
+ * share the `Promise.all` below, where a rejection would replace the whole week with "Brak
+ * połączenia" — so a lookup that fails has to degrade into a missing caption, not a blank screen.
+ */
+async function getNames(url: string): Promise<Map<string, string>> {
+  try {
+    const res = await fetch(url, { cache: 'no-store' })
+    if (!res.ok) return new Map()
+    return toNameMap(await res.json())
+  } catch {
+    return new Map()
+  }
+}
+
 const STATUS_LABEL: Record<string, string> = {
   PENDING: 'Oczekuje',
   APPROVED: 'Zatwierdzony',
@@ -67,6 +95,9 @@ export function MobileWeek() {
   const [nastepna, setNastepna] = useState<WeekShift | null>(null)
   const [leaves, setLeaves] = useState<LeaveRow[]>([])
   const [me, setMe] = useState<MeResponse | null | undefined>(undefined)
+  /** id → nazwa, z /grafik/lokalizacje i /grafik/units. Puste, gdy słownik nie doszedł. */
+  const [locations, setLocations] = useState<Map<string, string>>(new Map())
+  const [units, setUnits] = useState<Map<string, string>>(new Map())
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const cancelled = useRef(false)
@@ -74,13 +105,17 @@ export function MobileWeek() {
   const load = useCallback(async () => {
     try {
       const today = todayIso()
-      const [meRes, shifts, leaveRows] = await Promise.all([
+      const [meRes, shifts, leaveRows, locationNames, unitNames] = await Promise.all([
         getJsonOrNull<MeResponse>('/api/employees/me'),
         getJson<WeekShift[]>('/api/grafik/shifts'),
         getJson<LeaveRow[]>('/api/wnioski'),
+        getNames('/api/grafik/lokalizacje'),
+        getNames('/api/grafik/units'),
       ])
       if (cancelled.current) return
       setMe(meRes)
+      setLocations(locationNames)
+      setUnits(unitNames)
       const lista = Array.isArray(shifts) ? shifts : []
       setDays(groupByDay(lista, today))
       setNastepna(nextShiftAfterWeek(lista, today))
@@ -112,6 +147,10 @@ export function MobileWeek() {
   }
 
   const hours = (days ?? []).flatMap((d) => d.shifts).length
+  const unitLabel = me?.unitId ? (units.get(me.unitId) ?? null) : null
+  /** Rola i miejsce jednej zmiany, w tej kolejności, pominięte gdy nieznane. */
+  const shiftDetails = (s: WeekShift): string =>
+    [s.role, s.lokalizacjaId ? locations.get(s.lokalizacjaId) : null].filter(Boolean).join(' · ')
 
   /**
    * Konto BEZ kartoteki pracownika (ADMIN_KLIENTA / HR — to loginy, nie osoby w grafiku) kończy się
@@ -154,6 +193,9 @@ export function MobileWeek() {
         <h1 className="font-display text-2xl font-extrabold tracking-tighter2 text-navy">
           {me?.firstName ? `Cześć, ${me.firstName}` : 'Twój tydzień'}
         </h1>
+        {/* Jednostka jest cechą pracownika, nie zmiany — stąd raz tutaj, a nie przy każdej pozycji.
+            Bez nazwy w słowniku linia po prostu nie powstaje; „—" nie niesie żadnej informacji. */}
+        {unitLabel ? <p className="mt-0.5 text-[13px] text-muted-2">{unitLabel}</p> : null}
         {/* Pusty tydzień MUSI powiedzieć, co dalej. Samo „nie masz zmian” plus siedem razy „Wolne”
             czyta się jak awaria aplikacji, a nie jak wolne — zwłaszcza że pulpit tego samego
             pracownika zna najbliższą zmianę. Gałąź `me === null` obsłużona wcześniej (early return). */}
@@ -161,7 +203,10 @@ export function MobileWeek() {
           {hours > 0
             ? `Masz ${hours} zaplanowanych zmian.`
             : nastepna
-              ? `W tym tygodniu nie masz zmian. Najbliższa: ${dayLabel(nastepna.date.slice(0, 10)).weekday.toLowerCase()}, ${dayLabel(nastepna.date.slice(0, 10)).dayLabel}, ${nastepna.start}–${nastepna.end}.`
+              ? // Jedyna zmiana, o której ekran wtedy mówi, nie może być jedyną bez kompletu danych.
+                `W tym tygodniu nie masz zmian. Najbliższa: ${dayLabel(nastepna.date.slice(0, 10)).weekday.toLowerCase()}, ${dayLabel(nastepna.date.slice(0, 10)).dayLabel}, ${nastepna.start}–${nastepna.end}${
+                  shiftDetails(nastepna) ? ` · ${shiftDetails(nastepna)}` : ''
+                }.`
               : 'Nie masz zaplanowanych zmian ani w tym tygodniu, ani później.'}
         </p>
       </header>
@@ -186,10 +231,22 @@ export function MobileWeek() {
             ) : (
               <ul className="mt-2 space-y-1.5">
                 {day.shifts.map((s) => (
-                  <li key={s.id} className="flex items-center gap-2 font-display text-lg font-bold tabular-nums text-navy">
-                    {s.start}
-                    <span className="text-muted-2">–</span>
-                    {s.end}
+                  // The bar colour is the same one this role wears in Grafik, so the two screens
+                  // teach one alphabet. The phone card is ~343px wide — nothing here needs cutting.
+                  // roleBar() is an inset shadow, not a border — it paints the 3px edge inside the
+                  // padding box, so `pl-2.5` is what keeps the text off it.
+                  <li key={s.id} className={`rounded-sm pl-2.5 ${roleBar(s.role ?? '')}`}>
+                    <div className="flex items-center gap-2 font-display text-lg font-bold tabular-nums text-navy">
+                      {s.start}
+                      <span className="text-muted-2">–</span>
+                      {s.end}
+                    </div>
+                    {s.role ? (
+                      <div className="font-mono text-[11.5px] uppercase tracking-[.04em] text-muted">{s.role}</div>
+                    ) : null}
+                    {s.lokalizacjaId && locations.has(s.lokalizacjaId) ? (
+                      <div className="text-[12.5px] text-muted-2">{locations.get(s.lokalizacjaId)}</div>
+                    ) : null}
                   </li>
                 ))}
               </ul>
