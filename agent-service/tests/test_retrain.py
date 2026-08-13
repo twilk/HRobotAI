@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 
 from app.fixtures import CANONICAL_ID, canonical_problem
-from app.policy import ImitationPolicy, PolicyState, slot_signature
+from app.policy import PolicyState, slot_signature
 from app.retrain import RetrainPipeline
 from app.store import AgentStore
 
@@ -66,7 +66,7 @@ def test_batch_refit_folds_accumulated_feedback_from_scratch(tmp_path):
     target = problem.employees[0].id
     demands = _seed_move_feedback(store, "t1", problem, target, n_demands=3)
 
-    res = pipeline_res = RetrainPipeline(store, artifacts_dir=str(tmp_path / "art")).retrain(
+    res = RetrainPipeline(store, artifacts_dir=str(tmp_path / "art")).retrain(
         "t1", eval_problem=problem, eval_accepted=[]
     )
     assert res["metrics"]["feedbackRows"] == 3

@@ -14,6 +14,18 @@ import { SeedStep } from './steps/seed.step.js'
 import { KeycloakSetupStep } from './steps/keycloak-setup.step.js'
 import { DoneStep } from './steps/done.step.js'
 
+/**
+ * N-1: UNREGISTERED LEFTOVER — this module is NOT imported by `AppModule` and must not be.
+ *
+ * It is a copy of control-plane's provisioning pipeline, made when this app was forked from the
+ * same skeleton (at commit 5e97242 several files here were byte-identical to control-plane's).
+ * While it was registered, it bound the `tenant.provision` queue alongside control-plane; RabbitMQ
+ * round-robins a queue across its consumers, so half the provisioning steps ran through this copy —
+ * which never received control-plane's at-least-once step claim (G-1) and so silently defeated it.
+ *
+ * Kept on disk rather than deleted so the removal stays cheap to reverse. The canonical
+ * implementation is `apps/control-plane/src/provisioning/`; fix bugs there, not here.
+ */
 @Module({
   imports: [
     ClientsModule.registerAsync([

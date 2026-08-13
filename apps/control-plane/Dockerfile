@@ -37,7 +37,7 @@ RUN pnpm install --frozen-lockfile
 
 # Source, then build: turbo runs db:generate -> ^build -> `nest build`.
 COPY . .
-RUN pnpm run build
+RUN pnpm exec turbo run build --filter=@hrobot/control-plane
 # Fail the build here (not at login time in prod) if bcrypt's native addon did not
 # compile. Run from the app dir so pnpm resolves the app's own bcrypt (not hoisted to
 # root). Requires `bcrypt` in root pnpm.onlyBuiltDependencies.

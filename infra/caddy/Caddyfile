@@ -1,0 +1,8 @@
+# infra/caddy/Caddyfile — jeden publiczny origin. Dev: http na :8080.
+# Całość ruchu do frontu Next (apps/web), który sam proxy'uje /api/* do tenant-runtime po stronie
+# serwera (BFF), trzymając tokeny httpOnly. Bezpośredni routing /cp→control-plane / /auth→keycloak
+# dodamy dopiero, gdy będzie potrzebny publicznie (Faza B).
+:8080 {
+	encode gzip
+	reverse_proxy web:3000
+}

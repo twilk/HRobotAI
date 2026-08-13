@@ -12,7 +12,7 @@ def test_forecast_shape_and_horizon():
     days = {p["date"] for p in preds}
     assert len(days) == 14
     roles = {p["role"] for p in preds}
-    assert roles == {"KIEROWCA", "SERWISANT", "RECEPCJA", "KOORDYNATOR"}
+    assert roles == {"KIEROWCA", "SERWISANT", "OPERATOR", "KOORDYNATOR"}
 
 
 def test_weekday_peak_above_weekend_trough():

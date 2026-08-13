@@ -44,4 +44,4 @@ Do czasu uzupełnienia [4M] poniższe mapowanie zakłada odbiór na poziomie UAT
 - Pełny Evidence Pack: `data/m2-evidence/` (README, uat-journeys, known-limitations, rodo-security-checklist, protokol-odbioru-template).
 - Review przedodbiorowe: `docs/superpowers/specs/2026-07-11-m2-review-findings.md`.
 - Fixy correctness/security: PR #31 (twilk/HRobotAI).
-- Stan testów (pełny bieg lokalny 2026-07-14, linia demo): **855/855 testów TS zielonych w 76 suitach** (tenant-runtime 718, control-plane 30, pakiety współdzielone 107) + agent-service 48 passed / 3 skipped z 51 pytest — logi w `m2-evidence/test-logs/`.
+- Stan testów — **zmierzony 2026-08-03** (zapis „855/855 w 76 suitach" pochodził z biegu 14.07 i był nieaktualny): **857 testów TS w 66 suitach** + `agent-service` 62 passed / 3 skipped (65/65 w kontenerze `python:3.12-slim`) + `grafik-optimizer` 24 passed. Komendy odtwarzające w `m2-evidence/known-limitations.md`; logi historyczne w `m2-evidence/test-logs/`.

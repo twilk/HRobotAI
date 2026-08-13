@@ -33,3 +33,9 @@ docker-compose.override.yml
 
 # Evidence Pack test logs (EV-3) — committed on purpose as acceptance evidence
 !data/m2-evidence/test-logs/*.log
+
+# Dwie superseded prezentacje demo — swiadomie poza repo (decyzja wlasciciela z 10.08).
+# Wpis istnieje, bo `git add docs/demo/` wciagnal je juz dwa razy mimo tej decyzji.
+# Gdyby kiedys mialy trafic do repo: git add -f <plik>.
+docs/demo/HRobot-demo-4Mobility-PARP-2026-08-10.pptx
+docs/demo/HRobot-demo-4Mobility-PARP-v2.pptx

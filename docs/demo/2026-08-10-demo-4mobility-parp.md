@@ -1,0 +1,349 @@
+# Skrypt demo — 4Mobility / PARP, 2026-08-10
+
+> Środowisko: `http://localhost:8080` (Caddy → apps/web, Docker compose project `hrobot`, worktree `HRobot-m2`, branch `feat/demo-4mobility`). Zweryfikowane na żywo tuż przed demo — wszystkie 4 konta, wszystkie ekrany, generowanie PDF, asystent głosowy, pełny łańcuch propozycji AI.
+
+## Konta (realm `hrobot-staging`, klient `hrobot-web`)
+
+| Konto | Hasło | Rola | Zakres |
+|---|---|---|---|
+| `demo` | `demo-staging-2026` | ADMIN_KLIENTA | globalny |
+| `manager.demo` | `Manager!2026` | MANAGER | Region Centrum |
+| `pracownik.demo` | `Pracownik!2026` | PRACOWNIK (Anna Kowalska) | własne dane |
+| `pracownica.demo` | `Pracownica!2026` | PRACOWNIK cross-unit (Katarzyna Zając, Region Północ) | własne dane |
+
+## Przed demo (2 min)
+
+- Stack żyje (`docker compose -p hrobot --profile full up -d`, 10 kontenerów `healthy`, `restart: unless-stopped` — auto-heal, gdyby coś padło w trakcie).
+- Otwórz zakładkę `http://localhost:8080/login`.
+- **Otwórz `http://localhost:8080/analiza` w drugiej karcie** — ten ekran liczy ~8 s przy pierwszym wejściu (sekcja 2e).
+- **Sprawdź stan danych do sekcji 3** (jedna komenda):
+  ```
+  docker exec -i hrobot-postgres-1 psql -U postgres -d hrobot_t_900d948b -c "SELECT state, count(*) FROM ai_proposal GROUP BY state;"
+  ```
+  Potrzebujesz **co najmniej 1 × `PENDING_EMPLOYEE_CONSENT`** (do zaakceptowania przez pracownicę).
+
+  ⚠️ **PROPOZYCJA WYGASA PO 24 GODZINACH.** Kolumna `ai_proposal.expires_at`; po upływie okna
+  scheduler sam przepina ją na `ESCALATED` i sekcja 3c zostaje pusta — bez żadnego ostrzeżenia
+  i bez niczyjego udziału. Straciliśmy ją tak w nocy 12/13.08: wieczorem stan był zielony,
+  o 01:25 już nie było czego pokazać. **Odtwarzaj dane tego samego dnia, w którym prezentujesz.**
+  Ile godzin zostało, sprawdzisz jedną komendą:
+  ```
+  node scripts/przed-demo.mjs
+  ```
+  Stan na 10.08: 1 × `PENDING_EMPLOYEE_CONSENT` + 1 × `PENDING_MANAGER` (rezerwa). Jak odtworzyć — patrz koniec dokumentu.
+- **NIE klikaj wielokrotnie „Generuj grafik"** — re-solve może skasować zaseedowaną zamianę demo.
+- **Asystent obsługuje już zakresy wielodniowe** (naprawione 10.08) — możesz spokojnie powiedzieć „od 20 sierpnia do 21 sierpnia".
+- **⚠ SPRAWDŹ USŁUGĘ MOWY, jeśli planujesz demo głosem.**
+  ```
+  curl -s http://localhost:8011/health
+  ```
+  Ma zwrócić `"loaded": true`. Jeśli `false` — zrób jedno próbne nagranie w `/asystent` przed wejściem odbiorcy.
+
+  **Rozgrzewanie NIE skraca transkrypcji — decyduje o czymś innym.** Przy `"loaded": false` pierwsza
+  transkrypcja trwa **~40 s**, bo model (~490 MB) dopiero wchodzi do pamięci. Po rozgrzaniu czas
+  spada, ale **nie stabilizuje się**: dziesięć pomiarów tego samego nagrania przez pełną ścieżkę
+  przeglądarka → `/api/voice/transcribe` → STT dało **11,8 · 13,1 · 13,4 · 15,3 · 15,5 · 18,5 ·
+  23,4 · 25,3 · 26,6 s**.
+
+  **Planuj górną granicę, nie średnią.** Zapisane wcześniej „7–8 s" (10.08) i „12–15 s" (11.08) były
+  mierzone przy mniejszym obciążeniu maszyny i obie są zbyt optymistyczne. Zagospodaruj tę ciszę
+  (sekcja 4) albo prowadź asystenta tekstem.
+
+---
+
+## 1. Otwarcie (30 s)
+
+„HRobot to platforma HR dla 4Mobility. Dziś pokazujemy pełny zakres: **Grafik + Agent AI** (Etap 2) oraz trzy moduły Etapu 3 — **Dokumenty kadrowe, Analityk HR i Asystent głosowy**. Wszystko na danych syntetycznych, zgodnie z RODO, na żywym systemie — nie na slajdach."
+
+## 2. ADMIN (`demo`) — pełny obraz organizacji (4 min)
+
+Zaloguj jako `demo`.
+
+- **Dashboard** — 39 pracowników, 1558 zaplanowanych zmian, 3 jednostki, panel RODO (DB-per-tenant, PESEL AES-256-GCM, append-only audit).
+- **Grafik** (`/grafik`) — bieżący tydzień: 52 zmiany / 38 zapotrzebowań, siatka pracownik × dzień, filtr jednostek. *Talking point:* solver CP-SAT pilnuje twardo pokrycia, braku nakładania, urlopów i 11 h odpoczynku dobowego (K.p. art. 132).
+- **Dokumenty** (`/dokumenty`) — Ewidencja czasu pracy, Anna Kowalska, 13–19.07.2026 → **Generuj dokument** → nowy wpis „DO ZATWIERDZENIA". *Talking point:* „HRobot liczy ewidencję, nadgodziny i szkielet ZUS, ale niczego nie wysyła — każdy dokument o skutku prawnym zatwierdza człowiek (RODO art. 22)."
+
+### 2d. Analityk HR — kadry w liczbach (3 min)
+
+Menu → **„Analityk HR"**. To operacyjny pulpit wskaźników: zatrudnienie, absencje, czas pracy,
+wykorzystanie urlopów i przepustowość wniosków, w pięciu grupach wykresów. **Nie myl go z „Analizą
+rozwoju"** — tamten ekran (2e) ocenia pojedyncze osoby, ten pokazuje zespoły w agregacie.
+
+Cztery rzeczy do pokazania, w tej kolejności:
+
+1. **Sześć kafli u góry** — 39 os. · absencja 7,1% · 1376 h · nadwyżka ponad normę 68 h · 12 wniosków
+   w toku · mediana czasu do decyzji 0 h. Każdy z porównaniem do poprzedniego okresu.
+2. **„Na co zwrócić uwagę"** — sygnały porównawcze z wagą, nie surowe tabelki: *„Skok absencji —
+   wskaźnik wzrósł o 2,6 p.p., z 4,5 na 7,1"* oraz *„Wzrost nadwyżki ponad normę o
+   55,6 h"* (Średnia). Pod spodem stoi zdanie: *„moduł wyłącznie obserwuje i nie podejmuje żadnych
+   działań kadrowych"*.
+3. **Proweniencja pod każdym kaflem** — wskaż podpis: każdy podaje **źródło** i **rodzaj** liczby:
+   `liczone`, `planowane` albo `odtwarzane`. **Najedź na „Nadwyżka ponad normę"** — podpowiedź
+   przyznaje wprost, że wskaźnik **zaniża** nadgodziny ustawowe w pracy zmianowej, bo stosuje
+   wyłącznie normę tygodniową, a art. 151 §1 K.p. zna też normę dobową.
+4. **Zawężenie zakresu na żywo** — wyloguj, zaloguj jako `manager.demo`, wróć na `/analityk`.
+   **Ten sam ekran pokazuje 14 osób zamiast 39 i 496 h zamiast 1376**, a **filtr jednostek w ogóle
+   nie istnieje** — bo manager nie ma czego przełączać.
+
+> *„Każdy kafel mówi, skąd wzięła się liczba i czego nie obejmuje. Ten tutaj sam ostrzega, że nie są
+> to nadgodziny w rozumieniu Kodeksu pracy i że w pracy zmianowej je zaniża. Nie znam drugiego
+> systemu kadrowego, który ostrzega przed własnym wskaźnikiem."*
+
+**Uwaga na słowa:** nie nazywaj „Nadwyżki ponad normę" nadgodzinami. Ekran broni się sam, ale jeśli
+sam użyjesz złego słowa, ktoś z kadr wychwyci to natychmiast.
+
+**Jeśli ktoś zapyta o medianę 0 h** — w danych demo wnioski rozstrzygano tego samego dnia. Powiedz to
+wprost, zamiast szukać wyjaśnienia na żywo.
+
+**Wisienka (15 s):** wejdź na ten sam adres jako `pracownik.demo`. Anna dostaje **uprzejmą odmowę** —
+*„Zbiorcze wskaźniki kadrowe są dostępne dla działu HR, administratora i kierowników jednostek. Swoje
+własne dane znajdziesz w zakładkach Grafik oraz Wnioski"* — a nie surowy komunikat błędu.
+
+---
+
+### 2e. ⭐ Strategiczny mózg kadrowy — moduł rozliczany w KM3 (3 min)
+
+Menu → **„Analiza rozwoju"** (pozycja z tagiem AI, dodana 10.08 — wcześniej ekran był osiągalny
+wyłącznie przez ręczne wpisanie adresu).
+
+> To jest moduł opisany w KM3 §3.2 jako „Analityk HR" (backend `strategic-brain`, kryteria AN-1..AN-13,
+> 134 testy). Pozycja **„Analityk HR"** wyżej w menu prowadzi do operacyjnego pulpitu KPI — to co innego.
+> Ekran liczy ~8 s przy pierwszym wejściu, więc **otwórz go w drugiej karcie przed demo**.
+
+Trzy rzeczy do pokazania, w tej kolejności:
+
+1. **Sygnały retencji** — gotowe wnioski, nie tabelki: *Rafał Adamczyk — „Trend spadkowy — ryzyko odejścia, zareaguj wcześnie"*, *Marcin Dąbrowski — „Słabszy wynik, ale rośnie — warto zainwestować"*.
+2. **Mapa wydajności i rozwoju** — od 11.08 **wszystkich 39 pracowników**, nie sześcioro. Cztery wymiary (Wydajność, Terminowość, Jakość, Rozwój) plus wynik zbiorczy.
+
+   **Kolumna „Wydajność" zmieniła znaczenie (11.08).** Pokazywała surową liczbę zamkniętych zleceń, więc zestawiała 22 koordynatora zmiany z 4 operatora pod nagłówkiem sugerującym porównywalność. Teraz pokazuje **pozycję w grupie porównawczej w skali 0–100**, a liczba zleceń została pod spodem jako fakt źródłowy.
+
+   Powiedz to tak: *„Koordynator zmiany prowadzi obsadę całej lokalizacji, operator obsługuje pojedyncze zlecenia. Liczba zamkniętych zleceń znaczy u nich co innego, więc jej nie zestawiamy. Porównujemy pozycję w najwęższej grupie, która liczy co najmniej pięć osób — najpierw ta sama rola, jednostka i etat, a gdy takich osób brakuje, kolejno szerzej."* **Najedź kursorem na wynik** — podpowiedź podaje, kogo z kim porównano dla tej konkretnej osoby.
+
+3. **Karta pracownika** — kliknij wiersz **Rafał Adamczyk**. Trajektoria pokazuje **86 → 66 w 4 oknach (−20 pkt)** jako wyraźny zjazd. W rozbiciu wymiarów **Wydajność 92/100 · 15 zleceń** — czyli najlepszy w swojej grupie, a mimo to sygnał brzmi „Ryzyko".
+4. **Rekomendacje rekrutacji** per jednostka i lokalizacja, każda z uzasadnieniem liczbowym: *„Luka kadrowa w Regionie Centrum wg zapotrzebowania grafiku (Koordynator zmiany: brak 2 osób w bieżącym tygodniu). Zalecane wznowienie rekrutacji."*
+
+> *„To jest różnica między raportem a analitykiem. Rafał zamyka piętnaście zleceń — najwięcej w swojej grupie. Raport by go pochwalił. Ten moduł widzi, że jego wynik spadł z 86 na 66 w cztery okna, i nazywa to ryzykiem odejścia, zanim złoży wypowiedzenie."*
+
+**Jeśli ktoś zapyta, czy te liczby wyliczył algorytm — odpowiedz, że nie.** Dane demo są syntetyczne i snapshoty także zostały wpisane; cały zestaw ma jeden znacznik czasu, więc nie jest wynikiem przebiegu silnika. Sam silnik, percentyle i wagi są prawdziwe i pokryte testami, ale liczby na tym ekranie z niego nie wyszły. To jedno z pytań, na które nie ma dobrej odpowiedzi i lepiej powiedzieć to wprost niż dać się złapać.
+
+**Puenta o granicy AI** — pokaż podpis pod przyciskiem: *„Zaakceptuj rekomendację · Rejestruje decyzję — nie wykonuje działań kadrowych"*.
+
+> *„Przycisk nie zatrudnia i nikogo nie zwalnia. Rejestruje, że człowiek podjął decyzję. To jest art. 22 RODO wymuszony architekturą, nie regulaminem."*
+
+**Mocna wisienka, jeśli starczy czasu (30 s):** wejdź na ten sam ekran jako `pracownik.demo`. Anna widzi
+**wyłącznie własną kartę** — wynik 84, cztery wymiary, trajektoria — i **ani jednego cudzego nazwiska**
+(zweryfikowane 10.08). Ta sama trasa, ten sam moduł, trzy różne zakresy danych zależnie od roli.
+
+> *„To nie jest inny ekran dla pracownika. To ten sam moduł — tyle że serwer nie wysyła mu danych, których nie ma prawa zobaczyć."*
+
+---
+
+## 3. ⭐ PEŁNY ŁAŃCUCH AI — sedno demo (6 min)
+
+To najmocniejsza część. Pokazuje AI, która **wykrywa problem, uzasadnia propozycję, pyta człowieka o zgodę i czeka na decyzję managera** — trzy strony, każda widzi tylko swoje.
+
+Zaloguj jako **`manager.demo`**.
+
+### 3a. AI zauważa problem, którego nikt nie zgłosił
+
+`/ai-grafik-manager` → sekcja **Wykrywanie wypadnięć** → zakres `2026-08-17` – `2026-08-23` → **Skanuj**.
+
+Zwraca **dokładnie jeden** wynik (zweryfikowane 10.08) — i to ten sam, którego dotyczy propozycja w kroku 3b, więc opowieść się nie rozjeżdża:
+
+```
+czw 20.08 · 14:00–22:00 · KOORDYNATOR  —  Anna Kowalska
+```
+
+Zmiana, której przypisany pracownik ma **zatwierdzony urlop**: dziura w obsadzie, o której nikt nie napisał maila.
+
+> *„To nie jest raport, który ktoś zamówił. System sam zestawił zatwierdzone urlopy z grafikiem i pokazał, gdzie za chwilę nie będzie komu pracować."*
+
+### 3b. AI proponuje i pokazuje swoje rozumowanie
+
+Ta sama strona, wyżej: **Skrzynka managera — propozycje do zatwierdzenia**. Wskaż wiersz i przeczytaj go na głos — trzy warstwy uzasadnienia w jednej linii:
+
+```
+czw 20.08 · 14:00–22:00 · KOORDYNATOR      ← wakat po Annie Kowalskiej
+Katarzyna Zając,  ranga 1                   ← były inne opcje, ta jest najlepsza
+CROSS-UNIT · ~7 KM · ~7 MIN · +16,09 ZŁ     ← rozumowanie przestrzenne
+praca 0,00 zł + dojazd 16,09 zł = razem +16,09 zł   ← rozumowanie ekonomiczne
+```
+
+> *„AI nie mówi »zrób tak«. Mówi »proponuję Katarzynę, bo jest najlepiej dopasowana, będzie miała 7 km dojazdu i będzie Was to kosztować 16 złotych więcej«. Różnica między tymi dwoma zdaniami jest widoczna w audycie."*
+
+Pokaż też **poziom autonomii** (góra strony): 4 stopnie od „tylko sugestie" po „automatycznie po zatwierdzeniu".
+
+> *„To Wy decydujecie, ile autonomii dostaje AI. Nie my."*
+
+### 3c. Pracownik świadomie się zgadza
+
+Wyloguj → zaloguj jako **`pracownica.demo`** (Katarzyna Zając) → `/zamiany`.
+
+Na górze: **„Propozycje AI — zastępstwo wymaga Twojej zgody"** z pełnym kontekstem:
+
+```
+czw 20.08 · 14:00–22:00 · KOORDYNATOR
+Zastępstwo za zatwierdzony urlop
+Lotnisko Chopina — Warszawa
+Twój szacunkowy dojazd (demo): ~7 km · ~7 min
+[Akceptuj]  [Odrzuć]
+```
+
+> *„Pracownik nie dostaje polecenia. Dostaje pytanie — z datą, godzinami, miejscem i szacunkiem własnego dojazdu, żeby mógł świadomie odpowiedzieć. I może odmówić."*
+
+Kliknij **Akceptuj**.
+
+*RODO:* z serwera wychodzą wyłącznie zaokrąglone kilometry i minuty — nigdy współrzędne ani adres domowy.
+
+### 3d. Manager podejmuje decyzję, solver weryfikuje prawo
+
+Wyloguj → zaloguj jako **`manager.demo`** → `/ai-grafik-manager` → propozycja jest teraz **„CZEKA NA MANAGERA"** → **Zatwierdź**.
+
+> *„Dopiero w tym momencie optymalizator sprawdza twarde reguły H1–H4. AI proponuje, człowiek decyduje, a prawo weryfikuje solver. Zmiana przepina się atomowo i zostaje wpis w niezmiennym dzienniku audytu."*
+
+**Puenta całej sekcji:**
+> *„Zobaczyliście trzy różne role i ani razu AI nie podjęła decyzji kadrowej za człowieka. To jest architektura zgodna z EU AI Act — nie polityka wewnętrzna, tylko granica wymuszona w kodzie."*
+
+---
+
+## 4. Asystent głosowy (3 min)
+
+Zostań jako `pracownica.demo` albo przełącz na `pracownik.demo` → `/asystent`.
+
+- Wpisz: **„Chcę wziąć urlop wypoczynkowy 20 sierpnia"** (jeden dzień — patrz Ryzyka).
+- Pokaż intencję + **PEWNOŚĆ 90%** + to, że **nic się nie zapisze bez kliknięcia „Potwierdź i wykonaj"**.
+- **Celowo** zapytaj: **„Ile osób pracuje jutro na lotnisku?"** → *„Nie zrozumiałem — użyj formularza"*.
+
+> *„To jest pointa, nie usterka. Gdybyśmy podpięli tu duży model językowy, wymyśliłby odpowiedź. My wolimy, żeby system powiedział »nie wiem« — bo to jest ścieżka o skutkach prawnych."*
+
+Wspomnij: transkrypcja mowy liczy się **lokalnie** (faster-whisper) — nagranie głosu to dana osobowa i nie opuszcza infrastruktury w UE.
+
+### Jeśli demonstrujesz GŁOSEM (tor przetestowany nagraniem 10.08)
+
+Tor został sprawdzony realnym nagraniem w formacie, który wysyła przeglądarka (webm/opus): transkrypcja polska jest bardzo dobra, a obie frazy demo rozpoznają się poprawnie.
+
+| Fraza | Transkrypcja | Pewność | Wynik parsera |
+|---|---|---|---|
+| „Chcę wziąć urlop wypoczynkowy 20 sierpnia" | *Chcę wziąć urlop wypoczynkowy 20 sierpnia.* | 0,87 | `URLOP` · 2026-08-20 · wymaga potwierdzenia |
+| „Ile osób pracuje jutro na lotnisku" | *Ile osób pracuje jutro na lotnisku?* | 0,79 | `NIEZNANE` → odesłanie do formularza |
+
+**Zagospodaruj od 12 do 26 sekund ciszy** (10 pomiarów 11–12.08 na tym samym nagraniu: 11,8 · 13,1 · 13,4 · 15,3 · 15,5 · 18,5 · 23,4 · 25,3 · 26,6 s). Rozrzut jest duży i nieprzewidywalny — zakładaj górną granicę, nie średnią. To dużo — w milczeniu wygląda jak zawieszenie aplikacji. Zamień to w argument, mów w trakcie liczenia:
+
+> *„W tej chwili nagranie jest przetwarzane na naszym serwerze, nie w chmurze dostawcy. Te kilkanaście sekund to dokładnie cena za to, że głos pracownika nie opuszcza Waszej infrastruktury."*
+
+Nie przepraszaj za opóźnienie, ale też go nie bagatelizuj: jeśli ktoś dopyta, uczciwa odpowiedź brzmi, że na produkcji ten czas schodzi do sekund dopiero na GPU albo na mniejszym modelu — a to świadomy wybór na później, nie coś, co mamy dziś.
+
+## 5. PRACOWNIK — mobilna trasa (2 min)
+
+Zaloguj jako **`pracownik.demo`** (Anna Kowalska).
+
+- **Dashboard** — tylko swój grafik (5 nadchodzących zmian), godziny vs etat (40/40 h), swoje urlopy.
+- **`/moj-tydzien`** — jedna mobilna trasa: „kiedy pracuję" + „złóż wniosek o urlop", przyciski min. 44 px.
+
+> *„Reszta systemu jest desktopowa, bo HR i managerowie pracują przy biurku. Ale pracownik fizyczny stoi przy samochodzie — to jest jego jedyny ekran."*
+
+## 6. MANAGER — koszt i budżet (2 min)
+
+Zaloguj jako **`manager.demo`**.
+
+- **Dashboard** — „Skrzynka decyzji": wnioski, zamiany, propozycje AI, koszt jednostki tygodnia (7656 zł, „W BUDŻECIE"), prognoza obsady na 14 dni.
+- `/ai-grafik-manager` → **Koszty grafiku**: koszt liczony z realnych godzin × stawka na stanowisku, tabela stawek.
+
+> *„To widok decyzyjny, nie raportowy — manager widzi wyłącznie to, co wymaga jego działania, i wyłącznie w swoim regionie. Uprawnienia są egzekwowane po stronie serwera, nie przez ukrycie przycisku."*
+
+## 7. Zamknięcie (1 min)
+
+„Podsumowując: układamy grafik zgodny z prawem, agent uczy się specyfiki zespołu, dokumenty liczą się z prawdziwych danych RCP, Analityk HR podpowiada na co zwrócić uwagę, a asystent i mobilna trasa biorą pod uwagę kogoś, kto pracuje przy samochodzie, nie przy biurku. Wszystko na danych syntetycznych, RODO od pierwszego dnia."
+
+---
+
+## Ryzyka demo + mitygacje (przeczytaj przed startem)
+
+1. ~~**Asystent: wielodniowy zakres dat kolapsuje do jednego dnia.**~~ **NAPRAWIONE 10.08.** Forma z powtórzonym miesiącem („od 20 sierpnia do 21 sierpnia") nie pasowała do wzorca zakresu, więc parser brał tylko pierwszą datę. Działają teraz wszystkie warianty — powtórzony miesiąc, miesiąc tylko przy pierwszej dacie („od 20 sierpnia do 25"), przełom miesiąca („od 30 sierpnia do 2 września") i przełom roku („od 30 grudnia do 2 stycznia"). Zweryfikowane na żywym systemie.
+2. **Asystent nie odpowiada na pytania otwarte** — to zamierzone (wąski parser intencji, nie ogólny czat) i w sekcji 4 jest użyte jako atut. Nie improwizuj innych pytań.
+3. **Nie klikaj „Generuj grafik" wielokrotnie** — re-solve może skasować zaseedowaną zamianę demo (J5).
+4. **Sekcja 3 zużywa dane.** Po próbie generalnej odtwórz je (instrukcja niżej), inaczej ekran zgody będzie pusty.
+5. **Rezerwa na sekcję 3d:** jeśli akceptacja w 3c z jakiegoś powodu nie zadziała, w skrzynce czeka **druga propozycja już w stanie „CZEKA NA MANAGERA"** — zatwierdź ją i mów dalej jak gdyby nigdy nic.
+6. **Wiersze „ESKALOWANA"** w skrzynce mają w kolumnie decyzji „—" (brak kandydata możliwego do obsadzenia). Nie zatrzymuj się na nich; jeśli ktoś zapyta: *„system nie znalazł nikogo, kto spełnia twarde reguły — świadomie nie proponuje wtedy nikogo na siłę"*.
+7. Jeśli coś padnie: wszystkie 10 kontenerów ma `restart: unless-stopped`, wracają w kilka sekund. Sprawdź `docker ps`, jeśli strona nie odpowiada dłużej niż 10 s.
+8. **Nie otwieraj devtools** — konsola pokaże nieszkodliwe 404 (`/api/employees/me` dla kont bez rekordu Employee) i 403 (`/api/koszty/week` dla jednostek spoza zakresu managera). To poprawne zachowanie RBAC, ale wygląda źle bez kontekstu.
+
+## Jak odtworzyć dane do sekcji 3 (po próbie generalnej)
+
+**Najpierw ustal, jak daleko zaszła próba** — od tego zależy, czy wystarczy klikanie, czy potrzebna jest też jedna komenda SQL.
+
+### Przypadek A — próba skończyła się na 3c (zgoda udzielona, BEZ zatwierdzenia)
+
+Wystarczy odtworzyć propozycję. Jako `manager.demo`:
+
+1. `/ai-grafik-manager` → **Wykrywanie wypadnięć** → zakres `2026-08-17` – `2026-08-23` → **Skanuj**
+2. przy jedynym wierszu (czw 20.08, Anna Kowalska) → **Utwórz propozycję zastępstwa**
+3. dla TEJ zmiany jedynym wykonalnym kandydatem jest Katarzyna Zając, która ma konto — więc przy autonomii „Automatycznie za zgodą pracownika" propozycja idzie do niej jako `PENDING_EMPLOYEE_CONSENT` i sekcja 3c znów ma na czym działać
+
+### Przypadek B — próba przeszła CAŁY łańcuch łącznie z 3d (zatwierdzenie)
+
+⚠️ **Samo powtórzenie kroków z przypadku A NIE zadziała** i to jest najłatwiejsza pułapka w całym przygotowaniu. Zatwierdzenie w 3d **przepina zmianę na Katarzynę** — to dowód, że łańcuch działa, ale od tej chwili Anna nie jest już przypisana do tej zmiany, więc **skan zwraca 0 wypadnięć** (nie ma czego wykrywać). Sprawdzone na żywo 10.08 po biegu dowodowego.
+
+Najpierw przywróć przypisanie zmiany do Anny (jedna komenda, trafia w dokładnie jeden wiersz — selektor po dacie, godzinie i roli, więc nie trzeba przepisywać żadnego UUID):
+
+```
+docker exec -i hrobot-postgres-1 psql -U postgres -d hrobot_t_900d948b -c "UPDATE shifts SET employee_id = (SELECT id FROM employees WHERE first_name='Anna' AND last_name='Kowalska'), updated_at = now() WHERE date::date='2026-08-20' AND start='14:00' AND role='KOORDYNATOR';"
+```
+
+Sprawdź, czy przywrócenie się udało — oczekiwany wynik to `Anna Kowalska | 1` (jedynka oznacza, że ma na ten dzień zatwierdzony urlop, czyli skan ma co znaleźć):
+
+```
+docker exec -i hrobot-postgres-1 psql -U postgres -d hrobot_t_900d948b -c "SELECT e.first_name||' '||e.last_name AS przypisany, (SELECT count(*) FROM leave_requests l WHERE l.employee_id=s.employee_id AND l.status='APPROVED' AND s.date BETWEEN l.start_date AND l.end_date) AS ma_urlop FROM shifts s JOIN employees e ON e.id=s.employee_id WHERE s.date::date='2026-08-20' AND s.start='14:00' AND s.role='KOORDYNATOR';"
+```
+
+Dopiero teraz wykonaj kroki 1–3 z przypadku A.
+
+> Wpisów w dzienniku audytu **nie usuwamy** — jest append-only z założenia i poprawnie rejestruje, co wydarzyło się podczas próby. Przywrócenie danych demonstracyjnych to osobna czynność administracyjna, nie kasowanie historii.
+
+### Mapa wydajności pokazuje tylko 6 osób zamiast 39
+
+Znaczy to, że zabrakło dosypki grup porównawczych. Bazowy seed tworzy sześć profili narracyjnych; resztę pracowników dodaje osobny, **idempotentny** skrypt (usuwa własny poprzedni przebieg, więc można go puścić wielokrotnie):
+
+```bash
+docker exec -i hrobot-postgres-1 psql -U postgres -d hrobot_t_900d948b -v ON_ERROR_STOP=1 < scripts/seed-demo-strategic-brain-peers.sql
+```
+
+Kończy się zestawieniem liczebności ról — oczekiwane: **Serwisant floty 14, Operator 14, Kierowca 7, Koordynator zmiany 4** (razem 39).
+
+> **Zmiana nazewnictwa z 12.08.** Stanowisko `Recepcjonista` nazywa się teraz `Operator` w całej aplikacji i w danych. Jeśli gdziekolwiek zobaczysz jeszcze „Recepcjonista", to znaczy, że patrzysz na starszy materiał dowodowy albo na wpis w dzienniku audytu — ten jest append-only i historycznych zapisów nie przepisujemy. Nie jest to usterka i tak to nazwij, gdyby ktoś zapytał.
+
+Bez tego kolumna „Wydajność" traci sens: percentyl liczony wobec jednej osoby zawsze wynosi 50.
+
+### Uwagi wspólne
+
+> ⚠️ **Użyj właśnie tego zakresu dat.** Dla innych wypadnięć (np. w lipcu) jedynym kandydatem bywa ktoś **bez konta w systemie** — wtedy propozycja od razu ląduje jako `ESKALOWANA`, bo nie ma kogo zapytać o zgodę, i sekcja 3c nie będzie miała czego pokazać.
+
+**Weryfikacja końcowa** — komenda `psql` z sekcji „Przed demo" powinna pokazać co najmniej jeden `PENDING_EMPLOYEE_CONSENT`. Dla pewności zaloguj się jako `pracownica.demo` i sprawdź, czy na `/zamiany` widać wiersz `czw 20.08 · 14:00–22:00 · KOORDYNATOR` z przyciskami Akceptuj/Odrzuć.
+
+### Runbook przetestowany, nie tylko spisany
+
+Powyższa procedura (przypadek B) została **przejechana w całości 10.08 po próbie generalnej**, która świadomie zużyła dane przechodząc przez krok 3d. Zmierzony przebieg:
+
+| Moment | `PENDING_EMPLOYEE_CONSENT` | Zmiana 20.08 przypisana do |
+|---|---|---|
+| przed próbą | 1 | Anna Kowalska |
+| po próbie (3d wykonane) | **0** | Katarzyna Zając |
+| po komendzie SQL | 0 | Anna Kowalska |
+| po skanie i utworzeniu propozycji | **1** | Anna Kowalska |
+
+Rezerwowa propozycja `PENDING_MANAGER` przetrwała cały cykl nietknięta.
+
+## Co jeszcze warto wiedzieć po próbie generalnej
+
+- **Automatyczny przejazd trwa ~45 s**, ale to sprawdzian FUNKCJONALNY, nie próba tempa prowadzącego. Na żywo licz ~20 min według czasów przy sekcjach i przećwicz przełączanie kont — to ono zabiera najwięcej czasu, a nie same ekrany.
+- **Każda próba dokłada wersję dokumentu.** Po kilku przejazdach lista w module Dokumenty ma kilka wpisów „Ewidencja czasu pracy · Anna Kowalska · 13–19.07". To NIE jest usterka, tylko wersjonowanie append-only: zawsze dokładnie jedna pozycja ma status bieżący, poprzednie dostają **ZASTĄPIONY**. Jeśli ktoś zapyta — to jest dobra odpowiedź: *„regenerowanie nie nadpisuje poprzedniej wersji, tylko ją oznacza jako zastąpioną; pełna historia zostaje"*.
+- **Liczba `APPROVED` rośnie z każdą próbą** (przed demo: 4). Nie ma to wpływu na przebieg — zatwierdzone propozycje nie pojawiają się w skrzynce decyzyjnej.
+
+## Q&A — przygotowane odpowiedzi
+
+- **„Czy agent to RL?"** → Nie. Uczący się scorer preferencji (affinity-learner) + wsadowy re-fit z wersjonowaną polityką. `stable_baselines3` nie jest importowany w żadnym module — sprawdzone w kodzie. **Nie używaj słowa „RL".**
+- **„Skąd wiadomo, że efekt uczenia nie jest ustawiony?"** → Domyślny scenariusz generował wzorzec tą samą funkcją, której używa agent, więc zbiegał z konstrukcji. Sami to wykryliśmy i dobudowaliśmy scenariusz niezależny: **96 → 0 w 17 rundach, niemonotonicznie**, przy płaskiej próbie kontrolnej bez feedbacku, powtórzone dla 6 profili managera.
+- **„Odpoczynek tygodniowy / nadgodziny?"** → H1–H4 twardo teraz w solverze; H5 (35 h tygodniowo) i H6 (limity nadgodzin) to kolejny etap. Udokumentowane, nie przemilczane.
+- **„Bezpieczeństwo danych?"** → Dane syntetyczne; PESEL AES-256-GCM + blind index; DB-per-tenant; append-only audit z wyzwalaczem blokującym UPDATE/DELETE.
+- **„Dokumenty ZUS idą automatycznie do ZUS?"** → Nigdy. HRobot generuje szkielet, człowiek zatwierdza i wysyła (RODO art. 22).
+- **„Czy AI może zdecydować za managera?"** → Nie ma takiej ścieżki w kodzie. Nawet najwyższy poziom autonomii wymaga zatwierdzenia; moduł Analityk HR ma twardą granicę zapisu (analizuje i rekomenduje, nigdy nie wykonuje).

@@ -275,6 +275,9 @@ function readSnap(over: { employeeId: string; windowEnd: string } & Partial<Reco
     compositeScore: 80,
     developmentSlope: 1,
     confidence: 0.9,
+    // NOT NULL in the schema — a fixture without it does not describe a row this code can ever read,
+    // and its absence hid the fact that `overview` now peer-normalizes on the read path.
+    peerGroupKey: 'Serwisant|u1|1',
     isNewHire: false,
     excludedReason: null,
     ...rest,
@@ -330,6 +333,120 @@ describe('SnapshotService (read paths)', () => {
       expect(rows).toEqual([])
       expect(client.employeePerformanceSnapshot.findMany).not.toHaveBeenCalled()
     })
+
+    // Peer-normalized "Wydajność" (M10) on the read path. The percentile the heatmap shows must be
+    // the SAME quantity RecommendationService.finalizeWindow folds into compositeScore — a column
+    // that disagreed with the `Wynik` beside it would be worse than showing nothing.
+    describe('peer-normalized performance', () => {
+      const peers = (employeeId: string, throughput: number, key = 'Serwisant|u1|1') =>
+        readSnap({ employeeId, windowEnd: '2026-06-15T00:00:00.000Z', throughput, peerGroupKey: key })
+
+      it('ranks against EVERY employee in the window, but returns only in-scope rows', async () => {
+        // The manager sees one person; the percentile is still computed against all five, exactly as
+        // the write path does. Ranking within the visible subset would show the same employee a
+        // different number to their manager than to HR.
+        client.employee.findMany.mockResolvedValue([{ id: 'e1' }])
+        client.employeePerformanceSnapshot.findMany.mockResolvedValue([
+          peers('e1', 10),
+          peers('e2', 2),
+          peers('e3', 4),
+          peers('e4', 6),
+          peers('e5', 8),
+        ])
+
+        const rows = (await service.overview(asReadClient(client), ['u1'])) as Array<Record<string, unknown>>
+
+        expect(rows.map((r) => r.employeeId)).toEqual(['e1']) // nobody else leaked
+        // mid-rank: 100 * (4 below + 0.5 * 1 equal) / 5
+        expect(rows[0]!.performancePercentile).toBe(90)
+        expect(rows[0]!.peerGroupSize).toBe(5)
+        expect(rows[0]!.peerMeaningful).toBe(true)
+      })
+
+      it('flags a group below minPeerGroupSize as NOT meaningful instead of hiding it', async () => {
+        // Spec §14 M10: the UI must disclose "grupa zbyt mała — normalizacja orientacyjna" rather
+        // than present a percentile derived from one person as a rank among peers.
+        client.employee.findMany.mockResolvedValue([{ id: 'e1' }])
+        client.employeePerformanceSnapshot.findMany.mockResolvedValue([peers('e1', 10)])
+
+        const rows = (await service.overview(asReadClient(client), null)) as Array<Record<string, unknown>>
+
+        expect(rows[0]!.peerMeaningful).toBe(false)
+        expect(rows[0]!.peerFellBack).toBe(true) // ladder exhausted down to __GLOBAL__
+        expect(rows[0]!.peerGroupSize).toBe(1)
+      })
+
+      it('never ranks an employee against a DIFFERENT window', async () => {
+        // e2's latest snapshot is an older window. Mixing the two would rank e1's 10 against a 100
+        // it never competed with — the peer index is keyed by windowEnd precisely to stop that.
+        client.employee.findMany.mockResolvedValue([{ id: 'e1' }, { id: 'e2' }])
+        client.employeePerformanceSnapshot.findMany.mockResolvedValue([
+          readSnap({ employeeId: 'e1', windowEnd: '2026-06-15T00:00:00.000Z', throughput: 10 }),
+          readSnap({ employeeId: 'e2', windowEnd: '2026-06-01T00:00:00.000Z', throughput: 100 }),
+        ])
+
+        const rows = (await service.overview(asReadClient(client), null)) as Array<Record<string, unknown>>
+        const e1 = rows.find((r) => r.employeeId === 'e1')!
+
+        expect(e1.peerGroupSize).toBe(1)
+        expect(e1.performancePercentile).toBe(50) // alone in its window, not 0 against the 100
+      })
+
+      it('falls back to a coarser grouping when the exact rola|jednostka|etat group is too small', async () => {
+        // e1 is the only 0.5-etat Serwisant, so `Serwisant|u1|0.5` has one member; the ladder widens
+        // to `Serwisant|u1`, which has five. fellBack marks that the number is coarser than ideal.
+        client.employee.findMany.mockResolvedValue([{ id: 'e1' }])
+        client.employeePerformanceSnapshot.findMany.mockResolvedValue([
+          peers('e1', 10, 'Serwisant|u1|0.5'),
+          peers('e2', 2),
+          peers('e3', 4),
+          peers('e4', 6),
+          peers('e5', 8),
+        ])
+
+        const rows = (await service.overview(asReadClient(client), null)) as Array<Record<string, unknown>>
+
+        expect(rows[0]!.peerGroupSize).toBe(5)
+        expect(rows[0]!.peerFellBack).toBe(true)
+        expect(rows[0]!.peerMeaningful).toBe(true)
+      })
+
+      it('reports WHICH rung of the ladder produced the number, not just that it fell back', async () => {
+        // On the demo tenant every row falls back (etat is a decimal, so rola|jednostka|etat splits
+        // a 13-person role into twos). A UI captioned "same role, unit and etat" would then be false
+        // for every row — so the level travels with the number.
+        client.employee.findMany.mockResolvedValue([{ id: 'e1' }, { id: 'e6' }])
+        client.employeePerformanceSnapshot.findMany.mockResolvedValue([
+          peers('e1', 10, 'Serwisant|u1|0.5'), // alone at the finest level → widens to Serwisant|u1
+          peers('e2', 2),
+          peers('e3', 4),
+          peers('e4', 6),
+          peers('e5', 8),
+          peers('e6', 9, 'Kierowca|u9|1'), // alone at every rung → falls all the way to the company
+        ])
+
+        const rows = (await service.overview(asReadClient(client), null)) as Array<Record<string, unknown>>
+
+        expect(rows.find((r) => r.employeeId === 'e1')!.peerLevel).toBe('ROLA_JEDNOSTKA')
+        expect(rows.find((r) => r.employeeId === 'e6')!.peerLevel).toBe('FIRMA')
+      })
+
+      it('reports the FINEST level when it is genuinely reached', async () => {
+        client.employee.findMany.mockResolvedValue([{ id: 'e1' }])
+        client.employeePerformanceSnapshot.findMany.mockResolvedValue([
+          peers('e1', 10),
+          peers('e2', 2),
+          peers('e3', 4),
+          peers('e4', 6),
+          peers('e5', 8),
+        ])
+
+        const rows = (await service.overview(asReadClient(client), null)) as Array<Record<string, unknown>>
+
+        expect(rows[0]!.peerLevel).toBe('ROLA_JEDNOSTKA_ETAT')
+        expect(rows[0]!.peerFellBack).toBe(false)
+      })
+    })
   })
 
   describe('employeeCard', () => {
@@ -345,6 +462,33 @@ describe('SnapshotService (read paths)', () => {
       expect((card.series as unknown[]).length).toBe(1)
       expect(card.retentionSignal).toBe('UTRZYMAC') // high score, non-negative slope
       expect((card.factors as Record<string, unknown>).compositeScore).toBe(85)
+    })
+
+    it('carries the PEER PERCENTILE in factors, not just the raw order count', async () => {
+      // The card is the explainability panel: it lists "Wydajność · waga 30%" beside the composite.
+      // The engine weights the percentile, so showing the raw count there would misdescribe the very
+      // model the panel exists to explain. Two findMany calls: the employee's series, then the
+      // window's peers.
+      client.employee.findUnique.mockResolvedValue({ id: 'e1', unitId: 'u1' })
+      client.employeePerformanceSnapshot.findMany
+        .mockResolvedValueOnce([
+          readSnap({ employeeId: 'e1', windowEnd: '2026-06-15T00:00:00.000Z', throughput: 10, compositeScore: 85 }),
+        ])
+        .mockResolvedValueOnce([
+          readSnap({ employeeId: 'e1', windowEnd: '2026-06-15T00:00:00.000Z', throughput: 10 }),
+          readSnap({ employeeId: 'e2', windowEnd: '2026-06-15T00:00:00.000Z', throughput: 2 }),
+          readSnap({ employeeId: 'e3', windowEnd: '2026-06-15T00:00:00.000Z', throughput: 4 }),
+          readSnap({ employeeId: 'e4', windowEnd: '2026-06-15T00:00:00.000Z', throughput: 6 }),
+          readSnap({ employeeId: 'e5', windowEnd: '2026-06-15T00:00:00.000Z', throughput: 8 }),
+        ])
+
+      const card = (await service.employeeCard(asReadClient(client), 'e1', ['u1'])) as Record<string, unknown>
+      const f = card.factors as Record<string, unknown>
+
+      expect(f.throughput).toBe(10) // the underlying fact stays available
+      expect(f.performancePercentile).toBe(90) // …but the WEIGHTED quantity is the percentile
+      expect(f.peerMeaningful).toBe(true)
+      expect(f.peerLevel).toBe('ROLA_JEDNOSTKA_ETAT')
     })
 
     it('404s for an unknown id BEFORE any scope check', async () => {

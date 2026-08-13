@@ -8,28 +8,45 @@ optimizer the rest of ``/agent/*`` talks to. The scripted manager stays **server
 (not forked into the client), and everything here is on the fixed synthetic scenario (RODO-safe).
 
 Endpoints:
-  POST /agent/demo/corrections  { proposalId, budget?, tenantId? }
-      → { editDistance, normalizedEditDistance, acceptanceMetric, edits[], acceptedAssignments, managerPreference }
+  POST /agent/demo/corrections  { proposalId, budget?, manager? }   — bearer token required
+      → { editDistance, normalizedEditDistance, acceptanceMetric, edits[], acceptedAssignments,
+          managerModel, managerPreference }
         The scripted manager's MOVE corrections toward its preferred schedule for a given proposal,
         plus the live edit-distance / acceptance of that proposal vs. the manager-accepted schedule.
+        ``manager`` selects the reference: ``constructed`` (default, unchanged J4 behaviour — but
+        built by the agent's own ``propose``, see HON-2) or ``independent`` (built without the
+        agent's policy; the honest number, and a much longer climb).
   GET  /agent/demo               → a self-served, same-origin HTML page that runs the same loop
         visually (optional stretch). It only calls the same-origin ``/agent/*`` endpoints, so no CORS.
 
 Reuses the one process-wide ``AgentStore`` from :mod:`app.agent_router` so it reads the very proposals
 ``POST /agent/propose`` just wrote.
+
+**Auth (AG6, same posture as the rest of ``/agent/*``):** ``/corrections`` reads a persisted proposal
+out of that shared, tenant-partitioned store, so it is a *data-read* surface even though it is
+demo-only — it must not be a back door around the tenant isolation the sibling routes enforce. It
+therefore depends on :func:`app.deps.require_tenant`: the tenant comes from the verified token issuer,
+and a ``tenantId`` in the request body is ignored (the model has no such field, and pydantic drops
+extras) exactly as in :mod:`app.schemas`.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from . import agent_router
 from .contract import Assignment, ProblemInput
-from .demo_ag2 import _edits_toward, manager_accepted_schedule
+from .demo_ag2 import (
+    MANAGER_CONSTRUCTED,
+    MANAGER_DESCRIPTION,
+    MANAGER_INDEPENDENT,
+    _edits_toward,
+    manager_truth,
+)
+from .deps import require_tenant
 from .metrics import acceptance_metric, edit_distance, normalized_edit_distance
-from .service import DEFAULT_TENANT
 
 router = APIRouter(prefix="/agent/demo", tags=["agent-demo"])
 
@@ -40,28 +57,40 @@ MANAGER_PREFERENCE = (
 
 
 class CorrectionsRequest(BaseModel):
+    # No ``tenantId``: the tenant is derived from the authenticated bearer token (AG6). A caller that
+    # still sends one has it silently dropped — it must never select which tenant's data is read.
     proposalId: str
     budget: int = 6
-    tenantId: str = DEFAULT_TENANT
+    #: Which reference schedule to correct toward — ``constructed`` (the original scenario, built by
+    #: the agent's own ``propose``) or ``independent`` (HON-2: built without the agent's policy).
+    #: Defaults to ``constructed`` so the committed J4 script and page are unchanged.
+    #: NOTE: there is deliberately NO ``tenantId`` field — the tenant comes from the verified token
+    #: issuer (AG6). Pydantic silently drops the extra key, so an old client sending it is ignored.
+    manager: str = MANAGER_CONSTRUCTED
 
 
 @router.post("/corrections")
-def corrections(req: CorrectionsRequest):
+def corrections(req: CorrectionsRequest, tenant: str = Depends(require_tenant)):
     """Return the scripted manager's corrections for a proposal + the live edit-distance/acceptance.
 
     Loads the proposal the service just persisted, reconstructs the manager-accepted schedule with the
     exact same helper the committed AG2 demo uses, and returns the MOVE edits toward it. The client
     feeds these straight back to ``POST /agent/feedback`` — so the whole learning loop is driven over
     HTTP against the running service, and the numbers here are the ones the audience watches fall.
+
+    The proposal lookup is scoped to ``tenant`` from the token, so a caller can only ever see the
+    rosters of the realm it authenticated against.
     """
     # Look the store up dynamically (not captured at import) so we always share the *current*
     # process-wide store — including after the test fixture reloads ``agent_router``.
-    proposal = agent_router._store.get_proposal(req.tenantId, req.proposalId)
+    if req.manager not in (MANAGER_CONSTRUCTED, MANAGER_INDEPENDENT):
+        raise HTTPException(status_code=422, detail=f"unknown manager model {req.manager!r}")
+    proposal = agent_router._store.get_proposal(tenant, req.proposalId)
     if proposal is None:
         raise HTTPException(status_code=404, detail="unknown proposalId for tenant")
     problem = ProblemInput.model_validate(proposal["problem"])
     proposed = [Assignment.model_validate(a) for a in proposal["assignments"]]
-    accepted = manager_accepted_schedule(problem)
+    accepted = manager_truth(problem, req.manager)
 
     dist = edit_distance(proposed, accepted)
     norm = round(normalized_edit_distance(proposed, accepted), 4)
@@ -72,7 +101,12 @@ def corrections(req: CorrectionsRequest):
         "acceptanceMetric": acceptance_metric(proposed, accepted),
         "edits": edits,
         "acceptedAssignments": len(accepted),
-        "managerPreference": MANAGER_PREFERENCE,
+        "managerModel": req.manager,
+        "managerPreference": (
+            MANAGER_PREFERENCE
+            if req.manager == MANAGER_CONSTRUCTED
+            else MANAGER_DESCRIPTION[MANAGER_INDEPENDENT]
+        ),
     }
 
 
@@ -124,6 +158,9 @@ _DEMO_HTML = """<!doctype html>
   .pill.live { background:#dbeafe; color:#1e40af; }
   .note { color:var(--muted); font-size:12.5px; margin-top:6px; }
   code { background:#f1f5f9; padding:1px 5px; border-radius:4px; font-size:12.5px; }
+  .auth { margin:16px 0 0; padding:12px 16px; background:#fff; border:1px solid var(--line); border-radius:10px; }
+  .auth label { display:block; font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:600; margin-bottom:6px; }
+  .auth input { width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:8px; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12.5px; }
 </style>
 </head>
 <body>
@@ -153,8 +190,18 @@ _DEMO_HTML = """<!doctype html>
     </div>
   </div>
 
-  <div class="status" id="status">Ready. Click <b>Reset demo agent to cold-start &amp; replay</b> to watch a
-     fresh, untrained agent learn the manager's schedule from scratch.</div>
+  <div class="auth">
+    <label for="token">Keycloak access token</label>
+    <input id="token" type="password" autocomplete="off" spellcheck="false"
+           placeholder="paste an access token — every /agent/* call needs one"/>
+    <p class="note">The agent takes your <b>tenant from this token's realm</b> and never from the request
+       body, so one tenant can never read another's rosters. Nothing is stored: the token lives in this
+       page for the length of the run.</p>
+  </div>
+
+  <div class="status" id="status">Ready. Paste a token above, then click
+     <b>Reset demo agent to cold-start &amp; replay</b> to watch a fresh, untrained agent learn the
+     manager's schedule from scratch.</div>
   <p><button id="reset">Reset demo agent to cold-start &amp; replay</button>
      <button id="run" class="secondary">Replay (keep current training)</button>
      <span id="feas"></span></p>
@@ -173,7 +220,9 @@ _DEMO_HTML = """<!doctype html>
 </main>
 
 <script>
-const TENANT = "j4-live-page";
+// No TENANT constant: every /agent/* route derives the tenant from the bearer token's issuer realm
+// and ignores any tenantId in the body (AG6 tenant isolation), so the token alone decides whose
+// rosters this page can see.
 const ROUNDS = 6, BUDGET = 6, PROBLEM_ID = "syn-canonical-feasible";
 const $ = (id) => document.getElementById(id);
 const j = async (url, opts) => {
@@ -181,7 +230,13 @@ const j = async (url, opts) => {
   if (!r.ok) throw new Error(url + " -> " + r.status + " " + (await r.text()));
   return r.json();
 };
-const post = (url, body) => j(url, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+const post = (url, body) => {
+  const tok = $("token").value.trim();
+  if (!tok) throw new Error("paste a Keycloak access token first — /agent/* requires one");
+  return j(url, {method:"POST",
+    headers:{"Content-Type":"application/json", "Authorization":"Bearer " + tok},
+    body:JSON.stringify(body)});
+};
 
 let firstDist = null;
 function paint(dist, acc, ver) {
@@ -214,7 +269,7 @@ async function runDemo(opts) {
   // shows the full climb from a fresh agent (deterministic 50 -> 0 / 52% -> 100%).
   if (opts.reset) {
     $("status").innerHTML = "Resetting the demo agent to a <b>fresh, untrained cold-start</b> policy…";
-    const rs = await post("/agent/reset", {tenantId: TENANT});
+    const rs = await post("/agent/reset", {});
     $("status").innerHTML = "Agent reset to cold-start (policy <b>v" + rs.policyVersion
       + "</b>, feedback cleared). Starting the learning loop from scratch…";
   }
@@ -222,7 +277,7 @@ async function runDemo(opts) {
   // Live-optimizer proof: heal a deliberately-broken proposal through the real solver.
   $("status").innerHTML = "Contacting the <b>live CP-SAT optimizer</b> via /agent/heal…";
   try {
-    const heal = await post("/agent/heal", {tenantId: TENANT,
+    const heal = await post("/agent/heal", {
       infeasibleProposal: {problemInputId: PROBLEM_ID, assignments: []}});
     $("healnote").innerHTML = "Live optimizer reached — <code>/agent/heal</code> returned solverStatus <b>"
       + heal.solverStatus + "</b> with " + heal.repairedAssignments.length
@@ -232,8 +287,8 @@ async function runDemo(opts) {
 
   for (let r = 0; r < ROUNDS; r++) {
     $("status").innerHTML = "Round " + (r+1) + "/" + ROUNDS + ": agent proposing a roster…";
-    const prop = await post("/agent/propose", {problemInputId: PROBLEM_ID, tenantId: TENANT});
-    const corr = await post("/agent/demo/corrections", {proposalId: prop.proposalId, budget: BUDGET, tenantId: TENANT});
+    const prop = await post("/agent/propose", {problemInputId: PROBLEM_ID});
+    const corr = await post("/agent/demo/corrections", {proposalId: prop.proposalId, budget: BUDGET});
     const feas = prop.feasibility.feasible ? '<span class="pill ok">feasible</span>' : "infeasible";
     paint(corr.editDistance, corr.acceptanceMetric, prop.policyVersion);
     addRow([r+1, "propose", "v"+prop.policyVersion, corr.editDistance,
@@ -246,8 +301,8 @@ async function runDemo(opts) {
     }
     $("status").innerHTML = "Round " + (r+1) + ": manager corrects " + corr.edits.length
       + " assignments → feedback → batch self-development retrain…";
-    await post("/agent/feedback", {proposalId: prop.proposalId, edits: corr.edits, accepted: false, tenantId: TENANT});
-    const rt = await post("/agent/retrain", {tenantId: TENANT, note: "J4 live page round " + (r+1)});
+    await post("/agent/feedback", {proposalId: prop.proposalId, edits: corr.edits, accepted: false});
+    const rt = await post("/agent/retrain", {note: "J4 live page round " + (r+1)});
     addRow([r+1, "retrain", "v"+rt.version, "—", "—",
             (rt.metrics.feedbackApplied ?? rt.metrics.feedbackRows), "self-development"], false);
   }

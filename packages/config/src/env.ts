@@ -21,6 +21,16 @@ export const envSchema = z.object({
   KEYCLOAK_URL: z.string().url(),
   KEYCLOAK_CLIENT_ID: z.string().min(1),
   KEYCLOAK_ADMIN_CLIENT_SECRET: z.string().min(1),
+  /**
+   * Comma-separated OIDC clients whose tokens tenant-runtime accepts (checked against `azp`,
+   * falling back to `aud`). Without this, ANY client in a trusted realm — including one a tenant
+   * admin creates for an unrelated integration — mints tokens the API honours. [Q10]
+   *
+   * Deliberately NOT reusing KEYCLOAK_CLIENT_ID: that one holds the provisioning admin client
+   * (`admin-cli`), and allowlisting it here would be the opposite of the intent (see Q16 on the
+   * naming collision).
+   */
+  KEYCLOAK_ALLOWED_AZP: z.string().min(1).default('hrobot-web'),
   REDIS_URL: urlWithScheme('REDIS_URL', /^rediss?:\/\//, 'must be a redis:// or rediss:// URL'),
   RABBITMQ_URL: urlWithScheme('RABBITMQ_URL', /^amqps?:\/\//, 'must be an amqp:// or amqps:// URL'),
   NEXTAUTH_SECRET: z.string().min(1),

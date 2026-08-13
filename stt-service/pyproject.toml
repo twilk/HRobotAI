@@ -1,0 +1,5 @@
+[tool.pytest.ini_options]
+# Put the service root on sys.path so `from app import ...` resolves whether pytest is invoked from
+# /app in-container or from the repo checkout (same convention as agent-service/pyproject.toml).
+pythonpath = ["."]
+testpaths = ["tests"]

@@ -10,7 +10,7 @@
 - [ ] Tydzień demo: **13–19 lipca 2026** (feasible, 52 AUTO-zmiany). Na :5601/grafik kliknij „Następny tydzień" jeśli trzeba.
 - [ ] **Dane obejmują cały czerwiec–wrzesień 2026** (~830 zmian, urlopy skumulowane latem). Opcjonalny pokaz „niewykonalności": przejdź na tydzień **14–20 września** → wszyscy koordynatorzy na urlopie → solver zwraca INFEASIBLE + `unmet[]` (art. G4, uczciwie pokazuje granice pokrycia). Reszta tygodni OPTIMAL. Odtwarzanie danych (jednorazowo, jeśli baza czysta): `scripts/seed-dataset-2026.sql` + `node scripts/seed-dataset-2026.mjs`.
 - [ ] **Logowanie (realny gate + RBAC):** `:5601` → przekierowanie na `/login`. Trzy konta:
-  - **Admin/manager demo:** `demo` / `demo-staging-2026` (Admin klienta) — pełny grafik, generowanie, zatwierdzanie zamian.
+  - **Admin/manager demo:** `demo` / `<hasło z .env.local>` (Admin klienta) — pełny grafik, generowanie, zatwierdzanie zamian. Hasło: `docs/design/web-kit/.env.local` (gitignored) albo zmienna `KEYCLOAK_PASSWORD`; poprzednie hasło (`demo-staging-2026`) trzeba zrotować w Keycloaku, bo zostało w historii gita.
   - **Pracownik:** `pracownik.demo` / `Pracownik!2026` (rola Pracownik = Anna Kowalska) — **własny grafik w trybie podglądu** (5 zmian, tydz. 13–19 lip), ograniczona nawigacja, brak akcji admina.
   - **Manager:** `manager.demo` / `Manager!2026` (Manager Region Centrum) — zatwierdza zamiany swojej jednostki.
   - Token httpOnly, wylogowanie w topbarze.
@@ -39,7 +39,8 @@
 - „To nie jest drugi solver. Solver ma stałe reguły. **Agent uczy się realnych preferencji Waszego zespołu** z każdej korekty menedżera."
 - Kliknij **„Reset & replay"** — pokaż **spadek liczby korekt (edit-distance)** w kolejnych rundach: agent staje się coraz lepszy.
 - Pokaż `rationale` (dlaczego taki przydział) i auto-naprawę niewykonalnej propozycji.
-- **Talking point (uczciwie):** „To pilotowy inkrement — agent uczy się i samodoskonali na danych syntetycznych; pełna autonomia produkcyjna to kolejny etap." (NIE mów „RL/Stable-Baselines3" — mechanizm to uczący się scorer + retrening; patrz known-limitations)
+- **Talking point (uczciwie):** „To pilotowy inkrement — agent uczy się i samodoskonali na danych syntetycznych; pełna autonomia produkcyjna to kolejny etap." (NIE mów „RL/Stable-Baselines3" — mechanizm to **affinity-learner + wsadowy re-fit**; `stable_baselines3` nie jest importowany w żadnym module serwisu; patrz known-limitations)
+- **Uwaga do liczby na ekranie (HON-2):** strona demo pokazuje scenariusz, w którym wzorzec „prawdy managera" generuje **ta sama funkcja**, której agent używa do proponowania — dlatego zbiega w 5 rundach. **Nie sprzedawaj tego jako dowodu uczenia się preferencji.** Miej pod ręką scenariusz niezależny (`python -m app.demo_ag2 --manager independent`, wykres `evidence/ag2_independent_chart.svg`): **96 → 0 w 17 rundach, krzywa niemonotoniczna**, ablacja bez feedbacku płaska. To jest liczba, która się obroni.
 
 ## 6. J5 — zamiany zmian + KONTA PRACOWNIKÓW (3 min) · `:5601/zamiany`
 - **Pokaż dwustronność (login) + „mój grafik":** wyloguj się → zaloguj jako **`pracownik.demo`** (Anna Kowalska) → wejdź w **Grafik**: pracownik widzi **tylko własne zmiany** w trybie podglądu (badge „TWÓJ GRAFIK — PODGLĄD", brak „Generuj grafik", brak edycji) — RBAC egzekwowany po stronie backendu (zapytanie scope'owane po `keycloak_sub`, nie ukryte tylko w UI). „Pracownicy mają własne, bezpieczne konta i widzą swój grafik, bez dostępu administracyjnego." Wyloguj → wróć jako `demo`/`manager.demo`.
@@ -53,6 +54,8 @@
 
 ## Q&A — przygotowane odpowiedzi
 - „Czy to RL?" → „Agent uczy się i samodoskonali; w M2 to pilotowy mechanizm uczący się na danych syntetycznych, produkcyjny RL na żywych danych to kolejny etap." (uczciwie, bez over-promisingu)
+- „Skąd wiadomo, że to nie jest ustawione?" → „Słusznie — sami to sprawdziliśmy i zgłaszamy. Domyślny scenariusz demo generuje wzorzec odniesienia tą samą funkcją, której używa agent, więc zbieżność jest po części z konstrukcji. Dlatego dołożyliśmy scenariusz z preferencją managera zdefiniowaną **niezależnie** od mechanizmu agenta. Wynik: agent nadal zbiega, ale z 96 do 0 przez 17 rund zamiast 5, i niemonotonicznie. Bez feedbacku krzywa jest idealnie płaska. Wszystko odtwarzalne jedną komendą." (`agent-service/evidence/hon2_controls_run.txt`)
+- „Czy agent pamięta to na kolejny tydzień?" → „Nie, i to jest udokumentowane ograniczenie: klucz uczenia zawiera datę, więc następny tydzień startuje od zera (zmierzone: 98 = tyle co agent nieuczony). Generalizacja międzytygodniowa to M3."
 - „Odpoczynek tygodniowy / nadgodziny?" → „H1–H4 twardo teraz; H5/H6 udokumentowane, dochodzą w M3."
 - „Bezpieczeństwo danych?" → „Dane syntetyczne, PESEL generowany; realne dane szyfrowane AES-256-GCM; staging na infrastrukturze prywatnej."
 - „Real-time zamiany?" → „Workflow działa; powiadomienia na żywo w M3."

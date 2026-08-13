@@ -1,0 +1,241 @@
+{
+  "wykonano": "2026-08-11T12:55:29.873Z",
+  "baza": "http://localhost:8080",
+  "konta": {
+    "admin": {
+      "login": "demo",
+      "haslo": "demo-staging-2026",
+      "opis": "ADMIN_KLIENTA (globalny)"
+    },
+    "manager": {
+      "login": "manager.demo",
+      "haslo": "Manager!2026",
+      "opis": "MANAGER (Region Centrum)"
+    },
+    "pracownik": {
+      "login": "pracownik.demo",
+      "haslo": "Pracownik!2026",
+      "opis": "PRACOWNIK — Anna Kowalska"
+    },
+    "pracownica": {
+      "login": "pracownica.demo",
+      "haslo": "Pracownica!2026",
+      "opis": "PRACOWNIK cross-unit — Katarzyna Zając"
+    }
+  },
+  "kroki": [
+    {
+      "id": "2a-pulpit-admin",
+      "sekcja": "2. ADMIN — pełny obraz organizacji",
+      "tytul": "Pulpit administratora klienta",
+      "konto": "demo — ADMIN_KLIENTA (globalny)",
+      "akcja": "Logowanie i wejście na /dashboard",
+      "oczekiwane": "KPI liczone na żywych danych najemcy + panel ochrony danych",
+      "dane": {
+        "pracownicy (GET /api/employees)": 39,
+        "jednostki organizacyjne": 4,
+        "zmiany w grafiku (całość)": 1558
+      },
+      "zrzut": "2a-pulpit-admin.png"
+    },
+    {
+      "id": "2b-grafik",
+      "sekcja": "2. ADMIN — pełny obraz organizacji",
+      "tytul": "Grafik — siatka pracownik × dzień",
+      "konto": "demo — ADMIN_KLIENTA (globalny)",
+      "akcja": "Wejście na /grafik (bez klikania „Generuj grafik” — patrz ryzyko #3 w skrypcie)",
+      "oczekiwane": "Tygodniowa siatka z blokami AUTO; twarde reguły H1–H4 pilnowane przez solver CP-SAT",
+      "dane": {
+        "nagłówek tygodnia": "Grafik |  | 52 zmiany · 38 zapotrzebowań w tym tygodniu"
+      },
+      "zrzut": "2b-grafik.png"
+    },
+    {
+      "id": "2c-analityk",
+      "sekcja": "2. ADMIN — pełny obraz organizacji",
+      "tytul": "Analityk HR — sygnały i proweniencja liczb",
+      "konto": "demo — ADMIN_KLIENTA (globalny)",
+      "akcja": "Wejście na /analityk",
+      "oczekiwane": "Sekcja „Na co zwrócić uwagę” + imiona i nazwiska zamiast identyfikatorów",
+      "dane": {
+        "surowe identyfikatory na stronie": 1,
+        "sygnały wykryte": 2
+      },
+      "zrzut": "2c-analityk.png"
+    },
+    {
+      "id": "2e-analiza-mapa",
+      "sekcja": "2. ADMIN — pełny obraz organizacji",
+      "tytul": "Analiza rozwoju (KM3) — mapa wydajności całej firmy",
+      "konto": "demo — ADMIN_KLIENTA (globalny)",
+      "akcja": "Wejście na /analiza",
+      "oczekiwane": "Wszyscy pracownicy, a kolumna „Wydajność” to pozycja w grupie 0–100, nie liczba zleceń",
+      "dane": {
+        "wierszy w mapie": 39,
+        "nagłówek kolumny": "WYDAJNOŚĆ pozycja w grupie 0–100",
+        "wiersze z percentylem": 39,
+        "porównanie zawężone do rola|jednostka|etat": 0,
+        "porównanie poszerzone (drabinka M10)": 39,
+        "grupa zbyt mała — wartość orientacyjna": 0
+      },
+      "zrzut": "2e-analiza-mapa.png"
+    },
+    {
+      "id": "2e-analiza-karta",
+      "sekcja": "2. ADMIN — pełny obraz organizacji",
+      "tytul": "Analiza rozwoju (KM3) — karta pracownika i trajektoria",
+      "konto": "demo — ADMIN_KLIENTA (globalny)",
+      "akcja": "Kliknięcie wiersza „Rafał Adamczyk” w mapie wydajności",
+      "oczekiwane": "Trajektoria z podpisem liczbowym + rozbicie na 4 wymiary z wagami; Wydajność jako percentyl",
+      "dane": {
+        "trajektoria (opis dostępnościowy)": "Trajektoria wyniku ogólnego: 86, 80, 73, 66 w kolejnych oknach",
+        "podpis pod wykresem": "86 → 66 w 4 oknach (-20 pkt)",
+        "wiersz Wydajność": "Wydajność· waga 30% 92/ 100 · 15 zleceń",
+        "nagłówek sygnału": "Trend spadkowy — ryzyko odejścia, zareaguj wcześnie."
+      },
+      "zrzut": "2e-analiza-karta.png"
+    },
+    {
+      "id": "2d-dokumenty",
+      "sekcja": "2. ADMIN — pełny obraz organizacji",
+      "tytul": "Dokumenty — wygenerowanie ewidencji czasu pracy",
+      "konto": "demo — ADMIN_KLIENTA (globalny)",
+      "akcja": "Ewidencja czasu pracy · Anna Kowalska · 13–19.07.2026 → „Generuj dokument”",
+      "oczekiwane": "Nowy dokument w stanie DO ZATWIERDZENIA — system liczy, ale nie wysyła (RODO art. 22)",
+      "dane": {
+        "dokumentów przed akcją": 29,
+        "dokumentów po akcji": 30
+      },
+      "zrzut": "2d-dokumenty.png"
+    },
+    {
+      "id": "3a-wykrywanie-wypadniec",
+      "sekcja": "3. Pełny łańcuch AI",
+      "tytul": "3a. AI wykrywa dziurę w obsadzie",
+      "konto": "manager.demo — MANAGER (Region Centrum)",
+      "akcja": "Wykrywanie wypadnięć · zakres 2026-08-17 – 2026-08-23 → „Skanuj”",
+      "oczekiwane": "Zmiana, której przypisany pracownik ma zatwierdzony urlop — problem, którego nikt nie zgłosił",
+      "dane": {
+        "wypadnięcia znalezione": 1
+      },
+      "zrzut": "3a-wykrywanie-wypadniec.png"
+    },
+    {
+      "id": "3b-skrzynka-managera",
+      "sekcja": "3. Pełny łańcuch AI",
+      "tytul": "3b. AI proponuje i pokazuje rozumowanie",
+      "konto": "manager.demo — MANAGER (Region Centrum)",
+      "akcja": "Podgląd skrzynki propozycji AI",
+      "oczekiwane": "Kandydat + ranga + dojazd (km/min) + rozbicie kosztu praca/dojazd — uzasadnienie, nie sam wynik",
+      "dane": {
+        "propozycje czekające na managera": 1,
+        "propozycje czekające na zgodę pracownika": 1
+      },
+      "zrzut": "3b-skrzynka-managera.png"
+    },
+    {
+      "id": "3c-zgoda-pracownika",
+      "sekcja": "3. Pełny łańcuch AI",
+      "tytul": "3c. Pracownik dostaje PYTANIE, nie polecenie",
+      "konto": "pracownica.demo — PRACOWNIK cross-unit — Katarzyna Zając",
+      "akcja": "Wejście na /zamiany — sekcja „Propozycje AI — zastępstwo wymaga Twojej zgody”",
+      "oczekiwane": "Data, godziny, rola, lokalizacja i własny szacunkowy dojazd — komplet do świadomej decyzji",
+      "dane": {
+        "surowe identyfikatory w sekcji": 0,
+        "token techniczny „leave … approved”": "brak",
+        "możliwość odmowy": "tak — przycisk Odrzuć"
+      },
+      "zrzut": "3c-zgoda-pracownika.png"
+    },
+    {
+      "id": "3c2-po-akceptacji",
+      "sekcja": "3. Pełny łańcuch AI",
+      "tytul": "3c (c.d.) Pracownica wyraża zgodę",
+      "konto": "pracownica.demo — PRACOWNIK cross-unit — Katarzyna Zając",
+      "akcja": "Kliknięcie „Akceptuj”",
+      "oczekiwane": "Propozycja przechodzi do skrzynki managera — pracownik zgodził się, ale NIE zdecydował",
+      "dane": {
+        "stan po akcji": "zgoda udzielona, decyzja nadal po stronie managera"
+      },
+      "zrzut": "3c2-po-akceptacji.png"
+    },
+    {
+      "id": "3d-decyzja-managera",
+      "sekcja": "3. Pełny łańcuch AI",
+      "tytul": "3d. Manager decyduje, solver weryfikuje prawo",
+      "konto": "manager.demo — MANAGER (Region Centrum)",
+      "akcja": "Kliknięcie „Zatwierdź” przy propozycji AI",
+      "oczekiwane": "Optymalizator sprawdza H1–H4 dopiero przy zatwierdzeniu; zmiana przepina się atomowo + wpis do audytu",
+      "dane": {
+        "czekające na managera przed akcją": 2,
+        "zatwierdzone łącznie po akcji": 7
+      },
+      "zrzut": "3d-decyzja-managera.png"
+    },
+    {
+      "id": "4a-asystent-intencja",
+      "sekcja": "4. Asystent głosowy",
+      "tytul": "Polecenie po polsku + bramka potwierdzenia",
+      "konto": "pracownik.demo — PRACOWNIK — Anna Kowalska",
+      "akcja": "Wpisanie: „Chcę wziąć urlop wypoczynkowy 20 sierpnia”",
+      "oczekiwane": "Rozpoznana intencja + poziom pewności + WYMAGANE potwierdzenie przed zapisem",
+      "dane": {
+        "rozpoznana intencja": "WNIOSEK URLOPOWY",
+        "poziom pewności": "PEWNOŚĆ: 90%",
+        "bramka potwierdzenia": "obecna — nic nie zapisano automatycznie"
+      },
+      "zrzut": "4a-asystent-intencja.png"
+    },
+    {
+      "id": "4b-asystent-granica",
+      "sekcja": "4. Asystent głosowy",
+      "tytul": "Świadoma granica — system mówi „nie wiem”",
+      "konto": "pracownik.demo — PRACOWNIK — Anna Kowalska",
+      "akcja": "Wpisanie pytania spoza zakresu: „Ile osób pracuje jutro na lotnisku?”",
+      "oczekiwane": "Odesłanie do formularza zamiast zmyślonej odpowiedzi — parser regułowy, świadomie bez modelu językowego",
+      "dane": {
+        "reakcja na pytanie spoza zakresu": "odesłanie do formularza"
+      },
+      "zrzut": "4b-asystent-granica.png"
+    },
+    {
+      "id": "5a-pulpit-pracownika",
+      "sekcja": "5. Pracownik — samoobsługa",
+      "tytul": "Pracownik widzi wyłącznie swoje dane",
+      "konto": "pracownik.demo — PRACOWNIK — Anna Kowalska",
+      "akcja": "Wejście na /dashboard",
+      "oczekiwane": "Własny grafik, godziny vs etat, własne urlopy — zakres egzekwowany po stronie serwera",
+      "dane": {
+        "zmiany widoczne dla pracownika": 104,
+        "porównanie: administrator widział": 1558
+      },
+      "zrzut": "5a-pulpit-pracownika.png"
+    },
+    {
+      "id": "5b-moj-tydzien-mobile",
+      "sekcja": "5. Pracownik — samoobsługa",
+      "tytul": "Mobilna trasa pracownika w terenie (375 × 812)",
+      "konto": "pracownik.demo — PRACOWNIK — Anna Kowalska",
+      "akcja": "Wejście na /moj-tydzien przy rozdzielczości telefonu",
+      "oczekiwane": "Dwie odpowiedzi: kiedy pracuję i jak poprosić o urlop; przyciski min. 44 px",
+      "dane": {
+        "nagłówek": "Cześć, Anna",
+        "podsumowanie tygodnia": "Masz 5 zaplanowanych zmian"
+      },
+      "zrzut": "5b-moj-tydzien-mobile.png"
+    },
+    {
+      "id": "6a-pulpit-managera",
+      "sekcja": "6. Manager — koszt i budżet",
+      "tytul": "Widok decyzyjny, nie raportowy",
+      "konto": "manager.demo — MANAGER (Region Centrum)",
+      "akcja": "Wejście na /dashboard",
+      "oczekiwane": "Skrzynka decyzji + koszt tygodnia w budżecie, wyłącznie dla własnego regionu",
+      "dane": {
+        "koszt jednostki (tydzień)": "\n7656,00 zł",
+        "status budżetu": "W BUDŻECIE"
+      },
+      "zrzut": "6a-pulpit-managera.png"
+    }
+  ]
+}

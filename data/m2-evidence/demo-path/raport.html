@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="pl"><head><meta charset="utf-8"><title>Ścieżka demo 4Mobility — materiał dowodowy</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Calibri, Arial, sans-serif; color: #12172b; font-size: 10.5pt; line-height: 1.45; margin: 0; }
+  h1 { font-family: Cambria, Georgia, serif; font-size: 22pt; color: #1E2761; margin: 0 0 4pt; }
+  /* Nagłówek sekcji nigdy sam na dole strony — inaczej str. 1 kończyła się tytułem sekcji
+     i pustym polem, bo pierwszy krok (page-break-inside: avoid) przeskakiwał na następną stronę. */
+  h2 { font-family: Cambria, Georgia, serif; font-size: 14pt; color: #1E2761; margin: 0 0 10pt;
+       padding-bottom: 4pt; border-bottom: 1.5pt solid #1E2761;
+       page-break-after: avoid; break-after: avoid; }
+  h3 { font-size: 11.5pt; color: #1E2761; margin: 0 0 6pt; }
+  .lead { color: #5A6180; margin: 0 0 14pt; }
+  table { width: 100%; border-collapse: collapse; margin: 0 0 8pt; }
+  th, td { text-align: left; vertical-align: top; padding: 3.5pt 6pt; border: 0.5pt solid #D8DEF2; }
+  .meta th { width: 32%; background: #F4F6FC; font-weight: 600; color: #1E2761; }
+  .dane thead th { background: #1E2761; color: #fff; font-size: 9pt; font-weight: 600; }
+  .dane td { font-size: 9.5pt; }
+  .dane td:first-child { width: 55%; color: #5A6180; }
+  .val { font-weight: 700; color: #12172b; }
+  .mono { font-family: Consolas, "Courier New", monospace; font-size: 9pt; }
+  .konta th { background: #1E2761; color: #fff; font-size: 9.5pt; }
+  .ostrzezenie { border: 1pt solid #B8720A; background: #FBF3E7; padding: 7pt 9pt; margin: 0 0 14pt; font-size: 9.5pt; }
+  .sekcja { page-break-before: always; }
+  .sekcja:first-of-type { page-break-before: auto; }
+  .krok { page-break-inside: avoid; margin: 0 0 16pt; }
+  figure { margin: 0; page-break-inside: avoid; }
+  img { width: 100%; border: 0.5pt solid #D8DEF2; }
+  figcaption { font-size: 8pt; color: #9BA0B5; margin-top: 2pt; }
+  .naglowek { border-bottom: 2pt solid #1E2761; padding-bottom: 8pt; margin-bottom: 14pt; }
+  .meta-biegu { font-size: 9pt; color: #5A6180; }
+</style></head><body>
+
+<div class="naglowek">
+  <h1>Ścieżka demo 4Mobility — materiał dowodowy</h1>
+  <p class="lead">Pełne przejście scenariusza demonstracyjnego HRobot.AI, wykonane automatycznie na żywym środowisku.
+  Każdy krok udokumentowany trzema rzeczami: wykonaną akcją, odczytem danych z API oraz zrzutem ekranu.</p>
+  <p class="meta-biegu">
+    Data i godzina biegu: <strong>11.08.2026, 14:55:29</strong> (Europe/Warsaw)<br>
+    Środowisko: <span class="mono">http://localhost:8080</span> · projekt compose <span class="mono">hrobot</span> · gałąź <span class="mono">feat/demo-4mobility</span><br>
+    Sposób zebrania: <span class="mono">apps/web/e2e/demo-path.spec.ts</span> (Playwright, odtwarzalny jedną komendą)<br>
+    Liczba udokumentowanych kroków: <strong>16</strong>
+  </p>
+</div>
+
+<h2>Konta demonstracyjne</h2>
+<table class="konta">
+  <thead><tr><th>Login</th><th>Hasło</th><th>Rola i zakres</th></tr></thead>
+  <tbody><tr><td class="mono">demo</td><td class="mono">demo-staging-2026</td><td>ADMIN_KLIENTA (globalny)</td></tr><tr><td class="mono">manager.demo</td><td class="mono">Manager!2026</td><td>MANAGER (Region Centrum)</td></tr><tr><td class="mono">pracownik.demo</td><td class="mono">Pracownik!2026</td><td>PRACOWNIK — Anna Kowalska</td></tr><tr><td class="mono">pracownica.demo</td><td class="mono">Pracownica!2026</td><td>PRACOWNIK cross-unit — Katarzyna Zając</td></tr></tbody>
+</table>
+<div class="ostrzezenie">
+  <strong>Zakres kont.</strong> Powyższe konta należą do środowiska demonstracyjnego
+  (realm <span class="mono">hrobot-staging</span>) i operują wyłącznie na <strong>danych syntetycznych</strong> —
+  nie ma wśród nich danych osobowych rzeczywistych pracowników. Konta nie dają dostępu do żadnego
+  środowiska produkcyjnego. Dokument zawiera hasła na wyraźne życzenie odbiorcy, na potrzeby
+  samodzielnego odtworzenia ścieżki; przy udostępnianiu poza zespół projektowy zalecana jest ich rotacja.
+</div>
+
+
+  <section class="sekcja">
+    <h2>2. ADMIN — pełny obraz organizacji</h2>
+    
+    <article class="krok">
+      <h3>Pulpit administratora klienta</h3>
+      <table class="meta">
+        <tr><th>Konto</th><td class="mono">demo — ADMIN_KLIENTA (globalny)</td></tr>
+        <tr><th>Wykonana akcja</th><td>Logowanie i wejście na /dashboard</td></tr>
+        <tr><th>Oczekiwany rezultat</th><td>KPI liczone na żywych danych najemcy + panel ochrony danych</td></tr>
+      </table>
+      <table class="dane">
+        <thead><tr><th colspan="2">Odczyt danych z systemu (dowód, że to nie jest sam obrazek)</th></tr></thead>
+        <tbody>
+          <tr><td>pracownicy (GET /api/employees)</td><td class="mono val">39</td></tr><tr><td>jednostki organizacyjne</td><td class="mono val">4</td></tr><tr><td>zmiany w grafiku (całość)</td><td class="mono val">1558</td></tr>
+        </tbody>
+      </table>
+      <figure>
+        <img src="screenshots/2a-pulpit-admin.png" alt="Pulpit administratora klienta">
+        <figcaption>Zrzut ekranu: <span class="mono">2a-pulpit-admin.png</span></figcaption>
+      </figure>
+    </article>
+    <article class="krok">
+      <h3>Grafik — siatka pracownik × dzień</h3>
+      <table class="meta">
+        <tr><th>Konto</th><td class="mono">demo — ADMIN_KLIENTA (globalny)</td></tr>
+        <tr><th>Wykonana akcja</th><td>Wejście na /grafik (bez klikania „Generuj grafik” — patrz ryzyko #3 w skrypcie)</td></tr>
+        <tr><th>Oczekiwany rezultat</th><td>Tygodniowa siatka z blokami AUTO; twarde reguły H1–H4 pilnowane przez solver CP-SAT</td></tr>
+      </table>
+      <table class="dane">
+        <thead><tr><th colspan="2">Odczyt danych z systemu (dowód, że to nie jest sam obrazek)</th></tr></thead>
+        <tbody>
+          <tr><td>nagłówek tygodnia</td><td class="mono val">Grafik |  | 52 zmiany · 38 zapotrzebowań w tym tygodniu</td></tr>
+        </tbody>
+      </table>
+      <figure>
+        <img src="screenshots/2b-grafik.png" alt="Grafik — siatka pracownik × dzień">
+        <figcaption>Zrzut ekranu: <span class="mono">2b-grafik.png</span></figcaption>
+      </figure>
+    </article>
+    <article class="krok">
+      <h3>Analityk HR — sygnały i proweniencja liczb</h3>
+      <table class="meta">
+        <tr><th>Konto</th><td class="mono">demo — ADMIN_KLIENTA (globalny)</td></tr>
+        <tr><th>Wykonana akcja</th><td>Wejście na /analityk</td></tr>
+        <tr><th>Oczekiwany rezultat</th><td>Sekcja „Na co zwrócić uwagę” + imiona i nazwiska zamiast identyfikatorów</td></tr>
+      </table>
+      <table class="dane">
+        <thead><tr><th colspan="2">Odczyt danych z systemu (dowód, że to nie jest sam obrazek)</th></tr></thead>
+        <tbody>
+          <tr><td>surowe identyfikatory na stronie</td><td class="mono val">1</td></tr><tr><td>sygnały wykryte</td><td class="mono val">2</td></tr>
+        </tbody>
+      </table>
+      <figure>
+        <img src="screenshots/2c-analityk.png" alt="Analityk HR — sygnały i proweniencja liczb">
+        <figcaption>Zrzut ekranu: <span class="mono">2c-analityk.png</span></figcaption>
+      </figure>
+    </article>
+    <article class="krok">
+      <h3>Analiza rozwoju (KM3) — mapa wydajności całej firmy</h3>
+      <table class="meta">
+        <tr><th>Konto</th><td class="mono">demo — ADMIN_KLIENTA (globalny)</td></tr>
+        <tr><th>Wykonana akcja</th><td>Wejście na /analiza</td></tr>
+        <tr><th>Oczekiwany rezultat</th><td>Wszyscy pracownicy, a kolumna „Wydajność” to pozycja w grupie 0–100, nie liczba zleceń</td></tr>
+      </table>
+      <table class="dane">
+        <thead><tr><th colspan="2">Odczyt danych z systemu (dowód, że to nie jest sam obrazek)</th></tr></thead>
+        <tbody>
+          <tr><td>wierszy w mapie</td><td class="mono val">39</td></tr><tr><td>nagłówek kolumny</td><td class="mono val">WYDAJNOŚĆ pozycja w grupie 0–100</td></tr><tr><td>wiersze z percentylem</td><td class="mono val">39</td></tr><tr><td>porównanie zawężone do rola|jednostka|etat</td><td class="mono val">0</td></tr><tr><td>porównanie poszerzone (drabinka M10)</td><td class="mono val">39</td></tr><tr><td>grupa zbyt mała — wartość orientacyjna</td><td class="mono val">0</td></tr>
+        </tbody>
+      </table>
+      <figure>
+        <img src="screenshots/2e-analiza-mapa.png" alt="Analiza rozwoju (KM3) — mapa wydajności całej firmy">
+        <figcaption>Zrzut ekranu: <span class="mono">2e-analiza-mapa.png</span></figcaption>
+      </figure>
+    </article>
+    <article class="krok">
+      <h3>Analiza rozwoju (KM3) — karta pracownika i trajektoria</h3>
+      <table class="meta">
+        <tr><th>Konto</th><td class="mono">demo — ADMIN_KLIENTA (globalny)</td></tr>
+        <tr><th>Wykonana akcja</th><td>Kliknięcie wiersza „Rafał Adamczyk” w mapie wydajności</td></tr>
+        <tr><th>Oczekiwany rezultat</th><td>Trajektoria z podpisem liczbowym + rozbicie na 4 wymiary z wagami; Wydajność jako percentyl</td></tr>
+      </table>
+      <table class="dane">
+        <thead><tr><th colspan="2">Odczyt danych z systemu (dowód, że to nie jest sam obrazek)</th></tr></thead>
+        <tbody>
+          <tr><td>trajektoria (opis dostępnościowy)</td><td class="mono val">Trajektoria wyniku ogólnego: 86, 80, 73, 66 w kolejnych oknach</td></tr><tr><td>podpis pod wykresem</td><td class="mono val">86 → 66 w 4 oknach (-20 pkt)</td></tr><tr><td>wiersz Wydajność</td><td class="mono val">Wydajność· waga 30% 92/ 100 · 15 zleceń</td></tr><tr><td>nagłówek sygnału</td><td class="mono val">Trend spadkowy — ryzyko odejścia, zareaguj wcześnie.</td></tr>
+        </tbody>
+      </table>
+      <figure>
+        <img src="screenshots/2e-analiza-karta.png" alt="Analiza rozwoju (KM3) — karta pracownika i trajektoria">
+        <figcaption>Zrzut ekranu: <span class="mono">2e-analiza-karta.png</span></figcaption>
+      </figure>
+    </article>
+    <article class="krok">
+      <h3>Dokumenty — wygenerowanie ewidencji czasu pracy</h3>
+      <table class="meta">
+        <tr><th>Konto</th><td class="mono">demo — ADMIN_KLIENTA (globalny)</td></tr>
+        <tr><th>Wykonana akcja</th><td>Ewidencja czasu pracy · Anna Kowalska · 13–19.07.2026 → „Generuj dokument”</td></tr>
+        <tr><th>Oczekiwany rezultat</th><td>Nowy dokument w stanie DO ZATWIERDZENIA — system liczy, ale nie wysyła (RODO art. 22)</td></tr>
+      </table>
+      <table class="dane">
+        <thead><tr><th colspan="2">Odczyt danych z systemu (dowód, że to nie jest sam obrazek)</th></tr></thead>
+        <tbody>
+          <tr><td>dokumentów przed akcją</td><td class="mono val">29</td></tr><tr><td>dokumentów po akcji</td><td class="mono val">30</td></tr>
+        </tbody>
+      </table>
+      <figure>
+        <img src="screenshots/2d-dokumenty.png" alt="Dokumenty — wygenerowanie ewidencji czasu pracy">
+        <figcaption>Zrzut ekranu: <span class="mono">2d-dokumenty.png</span></figcaption>
+      </figure>
+    </article>
+  </section>
+  <section class="sekcja">
+    <h2>3. Pełny łańcuch AI</h2>
+    
+    <article class="krok">
+      <h3>3a. AI wykrywa dziurę w obsadzie</h3>
+      <table class="meta">
+        <tr><th>Konto</th><td class="mono">manager.demo — MANAGER (Region Centrum)</td></tr>
+        <tr><th>Wykonana akcja</th><td>Wykrywanie wypadnięć · zakres 2026-08-17 – 2026-08-23 → „Skanuj”</td></tr>
+        <tr><th>Oczekiwany rezultat</th><td>Zmiana, której przypisany pracownik ma zatwierdzony urlop — problem, którego nikt nie zgłosił</td></tr>
+      </table>
+      <table class="dane">
+        <thead><tr><th colspan="2">Odczyt danych z systemu (dowód, że to nie jest sam obrazek)</th></tr></thead>
+        <tbody>
+          <tr><td>wypadnięcia znalezione</td><td class="mono val">1</td></tr>
+        </tbody>
+      </table>
+      <figure>
+        <img src="screenshots/3a-wykrywanie-wypadniec.png" alt="3a. AI wykrywa dziurę w obsadzie">
+        <figcaption>Zrzut ekranu: <span class="mono">3a-wykrywanie-wypadniec.png</span></figcaption>
+      </figure>
+    </article>
+    <article class="krok">
+      <h3>3b. AI proponuje i pokazuje rozumowanie</h3>
+      <table class="meta">
+        <tr><th>Konto</th><td class="mono">manager.demo — MANAGER (Region Centrum)</td></tr>
+        <tr><th>Wykonana akcja</th><td>Podgląd skrzynki propozycji AI</td></tr>
+        <tr><th>Oczekiwany rezultat</th><td>Kandydat + ranga + dojazd (km/min) + rozbicie kosztu praca/dojazd — uzasadnienie, nie sam wynik</td></tr>
+      </table>
+      <table class="dane">
+        <thead><tr><th colspan="2">Odczyt danych z systemu (dowód, że to nie jest sam obrazek)</th></tr></thead>
+        <tbody>
+          <tr><td>propozycje czekające na managera</td><td class="mono val">1</td></tr><tr><td>propozycje czekające na zgodę pracownika</td><td class="mono val">1</td></tr>
+        </tbody>
+      </table>
+      <figure>
+        <img src="screenshots/3b-skrzynka-managera.png" alt="3b. AI proponuje i pokazuje rozumowanie">
+        <figcaption>Zrzut ekranu: <span class="mono">3b-skrzynka-managera.png</span></figcaption>
+      </figure>
+    </article>
+    <article class="krok">
+      <h3>3c. Pracownik dostaje PYTANIE, nie polecenie</h3>
+      <table class="meta">
+        <tr><th>Konto</th><td class="mono">pracownica.demo — PRACOWNIK cross-unit — Katarzyna Zając</td></tr>
+        <tr><th>Wykonana akcja</th><td>Wejście na /zamiany — sekcja „Propozycje AI — zastępstwo wymaga Twojej zgody”</td></tr>
+        <tr><th>Oczekiwany rezultat</th><td>Data, godziny, rola, lokalizacja i własny szacunkowy dojazd — komplet do świadomej decyzji</td></tr>
+      </table>
+      <table class="dane">
+        <thead><tr><th colspan="2">Odczyt danych z systemu (dowód, że to nie jest sam obrazek)</th></tr></thead>
+        <tbody>
+          <tr><td>surowe identyfikatory w sekcji</td><td class="mono val">0</td></tr><tr><td>token techniczny „leave … approved”</td><td class="mono val">brak</td></tr><tr><td>możliwość odmowy</td><td class="mono val">tak — przycisk Odrzuć</td></tr>
+        </tbody>
+      </table>
+      <figure>
+        <img src="screenshots/3c-zgoda-pracownika.png" alt="3c. Pracownik dostaje PYTANIE, nie polecenie">
+        <figcaption>Zrzut ekranu: <span class="mono">3c-zgoda-pracownika.png</span></figcaption>
+      </figure>
+    </article>
+    <article class="krok">
+      <h3>3c (c.d.) Pracownica wyraża zgodę</h3>
+      <table class="meta">
+        <tr><th>Konto</th><td class="mono">pracownica.demo — PRACOWNIK cross-unit — Katarzyna Zając</td></tr>
+        <tr><th>Wykonana akcja</th><td>Kliknięcie „Akceptuj”</td></tr>
+        <tr><th>Oczekiwany rezultat</th><td>Propozycja przechodzi do skrzynki managera — pracownik zgodził się, ale NIE zdecydował</td></tr>
+      </table>
+      <table class="dane">
+        <thead><tr><th colspan="2">Odczyt danych z systemu (dowód, że to nie jest sam obrazek)</th></tr></thead>
+        <tbody>
+          <tr><td>stan po akcji</td><td class="mono val">zgoda udzielona, decyzja nadal po stronie managera</td></tr>
+        </tbody>
+      </table>
+      <figure>
+        <img src="screenshots/3c2-po-akceptacji.png" alt="3c (c.d.) Pracownica wyraża zgodę">
+        <figcaption>Zrzut ekranu: <span class="mono">3c2-po-akceptacji.png</span></figcaption>
+      </figure>
+    </article>
+    <article class="krok">
+      <h3>3d. Manager decyduje, solver weryfikuje prawo</h3>
+      <table class="meta">
+        <tr><th>Konto</th><td class="mono">manager.demo — MANAGER (Region Centrum)</td></tr>
+        <tr><th>Wykonana akcja</th><td>Kliknięcie „Zatwierdź” przy propozycji AI</td></tr>
+        <tr><th>Oczekiwany rezultat</th><td>Optymalizator sprawdza H1–H4 dopiero przy zatwierdzeniu; zmiana przepina się atomowo + wpis do audytu</td></tr>
+      </table>
+      <table class="dane">
+        <thead><tr><th colspan="2">Odczyt danych z systemu (dowód, że to nie jest sam obrazek)</th></tr></thead>
+        <tbody>
+          <tr><td>czekające na managera przed akcją</td><td class="mono val">2</td></tr><tr><td>zatwierdzone łącznie po akcji</td><td class="mono val">7</td></tr>
+        </tbody>
+      </table>
+      <figure>
+        <img src="screenshots/3d-decyzja-managera.png" alt="3d. Manager decyduje, solver weryfikuje prawo">
+        <figcaption>Zrzut ekranu: <span class="mono">3d-decyzja-managera.png</span></figcaption>
+      </figure>
+    </article>
+  </section>
+  <section class="sekcja">
+    <h2>4. Asystent głosowy</h2>
+    
+    <article class="krok">
+      <h3>Polecenie po polsku + bramka potwierdzenia</h3>
+      <table class="meta">
+        <tr><th>Konto</th><td class="mono">pracownik.demo — PRACOWNIK — Anna Kowalska</td></tr>
+        <tr><th>Wykonana akcja</th><td>Wpisanie: „Chcę wziąć urlop wypoczynkowy 20 sierpnia”</td></tr>
+        <tr><th>Oczekiwany rezultat</th><td>Rozpoznana intencja + poziom pewności + WYMAGANE potwierdzenie przed zapisem</td></tr>
+      </table>
+      <table class="dane">
+        <thead><tr><th colspan="2">Odczyt danych z systemu (dowód, że to nie jest sam obrazek)</th></tr></thead>
+        <tbody>
+          <tr><td>rozpoznana intencja</td><td class="mono val">WNIOSEK URLOPOWY</td></tr><tr><td>poziom pewności</td><td class="mono val">PEWNOŚĆ: 90%</td></tr><tr><td>bramka potwierdzenia</td><td class="mono val">obecna — nic nie zapisano automatycznie</td></tr>
+        </tbody>
+      </table>
+      <figure>
+        <img src="screenshots/4a-asystent-intencja.png" alt="Polecenie po polsku + bramka potwierdzenia">
+        <figcaption>Zrzut ekranu: <span class="mono">4a-asystent-intencja.png</span></figcaption>
+      </figure>
+    </article>
+    <article class="krok">
+      <h3>Świadoma granica — system mówi „nie wiem”</h3>
+      <table class="meta">
+        <tr><th>Konto</th><td class="mono">pracownik.demo — PRACOWNIK — Anna Kowalska</td></tr>
+        <tr><th>Wykonana akcja</th><td>Wpisanie pytania spoza zakresu: „Ile osób pracuje jutro na lotnisku?”</td></tr>
+        <tr><th>Oczekiwany rezultat</th><td>Odesłanie do formularza zamiast zmyślonej odpowiedzi — parser regułowy, świadomie bez modelu językowego</td></tr>
+      </table>
+      <table class="dane">
+        <thead><tr><th colspan="2">Odczyt danych z systemu (dowód, że to nie jest sam obrazek)</th></tr></thead>
+        <tbody>
+          <tr><td>reakcja na pytanie spoza zakresu</td><td class="mono val">odesłanie do formularza</td></tr>
+        </tbody>
+      </table>
+      <figure>
+        <img src="screenshots/4b-asystent-granica.png" alt="Świadoma granica — system mówi „nie wiem”">
+        <figcaption>Zrzut ekranu: <span class="mono">4b-asystent-granica.png</span></figcaption>
+      </figure>
+    </article>
+  </section>
+  <section class="sekcja">
+    <h2>5. Pracownik — samoobsługa</h2>
+    
+    <article class="krok">
+      <h3>Pracownik widzi wyłącznie swoje dane</h3>
+      <table class="meta">
+        <tr><th>Konto</th><td class="mono">pracownik.demo — PRACOWNIK — Anna Kowalska</td></tr>
+        <tr><th>Wykonana akcja</th><td>Wejście na /dashboard</td></tr>
+        <tr><th>Oczekiwany rezultat</th><td>Własny grafik, godziny vs etat, własne urlopy — zakres egzekwowany po stronie serwera</td></tr>
+      </table>
+      <table class="dane">
+        <thead><tr><th colspan="2">Odczyt danych z systemu (dowód, że to nie jest sam obrazek)</th></tr></thead>
+        <tbody>
+          <tr><td>zmiany widoczne dla pracownika</td><td class="mono val">104</td></tr><tr><td>porównanie: administrator widział</td><td class="mono val">1558</td></tr>
+        </tbody>
+      </table>
+      <figure>
+        <img src="screenshots/5a-pulpit-pracownika.png" alt="Pracownik widzi wyłącznie swoje dane">
+        <figcaption>Zrzut ekranu: <span class="mono">5a-pulpit-pracownika.png</span></figcaption>
+      </figure>
+    </article>
+    <article class="krok">
+      <h3>Mobilna trasa pracownika w terenie (375 × 812)</h3>
+      <table class="meta">
+        <tr><th>Konto</th><td class="mono">pracownik.demo — PRACOWNIK — Anna Kowalska</td></tr>
+        <tr><th>Wykonana akcja</th><td>Wejście na /moj-tydzien przy rozdzielczości telefonu</td></tr>
+        <tr><th>Oczekiwany rezultat</th><td>Dwie odpowiedzi: kiedy pracuję i jak poprosić o urlop; przyciski min. 44 px</td></tr>
+      </table>
+      <table class="dane">
+        <thead><tr><th colspan="2">Odczyt danych z systemu (dowód, że to nie jest sam obrazek)</th></tr></thead>
+        <tbody>
+          <tr><td>nagłówek</td><td class="mono val">Cześć, Anna</td></tr><tr><td>podsumowanie tygodnia</td><td class="mono val">Masz 5 zaplanowanych zmian</td></tr>
+        </tbody>
+      </table>
+      <figure>
+        <img src="screenshots/5b-moj-tydzien-mobile.png" alt="Mobilna trasa pracownika w terenie (375 × 812)">
+        <figcaption>Zrzut ekranu: <span class="mono">5b-moj-tydzien-mobile.png</span></figcaption>
+      </figure>
+    </article>
+  </section>
+  <section class="sekcja">
+    <h2>6. Manager — koszt i budżet</h2>
+    
+    <article class="krok">
+      <h3>Widok decyzyjny, nie raportowy</h3>
+      <table class="meta">
+        <tr><th>Konto</th><td class="mono">manager.demo — MANAGER (Region Centrum)</td></tr>
+        <tr><th>Wykonana akcja</th><td>Wejście na /dashboard</td></tr>
+        <tr><th>Oczekiwany rezultat</th><td>Skrzynka decyzji + koszt tygodnia w budżecie, wyłącznie dla własnego regionu</td></tr>
+      </table>
+      <table class="dane">
+        <thead><tr><th colspan="2">Odczyt danych z systemu (dowód, że to nie jest sam obrazek)</th></tr></thead>
+        <tbody>
+          <tr><td>koszt jednostki (tydzień)</td><td class="mono val">
+7656,00 zł</td></tr><tr><td>status budżetu</td><td class="mono val">W BUDŻECIE</td></tr>
+        </tbody>
+      </table>
+      <figure>
+        <img src="screenshots/6a-pulpit-managera.png" alt="Widok decyzyjny, nie raportowy">
+        <figcaption>Zrzut ekranu: <span class="mono">6a-pulpit-managera.png</span></figcaption>
+      </figure>
+    </article>
+  </section>
+
+</body></html>

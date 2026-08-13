@@ -102,8 +102,14 @@ class TravelEntry(BaseModel):
 
 
 class Weights(BaseModel):
-    """Objective weights: ``d`` demand/unmet, ``e`` etat-deviation (L1), ``g`` geo/commute."""
+    """Objective weights: ``e`` etat-deviation (L1), ``g`` geo/commute, ``p`` soft preferences.
 
+    ``d`` (demand/unmet) is accepted but INERT — see the ``weights.d`` note in ``solver.py``'s
+    module docstring. Coverage is hard in phase 1 and deliberately unweighted in phase 2, so there
+    is nothing for ``d`` to scale. Kept in the schema because the contract is frozen for M2. [Q6]
+    """
+
+    #: Accepted for contract compatibility; has NO effect on the produced schedule.
     d: float
     e: float
     g: float

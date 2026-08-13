@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 import type { TenantClient } from '@hrobot/db'
 import { RecommendationService, RETENTION_CONFIDENCE_MIN } from './recommendation.service.js'
@@ -354,6 +355,38 @@ describe('RecommendationService (read + acknowledge)', () => {
       expect(arg.where).toEqual({ id: 'r1' })
       expect(arg.data.acknowledgedByUserId).toBe('kc-1')
       expect(arg.data.acknowledgedAt).toBeInstanceOf(Date)
+    })
+
+    // [L-2] Acknowledging a recommendation that does not exist used to surface Prisma's raw P2025 as
+    // a 500 ("Internal server error"), measured on the live stack:
+    //   POST /api/strategic-brain/recruitment/00000000-0000-4000-8000-000000000000/acknowledge
+    //     -> 500 {"statusCode":500,"message":"Internal server error"}
+    // A missing record is a CLIENT fact, not a server fault: 404. It also matters here specifically —
+    // this route is the RODO art. 22 human-decision step, so an operator clicking "Zaakceptuj
+    // rekomendację" on a stale feed deserves "this recommendation no longer exists", not a red 500
+    // that reads like the decision may have been half-recorded.
+    it('[L-2] maps Prisma P2025 (record not found) to NotFoundException, not a raw 500', async () => {
+      const p2025 = Object.assign(new Error('An operation failed because it depends on one or more records that were required but not found.'), {
+        code: 'P2025',
+      })
+      ;(client.recruitmentRecommendation as unknown as { update: jest.Mock }).update = jest.fn().mockRejectedValue(p2025)
+
+      await expect(service.acknowledge(asClient(client), 'ghost', 'kc-1')).rejects.toBeInstanceOf(NotFoundException)
+      await expect(service.acknowledge(asClient(client), 'ghost', 'kc-1')).rejects.toThrow('ghost')
+    })
+
+    it('[L-2] any OTHER Prisma error still propagates unchanged — 404 must not swallow real faults', async () => {
+      const p2002 = Object.assign(new Error('Unique constraint failed'), { code: 'P2002' })
+      ;(client.recruitmentRecommendation as unknown as { update: jest.Mock }).update = jest.fn().mockRejectedValue(p2002)
+
+      await expect(service.acknowledge(asClient(client), 'r1', 'kc-1')).rejects.toBe(p2002)
+    })
+
+    it('[L-2] a non-Prisma failure (no `code`) propagates unchanged as well', async () => {
+      const boom = new Error('connection reset')
+      ;(client.recruitmentRecommendation as unknown as { update: jest.Mock }).update = jest.fn().mockRejectedValue(boom)
+
+      await expect(service.acknowledge(asClient(client), 'r1', 'kc-1')).rejects.toBe(boom)
     })
   })
 })

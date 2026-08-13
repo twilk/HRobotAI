@@ -74,6 +74,59 @@ jobs:
       - name: Unit tests
         run: pnpm turbo run test --cache-dir=.turbo/cache
 
+  # CI-4 — integration gate: tenant isolation against a REAL Postgres with >=2 tenant databases.
+  # Separate job (not a step on `ci`) so the service container only spins up for the lane that needs
+  # it, and a failure here is attributable at a glance.
+  integration:
+    name: integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      # Superuser access is required: the spec does CREATE DATABASE / CREATE ROLE / DROP DATABASE to
+      # build two throwaway tenant databases per run, then tears them down.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      # NOTE: Redis is NOT started here yet — no *.integration.spec.ts touches it today, and this
+      # pipeline's rule is that a service container appears WITH the test that needs it. Add it
+      # alongside the first Redis-backed integration spec (tenant-context cache / throttler).
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # turbo's `test:integration` task depends on ^build + db:generate, so the Prisma clients and
+      # workspace builds are produced here before the spec runs.
+      - name: Integration tests (tenant isolation)
+        env:
+          # Throwaway credentials for the ephemeral service container — NOT a secret.
+          POSTGRES_SUPERUSER_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          # Test-only key. Real keys live in Actions secrets / the runner env, never in this file.
+          TENANT_DB_ENCRYPTION_KEY: '00000000000000000000000000000000000000000000000000000000000000ff'
+        run: pnpm turbo run test:integration --cache-dir=.turbo/cache
+
   # CI-6 — python test lanes for the two AI services. Separate jobs: distinct dep stacks
   # (lean CP-SAT image vs SB3/torch), parallel wall-clock, clean failure attribution.
   py-optimizer:
@@ -96,8 +149,15 @@ jobs:
 
       # pytest + httpx are TEST-ONLY deps (TestClient) — kept out of the lean runtime image
       # on purpose, so they are installed here, pinned to agent-service's versions.
+      # ruff is likewise test/CI-only and pinned so a new ruff release cannot turn the lane red
+      # on its own. [CI-6]
       - name: Install dependencies
-        run: pip install -r requirements.txt pytest==8.3.4 httpx==0.27.2
+        run: pip install -r requirements.txt pytest==8.3.4 httpx==0.27.2 ruff==0.15.8
+
+      # Lint before tests — ruff is seconds, pytest is minutes, so fail fast on dead code.
+      # Config comes from the repo-root ruff.toml (lint only; formatting is not a gate).
+      - name: ruff
+        run: python -m ruff check .
 
       # G1–G4 acceptance tests: independent H1–H4 checker, metrics, determinism, INFEASIBLE→unmet.
       - name: pytest
@@ -127,17 +187,116 @@ jobs:
         run: |
           pip install torch==2.3.1 --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements.txt
+          pip install ruff==0.15.8
+
+      # Lint before tests — ruff is seconds, the torch-backed suite is minutes. [CI-6]
+      - name: ruff
+        run: python -m ruff check .
 
       # AG1–AG6 lanes. The live-optimizer integration guards self-skip here (no optimizer service);
-      # the full 51/51 bieg runs in-container — see data/m2-evidence/test-logs/.
+      # the full bieg runs in-container — see data/m2-evidence/test-logs/.
       - name: pytest
         run: python -m pytest -q
 
+  # web-kit — LANE USUNIĘTY 2026-08-08. Job instalował i testował `docs/design/web-kit` jako
+  # samodzielny projekt pnpm poza głównym workspace. Commit 373d310 (`git mv web-kit -> apps/web`)
+  # unieważnił to założenie: aplikacja jest teraz pakietem `@hrobot/web` WEWNĄTRZ workspace, więc
+  # `pnpm turbo run test` w jobie `ci` powyżej i tak uruchamia jej suitę (`@hrobot/web#test`, 588
+  # testów), a `turbo run lint typecheck` obejmuje ją tak samo. Job dalej wskazywał starą ścieżkę,
+  # więc `cache-dependency-path: docs/design/web-kit/pnpm-lock.yaml` przestał się rozwiązywać i lane
+  # padał na każdym przebiegu — czerwony na coś, co było już pokryte gdzie indziej.
+
+  # stt-service — pytest + ruff, mirroring the py-optimizer / py-agent lanes above.
+  # faster-whisper is a real dependency (pip-installed), but the ~490 MB PL model it wraps is
+  # fetched from HuggingFace lazily on FIRST `Transcriber.transcribe()` call (see
+  # stt-service/app/transcribe.py `_load`), never at import or module scope. The unit suite here
+  # only exercises `derive_confidence` (pure function) and constructs `Transcriber()` without
+  # calling `.transcribe()`, so no model download happens in this job — verified by NOT setting
+  # STT_MODEL_CACHE and letting the job run with no network egress to huggingface.co.
+  # [H3: previously written but never wired into any workflow — 25 tests were not gating.]
+  py-stt:
+    name: py-stt
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: stt-service
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: stt-service/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt ruff==0.15.8
+
+      - name: ruff
+        run: python -m ruff check .
+
+      - name: pytest
+        run: python -m pytest -q
+
+  # CI-5 — browser smoke: login → /grafik renders → 0 console errors → screenshot artifact.
+  #
+  # This lane drives a RUNNING stack (apps/web + Keycloak + tenant-runtime + Postgres), so unlike the
+  # other jobs it cannot stand alone on a hosted runner. It is therefore gated on the repo variable
+  # E2E_BASE_URL (set it to the staging URL once the self-hosted runner from ENV-1 is registered).
+  # Without that variable the job is skipped rather than red — but note the runner script FAILS in CI
+  # if the URL is set and nothing answers, so a broken staging cannot masquerade as a pass.
+  e2e-smoke:
+    name: e2e-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: ${{ vars.E2E_BASE_URL != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # apps/web (@hrobot/web) is a workspace package now — a normal root install covers it.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Smoke (login -> /grafik)
+        env:
+          E2E_BASE_URL: ${{ vars.E2E_BASE_URL }}
+          # Demo-realm accounts seeded by scripts/seed-keycloak-demo.mjs. Secrets, not literals, so
+          # the staging password is not readable from this file.
+          E2E_USERNAME: ${{ secrets.E2E_USERNAME }}
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+        run: node scripts/e2e-smoke.mjs
+
+      # The screenshot is the Evidence Pack deliverable (EV-3) — keep it even when the run is red,
+      # because a failure screenshot is exactly what you want to look at.
+      - name: Upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci5-smoke-evidence
+          path: |
+            data/m2-evidence/screenshots/
+            apps/web/.playwright/test-results/
+          if-no-files-found: warn
+
   # --- Re-add WITH real coverage (do not un-comment empty lanes — they only burn minutes) ---
-  # CI-4: integration job with Postgres+Redis service containers + the app env block
-  #        (CONTROL_PLANE_DATABASE_URL, REDIS_URL, TENANT_DB_ENCRYPTION_KEY, KEYCLOAK_*, …)
-  #        once *.integration.spec.ts (tenant-isolation) exist.
-  # CI-5: Playwright smoke job (login → /grafik, 0 console errors) once the web e2e package lands.
   # spec §8: fan-out tenant migrations (needs control-plane migrate + a provisioned tenant, M2-B2).
 
   # NOTE (branch protection): with paths-ignore, a docs-only PR does not trigger this workflow,

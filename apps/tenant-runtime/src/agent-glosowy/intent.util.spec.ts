@@ -1,0 +1,332 @@
+import { parseIntent, CONFIDENCE_THRESHOLD, INTENT_CATALOG } from './intent.util.js'
+
+/** Wednesday, 2026-07-29 (UTC midnight) — the fixed "today" every case reasons from. */
+const TODAY = new Date('2026-07-29T00:00:00.000Z')
+
+describe('parseIntent — closed PL command set (K1 urlop / K2 L4 / K3 mój grafik)', () => {
+  describe('K1 — URLOP (leave request, write)', () => {
+    it('parses "chcę wziąć urlop od piątku do poniedziałku" into a weekday range', () => {
+      const r = parseIntent('chcę wziąć urlop od piątku do poniedziałku', TODAY)
+      expect(r.intent).toBe('URLOP')
+      expect(r.entities.dateFrom).toBe('2026-07-31') // next Friday on/after today
+      expect(r.entities.dateTo).toBe('2026-08-03') // Monday after that Friday
+      expect(r.entities.type).toBe('URLOP_WYPOCZYNKOWY')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+
+    it('parses a month-name numeric range "chcę urlop od 1 do 5 sierpnia"', () => {
+      const r = parseIntent('chcę urlop od 1 do 5 sierpnia', TODAY)
+      expect(r.intent).toBe('URLOP')
+      expect(r.entities.dateFrom).toBe('2026-08-01')
+      expect(r.entities.dateTo).toBe('2026-08-05')
+    })
+
+    // Regresja 2026-08-10, zmierzona na żywo. Forma z POWTÓRZONYM miesiącem jest tym, co ludzie mówią
+    // naturalnie, a wcześniej nie pasowała do wzorca zakresu (ten wymagał miesiąca RAZ, na końcu).
+    // Tekst spadał więc do wzorca pojedynczej daty, który brał tylko pierwszą i ustawiał dateTo =
+    // dateFrom: system potwierdzał JEDNODNIOWY urlop przy 90% pewności. Wyglądało wiarygodnie i było
+    // błędne — najgorszy możliwy rodzaj usterki w module o skutkach kadrowych.
+    it('parses a repeated-month range "od 20 sierpnia do 21 sierpnia" as TWO days, not one', () => {
+      const r = parseIntent('chcę wziąć urlop wypoczynkowy od 20 sierpnia do 21 sierpnia', TODAY)
+      expect(r.intent).toBe('URLOP')
+      expect(r.entities.dateFrom).toBe('2026-08-20')
+      expect(r.entities.dateTo).toBe('2026-08-21')
+    })
+
+    it('inherits the month when the second date omits it ("od 20 sierpnia do 25")', () => {
+      const r = parseIntent('chcę urlop od 20 sierpnia do 25', TODAY)
+      expect(r.entities.dateFrom).toBe('2026-08-20')
+      expect(r.entities.dateTo).toBe('2026-08-25')
+    })
+
+    it('spans a month boundary ("od 30 sierpnia do 2 września")', () => {
+      const r = parseIntent('chcę urlop od 30 sierpnia do 2 września', TODAY)
+      expect(r.entities.dateFrom).toBe('2026-08-30')
+      expect(r.entities.dateTo).toBe('2026-09-02')
+    })
+
+    it('spans the YEAR boundary without inverting the range ("od 30 grudnia do 2 stycznia")', () => {
+      // `monthDate` przenosi datę wcześniejszą niż „dziś” na kolejny rok, więc styczeń musi wypaść
+      // PO grudniu. Gdyby ta reguła zniknęła, powstałby zakres cofnięty o rok — cicho i bez błędu.
+      const r = parseIntent('chcę urlop od 30 grudnia do 2 stycznia', TODAY)
+      expect(r.entities.dateFrom).toBe('2026-12-30')
+      expect(r.entities.dateTo).toBe('2027-01-02')
+    })
+
+    it('still treats a single date as one day ("urlop 20 sierpnia")', () => {
+      const r = parseIntent('chcę urlop 20 sierpnia', TODAY)
+      expect(r.entities.dateFrom).toBe('2026-08-20')
+      expect(r.entities.dateTo).toBe('2026-08-20')
+    })
+  })
+
+  describe('K2 — L4 (sick leave, write)', () => {
+    it('parses "zgłoś L4 na dziś" as a single-day sick leave', () => {
+      const r = parseIntent('zgłoś L4 na dziś', TODAY)
+      expect(r.intent).toBe('L4')
+      expect(r.entities.dateFrom).toBe('2026-07-29')
+      expect(r.entities.dateTo).toBe('2026-07-29')
+      expect(r.entities.type).toBe('ZWOLNIENIE_LEKARSKIE')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+
+    it('"jestem na zwolnieniu od jutra" is L4 (sick keyword wins over any leave phrasing)', () => {
+      const r = parseIntent('jestem na zwolnieniu od jutra', TODAY)
+      expect(r.intent).toBe('L4')
+      expect(r.entities.dateFrom).toBe('2026-07-30')
+    })
+  })
+
+  describe('K3 — MOJ_GRAFIK (schedule read)', () => {
+    it('parses "jaki mam grafik jutro"', () => {
+      const r = parseIntent('jaki mam grafik jutro', TODAY)
+      expect(r.intent).toBe('MOJ_GRAFIK')
+      expect(r.entities.dateFrom).toBe('2026-07-30')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+
+    it('defaults a dateless "pokaż mój grafik" to today (read is safe to default)', () => {
+      const r = parseIntent('pokaż mój grafik', TODAY)
+      expect(r.intent).toBe('MOJ_GRAFIK')
+      expect(r.entities.dateFrom).toBe('2026-07-29')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+  })
+
+  describe('SALDO_URLOPU (leave balance, read)', () => {
+    it('parses "ile mam dni urlopu" with HIGH confidence and no date needed', () => {
+      const r = parseIntent('ile mam dni urlopu', TODAY)
+      expect(r.intent).toBe('SALDO_URLOPU')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+
+    it('parses "jakie mam saldo urlopowe"', () => {
+      const r = parseIntent('jakie mam saldo urlopowe', TODAY)
+      expect(r.intent).toBe('SALDO_URLOPU')
+    })
+
+    it('does not mistake "chcę wziąć urlop" (no saldo/ile marker) for SALDO_URLOPU', () => {
+      const r = parseIntent('chcę wziąć urlop', TODAY)
+      expect(r.intent).toBe('URLOP')
+    })
+  })
+
+  describe('STATUS_WNIOSKU (leave request status, read)', () => {
+    it('parses "co z moim wnioskiem" with HIGH confidence', () => {
+      const r = parseIntent('co z moim wnioskiem', TODAY)
+      expect(r.intent).toBe('STATUS_WNIOSKU')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+
+    it('parses "jaki jest status mojego wniosku"', () => {
+      const r = parseIntent('jaki jest status mojego wniosku', TODAY)
+      expect(r.intent).toBe('STATUS_WNIOSKU')
+    })
+  })
+
+  describe('POMOC (help, read)', () => {
+    it('parses "pomoc" with HIGH confidence', () => {
+      const r = parseIntent('pomoc', TODAY)
+      expect(r.intent).toBe('POMOC')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+
+    it('parses "jakie masz polecenia" and "co potrafisz"', () => {
+      expect(parseIntent('jakie masz polecenia', TODAY).intent).toBe('POMOC')
+      expect(parseIntent('co potrafisz', TODAY).intent).toBe('POMOC')
+    })
+
+    it('every non-NIEZNANE intent has exactly one INTENT_CATALOG entry (POMOC source of truth)', () => {
+      const cataloged = INTENT_CATALOG.map((e) => e.intent).sort()
+      expect(cataloged).toEqual(
+        [
+          'L4', 'MOJ_GRAFIK', 'POMOC', 'SALDO_URLOPU', 'STATUS_WNIOSKU', 'URLOP',
+          'KTO_PRACUJE', 'NASTEPNA_ZMIANA', 'MOJA_EWIDENCJA', 'ANULUJ_WNIOSEK', 'ZAMIANA_ZMIANY', 'ZNAJDZ_ZASTEPSTWO',
+        ].sort(),
+      )
+    })
+  })
+
+  describe('KTO_PRACUJE (roster read)', () => {
+    it('parses "kto dzisiaj pracuje" and defaults to today', () => {
+      const r = parseIntent('kto dzisiaj pracuje', TODAY)
+      expect(r.intent).toBe('KTO_PRACUJE')
+      expect(r.entities.dateFrom).toBe('2026-07-29')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+
+    it('parses "kto jest nieobecny jutro"', () => {
+      const r = parseIntent('kto jest nieobecny jutro', TODAY)
+      expect(r.intent).toBe('KTO_PRACUJE')
+      expect(r.entities.dateFrom).toBe('2026-07-30')
+    })
+
+    it('parses "kto ma zmianę w piątek" (must not be swallowed by MOJ_GRAFIK\'s "zmian" marker)', () => {
+      const r = parseIntent('kto ma zmianę w piątek', TODAY)
+      expect(r.intent).toBe('KTO_PRACUJE')
+      expect(r.entities.dateFrom).toBe('2026-07-31')
+    })
+
+    it('does not affect an ordinary MOJ_GRAFIK utterance', () => {
+      expect(parseIntent('jaki mam grafik jutro', TODAY).intent).toBe('MOJ_GRAFIK')
+    })
+  })
+
+  describe('NASTEPNA_ZMIANA (next shift, read)', () => {
+    it('parses "kiedy mam następną zmianę"', () => {
+      const r = parseIntent('kiedy mam następną zmianę', TODAY)
+      expect(r.intent).toBe('NASTEPNA_ZMIANA')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+
+    it('parses "kiedy pracuję" (reclassified from the old MOJ_GRAFIK "kiedy pracuj" marker — "when do I next work" is a better fit than the whole schedule)', () => {
+      const r = parseIntent('kiedy pracuję', TODAY)
+      expect(r.intent).toBe('NASTEPNA_ZMIANA')
+    })
+
+    it('does not affect an ordinary MOJ_GRAFIK / KTO_PRACUJE utterance', () => {
+      expect(parseIntent('jaki mam grafik jutro', TODAY).intent).toBe('MOJ_GRAFIK')
+      expect(parseIntent('kto dzisiaj pracuje', TODAY).intent).toBe('KTO_PRACUJE')
+    })
+  })
+
+  describe('MOJA_EWIDENCJA (timesheet, read)', () => {
+    it('parses "ile przepracowałem godzin w tym tygodniu" and defaults to the ISO week containing today', () => {
+      const r = parseIntent('ile przepracowałem godzin w tym tygodniu', TODAY)
+      expect(r.intent).toBe('MOJA_EWIDENCJA')
+      // 2026-07-29 is a Wednesday → its ISO week is Mon 2026-07-27 .. Sun 2026-08-02.
+      expect(r.entities.dateFrom).toBe('2026-07-27')
+      expect(r.entities.dateTo).toBe('2026-08-02')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+
+    it('parses an explicit range "moja ewidencja od 1 do 5 sierpnia"', () => {
+      const r = parseIntent('moja ewidencja od 1 do 5 sierpnia', TODAY)
+      expect(r.intent).toBe('MOJA_EWIDENCJA')
+      expect(r.entities.dateFrom).toBe('2026-08-01')
+      expect(r.entities.dateTo).toBe('2026-08-05')
+    })
+
+    it('parses "moje nadgodziny" (trigger word only — the response must not label the metric that way)', () => {
+      expect(parseIntent('jakie mam nadgodziny', TODAY).intent).toBe('MOJA_EWIDENCJA')
+    })
+  })
+
+  describe('ANULUJ_WNIOSEK (cancel my request, write)', () => {
+    it('parses "anuluj mój wniosek urlopowy"', () => {
+      const r = parseIntent('anuluj mój wniosek urlopowy', TODAY)
+      expect(r.intent).toBe('ANULUJ_WNIOSEK')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+
+    it('"anuluj wniosek o urlop" is NOT read as a new URLOP request', () => {
+      expect(parseIntent('anuluj wniosek o urlop', TODAY).intent).toBe('ANULUJ_WNIOSEK')
+    })
+
+    it('"anuluj zwolnienie" is NOT read as a new L4 request', () => {
+      expect(parseIntent('anuluj moje zwolnienie lekarskie', TODAY).intent).toBe('ANULUJ_WNIOSEK')
+    })
+
+    it('parses "wycofaj wniosek"', () => {
+      expect(parseIntent('chcę wycofać wniosek', TODAY).intent).toBe('ANULUJ_WNIOSEK')
+    })
+
+    it('does not affect an ordinary URLOP/L4 request', () => {
+      expect(parseIntent('chcę wziąć urlop od piątku do poniedziałku', TODAY).intent).toBe('URLOP')
+      expect(parseIntent('zgłoś L4 na dziś', TODAY).intent).toBe('L4')
+    })
+  })
+
+  describe('ZAMIANA_ZMIANY (offer my shift, write)', () => {
+    it('parses "chcę oddać zmianę w piątek" with a date and HIGH confidence', () => {
+      const r = parseIntent('chcę oddać zmianę w piątek', TODAY)
+      expect(r.intent).toBe('ZAMIANA_ZMIANY')
+      expect(r.entities.dateFrom).toBe('2026-07-31')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+
+    it('parses "zamiana zmiany na wtorek"', () => {
+      const r = parseIntent('zamiana zmiany na wtorek', TODAY)
+      expect(r.intent).toBe('ZAMIANA_ZMIANY')
+      expect(r.entities.dateFrom).toBe('2026-08-04')
+    })
+
+    it('lowers confidence below threshold with no parseable date (falls back to a manual form)', () => {
+      const r = parseIntent('chcę zamienić zmianę', TODAY)
+      expect(r.intent).toBe('ZAMIANA_ZMIANY')
+      expect(r.confidence).toBeLessThan(CONFIDENCE_THRESHOLD)
+    })
+
+    it('does not affect an ordinary MOJ_GRAFIK/KTO_PRACUJE utterance', () => {
+      expect(parseIntent('jaki mam grafik jutro', TODAY).intent).toBe('MOJ_GRAFIK')
+      expect(parseIntent('kto ma zmianę w piątek', TODAY).intent).toBe('KTO_PRACUJE')
+    })
+  })
+
+  describe('ZNAJDZ_ZASTEPSTWO (start a replacement search, write)', () => {
+    it('parses "znajdź kogoś na wtorek" with a date and HIGH confidence', () => {
+      const r = parseIntent('znajdź kogoś na wtorek', TODAY)
+      expect(r.intent).toBe('ZNAJDZ_ZASTEPSTWO')
+      expect(r.entities.dateFrom).toBe('2026-08-04')
+      expect(r.confidence).toBeGreaterThanOrEqual(CONFIDENCE_THRESHOLD)
+    })
+
+    it('parses "potrzebuję zastępstwa na moją zmianę w piątek" (must not be swallowed by GRAFIK\'s "zmian" marker)', () => {
+      const r = parseIntent('potrzebuję zastępstwa na moją zmianę w piątek', TODAY)
+      expect(r.intent).toBe('ZNAJDZ_ZASTEPSTWO')
+      expect(r.entities.dateFrom).toBe('2026-07-31')
+    })
+
+    it('lowers confidence below threshold with no parseable date', () => {
+      const r = parseIntent('potrzebuję zastępstwa', TODAY)
+      expect(r.intent).toBe('ZNAJDZ_ZASTEPSTWO')
+      expect(r.confidence).toBeLessThan(CONFIDENCE_THRESHOLD)
+    })
+
+    it('does not affect an ordinary MOJ_GRAFIK/ZAMIANA_ZMIANY utterance', () => {
+      expect(parseIntent('jaki mam grafik jutro', TODAY).intent).toBe('MOJ_GRAFIK')
+      expect(parseIntent('chcę oddać zmianę w piątek', TODAY).intent).toBe('ZAMIANA_ZMIANY')
+    })
+  })
+
+  describe('ambiguous / out-of-set → NIEZNANE or low confidence (never guess-execute)', () => {
+    it('returns NIEZNANE with sub-threshold confidence for an utterance outside the set', () => {
+      const r = parseIntent('jaka jest dzisiaj pogoda w Warszawie', TODAY)
+      expect(r.intent).toBe('NIEZNANE')
+      expect(r.confidence).toBeLessThan(CONFIDENCE_THRESHOLD)
+    })
+
+    it('lowers confidence below threshold for a write intent with no parseable date', () => {
+      const r = parseIntent('chcę wziąć urlop', TODAY)
+      expect(r.intent).toBe('URLOP')
+      expect(r.entities.dateFrom).toBeUndefined()
+      expect(r.confidence).toBeLessThan(CONFIDENCE_THRESHOLD)
+    })
+  })
+
+  describe('PL relative/weekday/month date normalization', () => {
+    it('resolves weekday names to the next occurrence on/after today', () => {
+      expect(parseIntent('jaki mam grafik w piątek', TODAY).entities.dateFrom).toBe('2026-07-31')
+      // today itself is Wednesday → środa resolves to today, not next week
+      expect(parseIntent('jaki mam grafik w środę', TODAY).entities.dateFrom).toBe('2026-07-29')
+    })
+
+    it('resolves dziś / jutro / pojutrze relative to the passed-in today', () => {
+      expect(parseIntent('grafik dziś', TODAY).entities.dateFrom).toBe('2026-07-29')
+      expect(parseIntent('grafik jutro', TODAY).entities.dateFrom).toBe('2026-07-30')
+      expect(parseIntent('grafik pojutrze', TODAY).entities.dateFrom).toBe('2026-07-31')
+    })
+
+    it('resolves an ISO date verbatim', () => {
+      const r = parseIntent('chcę urlop 2026-09-15', TODAY)
+      expect(r.entities.dateFrom).toBe('2026-09-15')
+      expect(r.entities.dateTo).toBe('2026-09-15')
+    })
+
+    it('is deterministic — same input+today yields identical output', () => {
+      const a = parseIntent('zgłoś L4 od poniedziałku do piątku', TODAY)
+      const b = parseIntent('zgłoś L4 od poniedziałku do piątku', TODAY)
+      expect(a).toEqual(b)
+    })
+  })
+})

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // One command: stopped stack → demo-ready. Brings the full compose stack up, waits for Keycloak +
 // tenant-runtime, rebuilds the ephemeral demo realm, auto-applies the keycloak_sub sync the seed
-// emits, and seeds the J5 pending swap. Prints the login table + the one manual step left (the
-// web-kit UI, which is a separate host process by design).
+// emits, and seeds the J5 pending swap. Prints the login table — the front (apps/web) is already
+// part of the compose stack this script brings up, served via Caddy.
 //
 //   node scripts/demo-up.mjs
 //
@@ -18,6 +18,19 @@ const KC = process.env.KC_URL || 'http://localhost:8081'
 const TR = process.env.TENANT_RUNTIME_URL || 'http://localhost:3001'
 const PG = process.env.PG_CONTAINER || 'hrobot-postgres-1'
 const DB = process.env.TENANT_DB || 'hrobot_t_900d948b'
+
+// DEMO_ADMIN_PASSWORD is a credential and must not live in the repo (see docs/design/web-kit/
+// start-live.mjs for the same rule). Read it from the shell environment; fail loudly instead of
+// falling back to a hardcoded value that would end up committed. Rotate the old value
+// (demo-staging-2026) in Keycloak — it is already in git history.
+const DEMO_ADMIN_PASSWORD = process.env.DEMO_ADMIN_PASSWORD
+if (!DEMO_ADMIN_PASSWORD) {
+  console.error(
+    '\n✗ Brak hasła konta demo. Ustaw zmienną środowiskową DEMO_ADMIN_PASSWORD przed uruchomieniem' +
+      '\n  (to samo hasło, którym zaloguje się `demo` w Keycloaku, realm hrobot-staging).\n',
+  )
+  process.exit(1)
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const step = (m) => console.log(`\n▶ ${m}`)
@@ -132,7 +145,7 @@ async function main() {
   psql(readFileSync(join(root, 'scripts', 'seed-demo-m2-modules.sql'), 'utf8'))
   // 4) the seed adds a User row for `demo` (so it can be a leave decider / grant issuer); re-point
   //    its keycloak_sub to the realm's live admin id (same sync class as the users above)
-  const adminSub = await resolveSub('demo', 'demo-staging-2026')
+  const adminSub = await resolveSub('demo', DEMO_ADMIN_PASSWORD)
   if (adminSub) {
     psql(`UPDATE users SET keycloak_sub='${adminSub}' WHERE email='admin@staging.hrobot.local';`)
   } else {
@@ -152,8 +165,8 @@ async function main() {
   console.log(`
 ✅ Demo backend ready (Grafik + AI + M2 modules).
 
-   Logins (${'http://localhost:5601'} → /login):
-     demo            / demo-staging-2026   ADMIN      full grafik + swap approval + all M2 modules
+   Logins (${'http://localhost:8080'} → /login):
+     demo            / <hasło z DEMO_ADMIN_PASSWORD>   ADMIN      full grafik + swap approval + all M2 modules
      manager.demo    / Manager!2026        MANAGER    unit-scoped grafik/swaps + wnioski/dostępy (own units)
      pracownik.demo  / Pracownik!2026      PRACOWNIK  read-only "my schedule" + own wnioski (Anna Kowalska)
      pracownica.demo / Pracownica!2026     PRACOWNIK  cross-unit travel demo candidate (Katarzyna Zając, Region Północ)
@@ -161,8 +174,8 @@ async function main() {
    M2 modules now populated: Wnioski (6 pending / 26 approved / 1 rejected), Dostępy (15 grants),
    Ustawienia (4Mobility), Użytkownicy (3 kont), Koszty (10 stawek → pełne pokrycie).
 
-   Last step (separate host process by design):
-     cd docs/design/web-kit && node start-prod.mjs     # http://localhost:5601 (demo build)
+   Front is already up — it's part of the compose stack (docker compose -p hrobot --profile full up -d),
+   served behind Caddy at http://localhost:8080. No separate host process needed.
 
    Demo week: 13–19 July 2026.
    Grafik/AI script:  data/m2-evidence/demo-scenario-4mobility.md

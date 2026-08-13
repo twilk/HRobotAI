@@ -48,4 +48,4 @@ Odbiorca Technologii (4Mobility): ______________________ data: __________
 - Dowody journeyów (screeny/nagrania): `./` (pliki [CAPTURE])
 - Znane ograniczenia: `./known-limitations.md`
 - Checklista RODO: `./rodo-security-checklist.md`
-- Dowód testów: 855/855 TS (76 suit) + 51 pytest agent-service + pytest grafik-optimizer (logi: `m2-evidence/test-logs/`, bieg 2026-07-14)
+- Dowód testów (stan zmierzony 2026-08-03): **857 testów TS w 66 suitach** + `agent-service` 62 passed / 3 skipped + `grafik-optimizer` 24 passed (komendy odtwarzające w `m2-evidence/known-limitations.md`; logi historyczne z biegu 2026-07-14 w `m2-evidence/test-logs/`)

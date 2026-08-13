@@ -188,6 +188,8 @@ model Employee {
   workOrders           WorkOrder[]                   @relation("WorkOrderAssignee")
   complaints           Complaint[]                   @relation("ComplaintEmployee")
   performanceSnapshots EmployeePerformanceSnapshot[] @relation("SnapshotEmployee")
+  rcpEvents            RcpEvent[]                    @relation("RcpEventEmployee")
+  documents            GeneratedDocument[]           @relation("DocEmployee")
 
   @@map("employees")
 }
@@ -205,6 +207,7 @@ model Lokalizacja {
   demands ShiftDemand[]
   shifts  Shift[]
   accessGrants AccessGrant[]
+  rcpEvents RcpEvent[]
 
   @@map("lokalizacje")
 }
@@ -659,4 +662,131 @@ model PerformanceConfig {
 
   @@unique([unitId])
   @@map("performance_config")
+}
+
+// ---------------------------------------------------------------------------
+// Moduł Dokumenty (M3): RCP events (raw time-tracking facts) + generated
+// HR/payroll documents (ewidencja czasu pracy / nadgodziny / ZUS-KEDU export
+// skeleton). Greenfield module (spec
+// docs/superpowers/specs/2026-07-21-modul-dokumenty-SPEC.md, §2). Zero PII in
+// these models — PESEL/address never stored here; PESEL appears only inside
+// the materialized ZUS_KEDU document content (§6 of the spec), never in
+// `computedFacts` or list/metadata projections. No "SENT"/external-send state
+// exists anywhere in this module (DOK-10 hard boundary — human gate only).
+// ---------------------------------------------------------------------------
+
+enum RcpEventType {
+  WEJSCIE
+  WYJSCIE
+  PRZERWA_START
+  PRZERWA_KONIEC
+}
+
+/// Skąd padło zdarzenie (spójne z k-modul-dostepy §5: kontrola dostępu / panel / mobile) + import + korekta.
+enum RcpEventSource {
+  KONTROLA_DOSTEPU
+  PANEL_WEB
+  MOBILE
+  IMPORT
+  KOREKTA
+}
+
+/// Surowe zdarzenie RCP (Rejestracja Czasu Pracy) — atomowy fakt „pracownik X, chwila T, typ zdarzenia".
+/// Źródło ewidencji czasu pracy i wyliczeń nadgodzin (Moduł Dokumenty, M3). Zdarzenia są parowane
+/// (wejście↔wyjście, start↔koniec przerwy) w warstwie silnika (rcp.util.ts), NIE w bazie — baza trzyma
+/// tylko surowe fakty. Zdarzenie jest NIEMUTOWALNE; korekta = nowe zdarzenie o `source=KOREKTA`
+/// wskazujące `correctsEventId` (append-only, jak recruitment_recommendation.replaces… w strategic-brain).
+model RcpEvent {
+  id             String       @id @default(uuid())
+  employeeId     String       @map("employee_id")
+  employee       Employee     @relation("RcpEventEmployee", fields: [employeeId], references: [id])
+  /// Chwila zdarzenia (UTC w bazie; strefa lokalna liczona w silniku — patrz §3 null/tz-policy).
+  occurredAt     DateTime     @map("occurred_at")
+  type           RcpEventType
+  source         RcpEventSource @default(PANEL_WEB)
+  /// Opcjonalna placówka, w której padło zdarzenie (spina RCP z Modułem Dostępy; nullable — panel/mobile
+  /// bez czytnika). FK do istniejącej `Lokalizacja`.
+  lokalizacjaId  String?      @map("lokalizacja_id")
+  lokalizacja    Lokalizacja? @relation(fields: [lokalizacjaId], references: [id])
+  /// Korekta: id zdarzenia, które ten wpis poprawia (tylko dla source=KOREKTA). Append-only ślad.
+  correctsEventId String?     @map("corrects_event_id")
+  /// Kto wprowadził korektę/wpis ręczny (audyt; NULL dla zdarzeń z automatycznej kontroli dostępu).
+  enteredByUserId String?     @map("entered_by_user_id")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@index([employeeId, occurredAt])
+  @@index([lokalizacjaId])
+  @@map("rcp_event")
+}
+
+enum DocumentType {
+  EWIDENCJA_CZASU_PRACY
+  NADGODZINY
+  ZUS_KEDU
+}
+
+enum DocumentFormat {
+  PDF
+  XML_KEDU
+}
+
+/// Cykl życia. Ewidencja: GENERATED (finalny). Nadgodziny: GENERATED → APPROVED (bramka managera) lub
+/// SUPERSEDED (gdy przeliczono na nowo). ZUS: GENERATED → APPROVED (zatwierdzenie do „wysyłki" — ale
+/// wysyłki NIE ma na demo). Brak stanu „SENT/EXPORTED_EXTERNAL" — twarda granica (żadnej wysyłki).
+enum DocumentStatus {
+  GENERATED
+  APPROVED
+  SUPERSEDED
+}
+
+enum DocScopeType {
+  EMPLOYEE
+  UNIT
+  ALL
+}
+
+/// Jeden wygenerowany dokument (ewidencja / nadgodziny / eksport ZUS-KEDU) za dany OKRES i ZAKRES.
+/// NIEMUTOWALNY co do treści: ponowne wygenerowanie tworzy NOWY wiersz wskazujący `replacesDocumentId`
+/// (append-only historia, wzór recruitment_recommendation w strategic-brain §14 B3). `contentHash`
+/// zamraża treść w chwili generacji → reprodukowalność/audyt bez trzymania PII w audit_log.
+model GeneratedDocument {
+  id            String        @id @default(uuid())
+  type          DocumentType
+  format        DocumentFormat
+  status        DocumentStatus @default(GENERATED)
+  /// Okres rozliczeniowy dokumentu (daty kalendarzowe; @db.Date jak ShiftDemand/LeaveRequest).
+  periodStart   DateTime      @map("period_start") @db.Date
+  periodEnd     DateTime      @map("period_end")   @db.Date
+  /// Zakres: pojedynczy pracownik, jednostka, lub cały tenant. Dla EMPLOYEE ustawione `employeeId`,
+  /// dla UNIT — `unitId`. `scopeType=ALL` => oba NULL (całość, tylko HR/ADMIN).
+  scopeType     DocScopeType  @map("scope_type")
+  employeeId    String?       @map("employee_id")
+  employee      Employee?     @relation("DocEmployee", fields: [employeeId], references: [id])
+  unitId        String?       @map("unit_id")
+  /// Zmaterializowana treść. Na demo trzymamy treść w kolumnie (PDF jako bytea/base64 lub XML jako text)
+  /// LUB ścieżkę w izolowanym storage tenanta — patrz §4.4 (decyzja storage). Dokładnie JEDNO z pól.
+  contentText   String?       @map("content_text")   // XML KEDU / tekstowe raporty
+  contentBytes  Bytes?        @map("content_bytes")  // PDF (binarny)
+  contentPath   String?       @map("content_path")   // alternatywa: ścieżka w storage (jeśli wybrana)
+  /// SHA-256 treści w chwili generacji — reprodukowalność + wykrycie manipulacji (bez PII w audycie).
+  contentHash   String        @map("content_hash")
+  /// Zamrożone parametry/wynik liczbowy (Json) użyte do renderu — pozwala odtworzyć „dlaczego tyle nadgodzin"
+  /// bez PII (tylko id + liczby; NIGDY PESEL/nazwisko w tym polu — §6).
+  computedFacts Json          @map("computed_facts")
+  /// Wersja silnika wyliczeń, którą wyprodukowano dokument (jak snapshot.algorithmVersion w strategic-brain).
+  algorithmVersion Int        @default(1) @map("algorithm_version")
+  replacesDocumentId String?  @map("replaces_document_id")
+  generatedByUserId String     @map("generated_by_user_id")
+  generatedAt   DateTime      @default(now()) @map("generated_at")
+  /// Bramka nadgodzin/ZUS: kto i kiedy zatwierdził (NULL = niezatwierdzony). Art. 22 RODO — człowiek.
+  approvedByUserId String?    @map("approved_by_user_id")
+  approvedAt    DateTime?     @map("approved_at")
+  /// RODO retencja: do kiedy dokument jest przechowywany (polityka retencji §6). Po tej dacie — do czyszczenia.
+  retentionUntil DateTime?    @map("retention_until") @db.Date
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  @@index([type, periodStart, periodEnd])
+  @@index([employeeId])
+  @@index([unitId])
+  @@map("generated_document")
 }

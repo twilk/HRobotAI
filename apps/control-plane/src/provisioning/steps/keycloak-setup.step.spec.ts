@@ -1,7 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { KeycloakSetupStep } from './keycloak-setup.step.js'
+import {
+  BOOTSTRAP_ISSUED_AT_KEY,
+  BOOTSTRAP_PASSWORD_KEY,
+  KeycloakSetupStep,
+  bootstrapAad,
+} from './keycloak-setup.step.js'
 import { ControlPlanePrismaService } from '../../common/prisma/control-plane-prisma.service.js'
-import { ProvisioningStep, Role } from '@hrobot/shared'
+import { EncryptionService, ProvisioningStep, Role } from '@hrobot/shared'
+
+const encryption = new EncryptionService(Buffer.from('a'.repeat(64), 'hex'))
 
 const mockPrisma = {
   tenant: { findUniqueOrThrow: jest.fn(), update: jest.fn() },
@@ -71,6 +78,7 @@ describe('KeycloakSetupStep', () => {
         KeycloakSetupStep,
         { provide: ControlPlanePrismaService, useValue: mockPrisma },
         { provide: 'FETCH', useValue: mockFetch },
+        { provide: EncryptionService, useValue: encryption },
       ],
     }).compile()
     step = module.get(KeycloakSetupStep)
@@ -176,6 +184,89 @@ describe('KeycloakSetupStep', () => {
     expect(mockPrisma.provisioningJob.update).toHaveBeenCalledWith({
       where: { id: 'job-1' },
       data: { step: ProvisioningStep.DONE },
+    })
+  })
+
+  /**
+   * G-2: without SMTP the reset e-mail cannot go out, and the temp password used to be thrown
+   * away — leaving a fully provisioned tenant whose admin account nobody could log into. These
+   * specs pin the fallback AND its safety envelope (encrypted, tenant-bound, never logged, only
+   * stored when it is actually the account's live credential).
+   */
+  describe('G-2: bootstrap credential when no reset e-mail can be delivered', () => {
+    /** Same happy path, but Keycloak has no SMTP configured → execute-actions-email 500s. */
+    const noSmtpFetch = (url: string, init: FetchInit = {}) =>
+      init.method === 'PUT' && url.includes('/execute-actions-email')
+        ? res({ status: 500 })
+        : happyPathFetch(url, init)
+
+    const metadataWritten = (): Record<string, unknown> =>
+      (mockPrisma.tenant.update.mock.calls[0]?.[0] as { data: { metadata: Record<string, unknown> } })
+        .data.metadata
+
+    it('persists the temp password ENCRYPTED and tenant-bound when the e-mail fails', async () => {
+      mockFetch.mockImplementation(noSmtpFetch)
+
+      await step.execute(job)
+
+      const meta = metadataWritten()
+      const blob = meta[BOOTSTRAP_PASSWORD_KEY]
+      expect(typeof blob).toBe('string')
+      // Ciphertext at rest — the plaintext password must never sit in the metadata column.
+      const password = encryption.decrypt(blob as string, bootstrapAad('tenant-1'))
+      expect(password).toMatch(/^[A-Za-z0-9_-]{10,}$/)
+      // …and it is the credential actually installed on the Keycloak account.
+      const createUserCall = callsTo((url, init) => init.method === 'POST' && /\/users$/.test(url))[0]!
+      const sent = JSON.parse(createUserCall[1].body ?? '{}') as {
+        credentials: Array<{ value: string; temporary: boolean }>
+      }
+      expect(sent.credentials[0]!.value).toBe(password)
+      // Single-use by construction: Keycloak forces a change on first login.
+      expect(sent.credentials[0]!.temporary).toBe(true)
+      expect(typeof meta[BOOTSTRAP_ISSUED_AT_KEY]).toBe('string')
+    })
+
+    it('binds the ciphertext to its tenant — it will not decrypt under another tenant id', async () => {
+      mockFetch.mockImplementation(noSmtpFetch)
+
+      await step.execute(job)
+
+      const blob = metadataWritten()[BOOTSTRAP_PASSWORD_KEY] as string
+      expect(() => encryption.decrypt(blob, bootstrapAad('some-other-tenant'))).toThrow()
+    })
+
+    it('stores NOTHING when the reset e-mail was delivered normally', async () => {
+      await step.execute(job) // happyPathFetch → execute-actions-email 201
+
+      expect(metadataWritten()).not.toHaveProperty(BOOTSTRAP_PASSWORD_KEY)
+    })
+
+    it('wipes a previously stored credential once an e-mail finally goes through', async () => {
+      mockPrisma.tenant.findUniqueOrThrow.mockResolvedValue({
+        ...tenant,
+        metadata: {
+          adminEmail: 'admin@acme.com',
+          [BOOTSTRAP_PASSWORD_KEY]: 'stale-blob',
+          [BOOTSTRAP_ISSUED_AT_KEY]: '2026-01-01T00:00:00.000Z',
+        },
+      })
+
+      await step.execute(job) // happy path → e-mail delivered
+
+      const meta = metadataWritten()
+      expect(meta).not.toHaveProperty(BOOTSTRAP_PASSWORD_KEY)
+      expect(meta).not.toHaveProperty(BOOTSTRAP_ISSUED_AT_KEY)
+    })
+
+    it('does NOT store a password on a 409 retry — Keycloak ignored the credential, so it would not work', async () => {
+      mockFetch.mockImplementation((url: string, init: FetchInit = {}) => {
+        if (init.method === 'POST' && /\/users$/.test(url)) return res({ status: 409 })
+        return noSmtpFetch(url, init)
+      })
+
+      await step.execute(job)
+
+      expect(metadataWritten()).not.toHaveProperty(BOOTSTRAP_PASSWORD_KEY)
     })
   })
 })

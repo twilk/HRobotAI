@@ -1,0 +1,38 @@
+================================================================================================
+C1 — is the ORIGINAL AG2 reference reachable by construction?
+================================================================================================
+  reference built by         : app.policy.ImitationPolicy.propose  (demo_ag2.py)
+  |reference|                : 52   hard-feasible=True
+  agent reproduces it exactly: edit_distance=0
+  baseline curve (budget 6)  : [50, 44, 28, 18, 4, 0]
+  same builder, random preference instead of etat-priority (6 rounds, budget 6):
+    seed=1: [102, 90, 76, 70, 82, 54]
+    seed=2: [80, 70, 58, 50, 46, 34]
+    seed=3: [84, 76, 62, 50, 44, 36]
+
+================================================================================================
+C2 — six arbitrary INDEPENDENTLY defined managers (20 rounds, budget 6)
+================================================================================================
+  salt=(default)   |A|=52 feasible=True day1=96 firstZeroRound=17 monotone=False ablationFlat=True
+    curve: [96, 76, 62, 70, 60, 52, 50, 52, 44, 40, 34, 36, 28, 26, 20, 16, 10, 0, 0, 0]
+  salt=m2          |A|=52 feasible=True day1=100 firstZeroRound=14 monotone=True ablationFlat=True
+    curve: [100, 86, 70, 62, 58, 52, 44, 34, 28, 24, 18, 18, 4, 4, 0, 0, 0, 0, 0, 0]
+  salt=kowalski    |A|=52 feasible=True day1=96 firstZeroRound=14 monotone=True ablationFlat=True
+    curve: [96, 80, 64, 58, 52, 52, 42, 34, 28, 20, 18, 14, 6, 4, 0, 0, 0, 0, 0, 0]
+  salt=nowak       |A|=52 feasible=True day1=100 firstZeroRound=16 monotone=False ablationFlat=True
+    curve: [100, 88, 68, 62, 52, 54, 42, 38, 34, 30, 26, 24, 16, 16, 6, 8, 0, 0, 0, 0]
+  salt=4mobility   |A|=52 feasible=True day1=96 firstZeroRound=14 monotone=False ablationFlat=True
+    curve: [96, 84, 68, 52, 52, 42, 38, 40, 28, 24, 18, 14, 14, 4, 0, 0, 0, 0, 0, 0]
+  salt=zz9         |A|=52 feasible=True day1=98 firstZeroRound=15 monotone=True ablationFlat=True
+    curve: [98, 84, 70, 60, 56, 54, 52, 40, 32, 28, 24, 18, 8, 8, 2, 0, 0, 0, 0, 0]
+
+================================================================================================
+C3 — does the learned preference transfer to the NEXT week?
+================================================================================================
+  week 1 training curve      : [96, 76, 62, 70, 60, 52, 50, 52, 44, 40, 34, 36, 28, 26, 20, 16, 10, 0, 0, 0]
+  week 2 (dates +7d), |A|=52
+    cold-start agent vs manager : 98
+    TRAINED  agent  vs manager  : 98
+    transfer gain               : 0
+    trained proposal == cold-start proposal? True
+  -> slot_signature = (role, locId, DATE, start): every learned key misses next week.

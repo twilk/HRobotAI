@@ -9,7 +9,7 @@
     "lint": "eslint src",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "jest --config jest.config.cjs",
-    "test:integration": "jest --config jest.config.cjs --testMatch '**/*.integration.spec.ts' --passWithNoTests"
+    "test:integration": "jest --config jest.integration.config.cjs --passWithNoTests"
   },
   "dependencies": {
     "@hrobot/config": "workspace:*",

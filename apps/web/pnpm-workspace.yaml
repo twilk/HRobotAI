@@ -1,0 +1,11 @@
+# web-kit is a STANDALONE pnpm project, not a member of the monorepo workspace (pnpm-workspace.yaml
+# at the repo root lists only apps/*, packages/* and agent). It has always had its own pnpm-lock.yaml.
+#
+# This empty workspace file exists to make that boundary explicit to pnpm. Without it, `pnpm add`
+# run from this directory walks UP the tree, finds the monorepo root, and writes the new dependency
+# into the ROOT pnpm-lock.yaml — which is how adding @playwright/test for CI-5 produced a 1791-line
+# diff in the monorepo lockfile, complete with unrelated version drift across every workspace package.
+#
+# With this file present, pnpm stops here: web-kit resolves against its own lock and the monorepo's
+# lock stays untouched.
+packages: []

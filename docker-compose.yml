@@ -14,24 +14,29 @@
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     # POSTGRES_DB creates hrobot_control on first boot; the `postgres`
     # maintenance DB (used by POSTGRES_SUPERUSER_URL) always exists too.
+    #
+    # Credentials come from .env (see .env.example). The `:-` fallbacks keep a bare
+    # `docker compose up -d` working on a fresh clone; STAGING MUST override them. [ENV-2]
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: hrobot_control
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-hrobot_control}
     ports:
       - "5432:5432"
     volumes:
       - hrobot_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     ports:
       - "6379:6379"
     healthcheck:
@@ -42,7 +47,12 @@ services:
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
-    # Default guest/guest; management UI at http://localhost:15672
+    restart: unless-stopped
+    # Dev default guest/guest; management UI at http://localhost:15672. Override on staging. [ENV-2]
+    # NOTE: rabbitmq only applies RABBITMQ_DEFAULT_* on a FIRST boot with an empty data dir.
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -55,21 +65,35 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     command: ["start-dev"]
+    restart: unless-stopped
     environment:
       # KC 25+ renamed KEYCLOAK_ADMIN* -> KC_BOOTSTRAP_ADMIN*.
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      # Dev default admin/admin; STAGING MUST override via .env. [ENV-2]
+      # NOTE: the bootstrap admin is only created on a FIRST boot against an empty
+      # hrobot_keycloak volume — changing this later requires resetting the password in the KC
+      # admin console (or `docker compose down -v`), not just editing .env.
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
     ports:
       - "8080:8080"
     # Persist KC's embedded H2 so realms/clients/users survive `docker compose down` (without -v).
     volumes:
       - hrobot_keycloak:/opt/keycloak/data
+    # No curl/wget in this image (ubi-micro) and start-dev doesn't expose the KC health probe on
+    # :9000 by default — a plain TCP connect to the HTTP port is the cheapest true liveness signal.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   # Control-plane API as a container (CI/prod parity). For day-to-day dev, run it
   # on the host. Gated behind the "full" profile so a bare `docker compose up -d`
   # starts only backing services (no :3000 collision with a host app).
   control-plane:
     profiles: ["full"]
+    restart: unless-stopped
     build:
       context: .
       dockerfile: apps/control-plane/Dockerfile
@@ -80,10 +104,10 @@ services:
       - path: .env
         required: false
     environment:
-      CONTROL_PLANE_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/hrobot_control
-      POSTGRES_SUPERUSER_URL: postgresql://postgres:postgres@postgres:5432/postgres
+      CONTROL_PLANE_DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-hrobot_control}
+      POSTGRES_SUPERUSER_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/postgres
       REDIS_URL: redis://redis:6379
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672
       KEYCLOAK_URL: http://keycloak:8080
       PORT: "3000"
     depends_on:
@@ -95,11 +119,21 @@ services:
         condition: service_healthy
     ports:
       - "3000:3000"
+    # /health/live is a pure liveness probe (no deps); /health/ready also checks DB+Redis but
+    # a ready-check flapping to unhealthy would restart the app for a dependency it can't fix by
+    # restarting — use live here so autoheal only kills genuinely wedged/hung processes.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   # Tenant-runtime API as a container (CI/prod parity). Same monorepo build, runs
   # the apps/tenant-runtime dist. Listens on 3001 to avoid the control-plane port.
   tenant-runtime:
     profiles: ["full"]
+    restart: unless-stopped
     build:
       context: .
       dockerfile: apps/tenant-runtime/Dockerfile
@@ -107,10 +141,10 @@ services:
       - path: .env
         required: false
     environment:
-      CONTROL_PLANE_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/hrobot_control
-      POSTGRES_SUPERUSER_URL: postgresql://postgres:postgres@postgres:5432/postgres
+      CONTROL_PLANE_DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-hrobot_control}
+      POSTGRES_SUPERUSER_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/postgres
       REDIS_URL: redis://redis:6379
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672
       KEYCLOAK_URL: http://keycloak:8080
       PORT: "3001"
     depends_on:
@@ -122,6 +156,12 @@ services:
         condition: service_healthy
     ports:
       - "3001:3001"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/api/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   # Grafik solver (FastAPI + CP-SAT). M2-A1 skeleton: GET /health + a STUB POST /solve carrying the
   # frozen ProblemInput/SolveResult contract; the CP-SAT model lands in M2-A2. Built from the
@@ -129,6 +169,7 @@ services:
   # like the other app services so a bare `docker compose up -d` starts only backing services.
   optimizer:
     profiles: ["full"]
+    restart: unless-stopped
     build:
       context: ./grafik-optimizer
       dockerfile: Dockerfile
@@ -137,6 +178,12 @@ services:
       PYTHONUNBUFFERED: "1"
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
 
   # RESERVED SLOT — RL agent (roadmap #2, spec #1 §3/§41). The agent shares the optimizer image and
   # container build (same ./grafik-optimizer context); its training/serving entrypoint and behavior
@@ -151,6 +198,110 @@ services:
       PYTHONUNBUFFERED: "1"
     # command:  # set by the RL-agent task (shares the optimizer image; runs the agent loop, not uvicorn)
 
+  # Front produktowy (Next.js standalone) — apps/web. WEWNĘTRZNY (brak host portu); publiczny origin
+  # to Caddy. Proxy BFF /api/* → tenant-runtime po stronie serwera (tokeny httpOnly, RODO).
+  web:
+    profiles: ["full"]
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      # MUSI zawierać sufiks /api — tenant-runtime ma bezwarunkowy setGlobalPrefix('api')
+      # (apps/tenant-runtime/src/main.ts). BFF forwarduje do ${TENANT_RUNTIME_URL}/employees itd.,
+      # więc bez /api każde wywołanie danych → 404 (login działa, bo KEYCLOAK_TOKEN_URL jest osobny).
+      # Zgodne z apps/web/start-live.mjs (host-dev używał http://localhost:3001/api).
+      TENANT_RUNTIME_URL: http://tenant-runtime:3001/api
+      KEYCLOAK_TOKEN_URL: http://keycloak:8080/realms/hrobot-staging/protocol/openid-connect/token
+      KEYCLOAK_CLIENT_ID: hrobot-web
+      KEYCLOAK_USERNAME: demo
+      KEYCLOAK_PASSWORD: ${KEYCLOAK_DEMO_PASSWORD:-demo-staging-2026}
+      # Port 8010, NIE 8011. 8011 to mapowanie na HOST (docker-compose `stt`); wewnatrz sieci
+      # kontener slucha na 8010. Bez tej zmiennej route.ts bierze fallback http://localhost:8011,
+      # czyli localhost KONTENERA WEB — nikt tam nie nasluchuje, fetch rzuca, a uzytkownik dostaje
+      # 503 „Usluga rozpoznawania mowy jest niedostepna" przy w pelni zdrowym STT (2026-08-11).
+      STT_SERVICE_URL: http://stt:8010
+      NODE_ENV: production
+      PORT: "3000"
+    depends_on:
+      tenant-runtime:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Brama — jeden publiczny origin. Przeglądarka → caddy:8080 → web. (/api/* NIE routujemy tu do
+  # backendu — robi to front BFF server-side, trzymając tokeny httpOnly.)
+  caddy:
+    profiles: ["full"]
+    restart: unless-stopped
+    image: caddy:2-alpine
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/login"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+  # Local speech-to-text for the Agent Głosowy module (M3). faster-whisper `small` (PL) on CPU, in
+  # its own image — CTranslate2, not torch/SB3, so it must not be mixed into the heavy RL image
+  # (see docs/superpowers/specs/2026-07-21-agent-glosowy-poc.md §1/§3).
+  #
+  # RODO: a voice recording is personal data, so transcription runs HERE and audio never leaves EU
+  # infrastructure. That is why the browser records with MediaRecorder and posts to this service
+  # rather than using Chrome's Web Speech API, which uploads audio to the vendor.
+  #
+  # Behind "full" like the other app services. The ~490 MB model is downloaded on FIRST use and
+  # cached in the named volume, so a restart does not re-download it; after that it runs offline.
+  stt:
+    # BEZ profilu: rozpoznawanie mowy jest czescia sciezki demo, a nie dodatkiem. Dopoki `stt` siedzial
+    # za profilem "full", zwykle `docker compose up` go nie podnosilo i asystent odpowiadal
+    # "Usluga rozpoznawania mowy jest niedostepna" — mimo ze kod dzialal (transkrypcja PL, pewnosc 0.82).
+    restart: unless-stopped
+    build:
+      context: ./stt-service
+      dockerfile: Dockerfile
+    environment:
+      PYTHONUNBUFFERED: "1"
+      # Doubles as the default trusted-issuer base: /voice/* refuses to fetch JWKS from any address
+      # that is not <trusted base>/realms/<realm>, so a forged token cannot point key resolution at
+      # a host the attacker owns. [track J — see .env.example KEYCLOAK_TRUSTED_ISSUERS]
+      #
+      # This value is correct for the demo: the seeded `hrobot-staging` realm pins
+      # frontendUrl=http://keycloak:8080, so its tokens carry exactly this base even though the
+      # browser reaches Keycloak on :8081. A realm WITHOUT a frontendUrl issues the host the caller
+      # used, so a deployment mixing both needs the comma-separated list below instead.
+      KEYCLOAK_URL: "http://keycloak:8080"
+      # KEYCLOAK_TRUSTED_ISSUERS: "http://keycloak:8080,https://auth.example.com"
+      STT_MODEL_SIZE: "small"
+      STT_COMPUTE_TYPE: "int8"
+      STT_LANGUAGE: "pl"
+      HF_HOME: "/models"
+    volumes:
+      - hrobot_stt_models:/models
+    ports:
+      # Port HOSTA 8011, nie 8010 (znalezisko W14). 8010 na hoscie zajmuje `agent-service`, ktory
+      # startuje POZA tym compose (wlasny `docker run` w agent-service/demo/up.sh) i jest tak opisany
+      # w runbooku demo J4. Przy 8010 po obu stronach pierwszy `docker compose up` przy dzialajacym
+      # agencie konczy sie "port already allocated", a sciezka demo J4 przestaje istniec.
+      # Port KONTENERA zostaje 8010 — tak jest w Dockerfile i README stt-service, kod bez zmian.
+      - "8011:8010"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8010/health').status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
 volumes:
   hrobot_pgdata:
   hrobot_keycloak:
+  hrobot_stt_models:

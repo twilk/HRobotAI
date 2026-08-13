@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import pytest
 
-from app.contract import Assignment
 from app.fixtures import canonical_problem, canonical_solution
 from app.policy import ImitationPolicy, PolicyState
 from app.validate import validate

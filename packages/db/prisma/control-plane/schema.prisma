@@ -59,6 +59,11 @@ model ProvisioningJob {
   // C1: durable retry schedule. ProvisioningService stamps this on a failed step; RetryRelay
   // re-enqueues jobs whose time is due. Replaces the lost-on-restart in-process setTimeout.
   nextAttemptAt DateTime?       @map("next_attempt_at")
+  // G-1: at-least-once claim (a lease, not a lock). RabbitMQ can deliver the same
+  // `tenant.provision` message twice; ProvisioningService compare-and-sets this together with
+  // `step` before running a handler, so exactly one consumer executes a given step. The lease
+  // expires after CLAIM_LEASE_MS so a consumer that crashed mid-step does not strand the job.
+  claimedAt     DateTime?       @map("claimed_at")
 
   @@index([nextAttemptAt])
   @@map("provisioning_jobs")
@@ -83,4 +88,35 @@ model GlobalAdmin {
   createdAt    DateTime @default(now()) @map("created_at")
 
   @@map("global_admins")
+}
+
+/// Monthly headcount per tenant — the ONE number any per-seat pricing model needs, and the only
+/// operational metric here that is not a proxy. Lives in the control-plane DB on purpose: with
+/// database-per-tenant, "how many people are in the product across all customers" is otherwise an
+/// N-database fan-out, which is exactly the question that stayed unanswerable while the billing item
+/// sat parked in TODOS.md.
+///
+/// READ `employeesOnRecord` LITERALLY. It counts Employee rows in the tenant database — people on the
+/// books — NOT people who are actively employed today. The tenant schema has `hiredAt` and no
+/// termination or employment-status column at all, so "still employed" is not derivable. That missing
+/// column is the same root cause behind the retired departure/turnover metrics, which had been
+/// deriving "left the company" from account deactivation. Naming this field for what it actually
+/// counts is deliberate: a number called `activeEmployees` that silently means something else is how
+/// those metrics went wrong in the first place.
+///
+/// Idempotent by (tenantId, month): the nightly pass upserts, so re-runs overwrite rather than
+/// accumulate, and the last write in a month is the one that stands.
+model TenantUsageSnapshot {
+  id                String   @id @default(uuid())
+  tenantId          String   @map("tenant_id")
+  /// Calendar month as `YYYY-MM` (UTC). A string, not a date: the grain IS the month, and a DATE
+  /// column would invite per-day rows that this table deliberately does not hold.
+  month             String
+  /// Count of Employee rows in the tenant DB at capture time. See the note above before quoting it.
+  employeesOnRecord Int      @map("employees_on_record")
+  capturedAt        DateTime @default(now()) @map("captured_at")
+
+  @@unique([tenantId, month])
+  @@index([month])
+  @@map("tenant_usage_snapshots")
 }

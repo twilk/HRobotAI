@@ -21,7 +21,9 @@ online nudge. As the feedback log grows, successive retrains produce policies wh
 hold when driven by the batch pipeline, not only the online path).
 
 Honest framing (see README): this is the **M2 increment** of self-development — a dependency-light
-numpy BC + feedback re-fit with versioned artifacts. It is **NOT** the full long-horizon on-policy RL
+**affinity re-fit** (imitation of the solver teacher + the accumulated feedback log) with versioned
+artifacts. Like :mod:`app.policy` it imports only the standard library: no numpy, no torch, no
+Stable-Baselines3, **no reinforcement learning**. It is **NOT** the full long-horizon on-policy RL
 retrain of the staged vision (spec §8). No production-autonomy claim.
 
 Entry point

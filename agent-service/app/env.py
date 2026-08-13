@@ -19,8 +19,14 @@ MDP shape
   soft-goal terms are seams (weight 0 now) for M2-C2/C3. When ``use_optimizer`` is set, the live
   CP-SAT solver adjudicates a terminal feasibility bonus/penalty against the whole proposal.
 
-Nothing about the reward model is meant to be final; it is the loop the later BC + RL work trains
+Nothing about the reward model is meant to be final; it is the loop later BC/RL work would train
 against, kept small enough to read in one sitting.
+
+**Status, stated plainly:** this env is a *scaffold*. No RL algorithm is trained against it anywhere
+in the repo, and the serving path (``/agent/propose``, ``/agent/feedback``, ``/agent/retrain``) never
+instantiates it — that path runs :mod:`app.policy`, an affinity learner. The only consumers are
+``app.rollout`` (a random-action smoke rollout) and ``app.train_bc`` (an offline behavioural-cloning
+CLI whose artifact the API does not load). Describe it as a Gym environment, not as "the RL agent".
 """
 
 from __future__ import annotations
