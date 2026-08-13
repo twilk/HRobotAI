@@ -5,7 +5,9 @@ import type { Config } from 'tailwindcss'
  * Tailwind v3 config. For Tailwind v4, port these into an @theme block — values are identical.
  */
 const config: Config = {
-  content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
+  // lib/ is scanned too: grafik-roles.ts holds the role→colour classes, and an unscanned file
+  // means those classes get purged out of the stylesheet.
+  content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}', './lib/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {

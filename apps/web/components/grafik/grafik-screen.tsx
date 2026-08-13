@@ -11,6 +11,7 @@ import { ShiftEditor, type LocationOption } from './shift-editor'
 import { SolveResultBanner } from './solve-result-banner'
 import { MetricsStrip } from './metrics-strip'
 import { locationName, unitName } from '@/lib/demo-locations'
+import { LEGEND_ROLES, roleSwatch } from '@/lib/grafik-roles'
 import {
   formatWeekRange,
   grafikApi,
@@ -293,13 +294,26 @@ export function GrafikScreen({ canManage = true }: { canManage?: boolean }) {
         >
           Dziś
         </Button>
-        <span className="ml-auto flex items-center gap-3 text-[11px] text-muted-2">
+        {/* The chips carry no AUTO/RĘCZ wording any more — solid vs dashed does it, and this is
+            where that alphabet is spelled out, once, instead of fifty times in the grid. */}
+        <span className="ml-auto flex items-center gap-x-3 gap-y-1.5 text-[11px] text-muted-2 flex-wrap justify-end">
           <span className="inline-flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-sm bg-accent/[0.15] border border-accent/30" /> AUTO
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-sm bg-card-2 border border-line-strong" /> ręczna
+            <span className="w-3 h-3 rounded-sm bg-card-2 border border-dashed border-line-strong" /> ręczna
           </span>
+          {canManage ? (
+            <>
+              <span className="w-px h-3 bg-line-strong" aria-hidden />
+              {LEGEND_ROLES.map((r) => (
+                <span key={r} className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[.04em]">
+                  <span className={`w-[3px] h-3 rounded-[1px] ${roleSwatch(r)}`} />
+                  {r}
+                </span>
+              ))}
+            </>
+          ) : null}
         </span>
       </div>
 
