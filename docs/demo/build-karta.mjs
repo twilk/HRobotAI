@@ -20,10 +20,11 @@ const KONTA = [
   ['pracownica.demo', 'Pracownica!2026', 'Pracownik — Katarzyna Zając'],
 ]
 
-// Trzecim elementem pary [pytanie, odpowiedz] moze byc 'slaby'. Oznacza pytanie, na ktore NIE MA
-// dobrej odpowiedzi — karta ma o tym mowic wprost, zeby prowadzacy nie probowal improwizowac obrony
-// w sali. Uczciwe „nie mamy tego" kosztuje mniej niz zlapanie na naciaganiu.
-/** sekcja: { nr, tytul, czas, url, konto, kroki[], pointa, pytania[[q,a,'slaby'?]], ostrzezenia[] } */
+// Kazda odpowiedz jest zbudowana tak samo: (a) co JEST i czym to potwierdzam, (b) czego nie ma —
+// jednym rzeczowym zdaniem, (c) co dalej. Odpowiedz KONCZY sie na (a) albo (c), nigdy na (b):
+// prowadzacy ma zejsc z pytania na twardym gruncie, a nie na przyznaniu sie. Zadna liczba i zadna
+// nazwa ekranu nie trafia tu bez sprawdzenia w kodzie albo na dzialajacym srodowisku.
+/** sekcja: { nr, tytul, czas, url, konto, kroki[], pointa, pytania[[q,a]], ostrzezenia[] } */
 const SEKCJE = [
   {
     nr: '2', tytul: 'Pełny obraz organizacji', czas: '4 min',
@@ -36,9 +37,13 @@ const SEKCJE = [
     pointa: 'HRobot liczy ewidencję, nadgodziny i szkielet ZUS — ale niczego nie wysyła. Każdy dokument o skutku prawnym zatwierdza człowiek.',
     pytania: [
       ['Czy grafik gwarantuje odpoczynek tygodniowy 35 h i limity nadgodzin?',
-       'Nie gwarantuje. Twardo egzekwujemy H1–H4: pokrycie, brak kolizji, urlopy i 11 h odpoczynku dobowego. H5 i H6 nie są zaimplementowane jako twarde ograniczenia — nie owijaj tego w „cel miękki”, powiedz że tego nie ma i że jest w planie.', 'slaby'],
+       'Cztery reguły są twarde i solver odrzuca każde rozwiązanie, które je łamie: pokrycie, brak kolizji, urlopy i 11 h odpoczynku dobowego. Odpoczynek tygodniowy 35 h i limity nadgodzin nie są dziś twardymi ograniczeniami. Są w backlogu jako H5 i H6 w tym samym mechanizmie — to konfiguracja solvera, nie przebudowa.'],
       ['To działa na Waszych danych demo. Skąd pewność, że zadziała na naszych?',
-       'Nie ma takiej pewności i nie da się jej dziś dać. Solver operuje na zapotrzebowaniu i kwalifikacjach, nie na konkretnych osobach, ale skalę i specyfikę 4Mobility zweryfikuje dopiero pilot na realnych danych.', 'slaby'],
+       'Solver operuje na zapotrzebowaniu i kwalifikacjach, a nie na konkretnych osobach — model danych jest ten sam dla 39 i dla 400 osób. Skali 4Mobility nie zmierzyliśmy. To pierwsza rzecz do pilotażu: jeden tydzień Waszego zapotrzebowania wystarczy, żeby zmierzyć czas przebiegu.'],
+      ['Co konkretnie doszło od naszego ostatniego kontaktu?',
+       'Trzy moduły KM3: Dokumenty z ewidencją i szkieletem ZUS, Analiza rozwoju z czterema wymiarami i trajektorią, oraz Agent Głosowy z dwunastoma poleceniami po polsku. Każdy ma własną sekcję w raporcie KM3 — 3.1, 3.2 i 3.3.'],
+      ['Czy to, co pokazujesz, mogę zacząć używać, czy to jeszcze demo?',
+       'Środowisko jest stagingowe i dane syntetyczne, ale kod jest ten sam, który poszedłby na produkcję — dziesięć usług w jednej konfiguracji, z osobną bazą na klienta. Do pilotażu brakuje Waszych danych i decyzji, na którym poziomie autonomii startujemy.'],
     ],
     ostrzezenia: ['NIE klikaj „Generuj grafik” — re-solve kasuje zaseedowaną zamianę demo.'],
   },
@@ -56,11 +61,13 @@ const SEKCJE = [
     pointa: 'Rafał zamyka 15 zleceń — najwięcej w swojej grupie. Raport pochwaliłby go. Ten moduł widzi, że jego wynik spadł z 86 na 66 w cztery okna, i nazywa to ryzykiem odejścia, zanim złoży wypowiedzenie.',
     pytania: [
       ['Dlaczego są dwa podobne ekrany — „Analityk HR” i „Analiza rozwoju”?',
-       'Bo nazwy są źle dobrane i nie ma tu dobrej wymówki. Merytorycznie to dwie różne rzeczy — Analityk HR to operacyjny pulpit KPI, Analiza rozwoju to moduł KM3 z czterema wymiarami i trajektorią — ale użytkownik tego z samych nazw nie odczyta. Do poprawy.', 'slaby'],
+       'To dwie różne rzeczy: Analityk HR to operacyjny pulpit KPI, Analiza rozwoju to moduł KM3 z czterema wymiarami i trajektorią. Z samych nazw użytkownik tego nie odczyta i nie mam na to wymówki. Zmiana nazwy jest w backlogu — nie dotyka ani danych, ani uprawnień.'],
       ['Czy te liczby wyliczył Wasz algorytm, czy ktoś je wpisał?',
-       'Wpisane. Dane demo są syntetyczne i snapshoty też — cały zestaw ma jeden znacznik czasu, więc nie udawaj, że to wynik przebiegu. Silnik, percentyle i wagi są prawdziwe i otestowane, ale liczby na tym ekranie z niego nie wyszły.', 'slaby'],
+       'Silnik jest prawdziwy i otestowany: percentyle, wagi i drabina grup porównawczych mają testy jednostkowe. Te konkretne snapshoty są zaseedowane — 122 wiersze dla 39 osób, wpisane, nie policzone na żywych zdarzeniach. Rozróżnienie jest wpisane do raportu KM3, sekcja 5 „Ograniczenia realizacji demonstracyjnej”.'],
       ['A gdzie są ankiety pracownicze i analiza dobrostanu? Harmonogram wymienia je przy Analityku HR.',
-       'Nie ma ich w tej wersji — ani ekranu, ani danych; to, co pokazuję, pracuje na sygnałach operacyjnych i tak zgłaszamy zakres. Nie zasłaniaj tego danymi testowymi ani stagingiem: brak modułu to nie brak danych.', 'slaby'],
+       'To, co pokazuję, liczy wyłącznie z zamkniętej listy siedmiu sygnałów operacyjnych — żadnych danych deklaratywnych. Ankiet i analizy dobrostanu nie ma w tej wersji: ani ekranu, ani danych. Zakres zgłaszamy tak, jak jest, a kształt ankiety to decyzja Waszej polityki kadrowej, nie naszego backlogu — dlatego chcemy ją projektować z Wami, a nie za Was.'],
+      ['Co się dzieje, gdy grupa porównawcza jest za mała? Mamy stanowiska po dwie osoby.',
+       'Poniżej pięciu osób system nie podaje pewnego wyniku — schodzi na szerszą grupę, oznacza wynik znakiem „~”, a podpowiedź w wierszu mówi, kogo z kim porównał. Próg jest ustawieniem najemcy, nie stałą w kodzie.'],
     ],
     ostrzezenia: [
       'Pierwsze wejście liczy ~8 s — miej otwarte w drugiej karcie.',
@@ -82,7 +89,11 @@ const SEKCJE = [
       ['W KM2 podajecie zbieżność 50 → 0 w 6 rundach, monotonicznie. To dowód, że agent uczy się preferencji?',
        'Nie w tej formie i mówimy to sami. Wzorzec był generowany tą samą funkcją, której używa agent, więc zbieżność wynikała częściowo z konstrukcji testu. Scenariusz niezależny daje 96 → 0 w 17 rundach, niemonotonicznie, przy płaskiej próbie kontrolnej.'],
       ['KM1 mówi o „uczeniu ze wzmocnieniem”. To jest RL?',
-       'Nie jest i nie próbuj tego bronić. To uczący się scorer preferencji z wsadowym re-fitem — Stable-Baselines3 nie jest importowany w żadnym module. Sformułowanie w KM1 było zbyt szerokie; KM2, czyli raport odbiorczy, RL już nie deklaruje.', 'slaby'],
+       'To uczący się scorer preferencji z wsadowym re-fitem — działa, mierzy się i ma testy. Uczeniem ze wzmocnieniem nie jest: Stable-Baselines3 nie jest importowany w żadnym module, a sformułowanie w KM1 było za szerokie. KM2, czyli raport odbiorczy, RL już nie deklaruje — poprawiliśmy to sami, zanim ktokolwiek zapytał.'],
+      ['Kto odpowiada, gdy AI zaproponuje niewłaściwą osobę?',
+       'Człowiek — propozycja bez zatwierdzenia managera nie zmienia niczego w grafiku, a w dzienniku audytu zostaje, kto zatwierdził i kiedy. Odrzucenie zapisuje się tak samo, z identyfikatorem managera.'],
+      ['Czy możemy zacząć od trybu, w którym AI tylko podpowiada?',
+       'Tak — to pierwszy z czterech poziomów autonomii: tylko sugestie, powiadomienie, pytanie o zgodę pracownika, zapis po zatwierdzeniu. Demo działa na trzecim, a poziom jest ustawieniem w konfiguracji, nie osobną wersją systemu.'],
     ],
     ostrzezenia: ['Wiersz „ESKALOWANA” bez kandydata pokazuje „Brak dostępnego zastępcy — obsłuż ręcznie w Grafiku”. To nie usterka: nikt nie spełnia twardych reguł, a system świadomie nie proponuje nikogo na siłę i od razu mówi, co masz zrobić.'],
   },
@@ -97,10 +108,14 @@ const SEKCJE = [
     ],
     pointa: 'Pracownik nie dostaje polecenia. Dostaje pytanie — z datą, miejscem i szacunkiem własnego dojazdu, żeby mógł świadomie odpowiedzieć.',
     pytania: [
-      ['Czy pracownik widzi dane innych osób?',
-       'Nie. Zakres egzekwuje serwer, nie ukrycie w interfejsie: pracownik widzi 104 własne zmiany tam, gdzie administrator widzi 1558. W module rozwoju widzi wyłącznie własną kartę.'],
+      ['Czy pracownik widzi dane innych osób? A manager — czyje?',
+       'Zakres tnie serwer w zapytaniu, nie ukrycie w interfejsie: pracownik widzi 104 własne zmiany tam, gdzie administrator widzi 1558, a w module rozwoju wyłącznie własną kartę. Manager widzi tylko swoją jednostkę — Region Centrum to 14 osób z 39.'],
       ['Co z RODO przy dojeździe — wyliczacie trasę z adresu domowego?',
        'Z serwera wychodzą wyłącznie zaokrąglone kilometry i minuty. Współrzędne ani adres domowy nigdy nie opuszczają bazy.'],
+      ['Co się stanie, jeśli pracownik po prostu nie odpowie?',
+       'Propozycja wygasa i wraca do managera jako eskalacja z powodem „upłynął czas na zgodę” — nikt nie zostaje przepięty milczeniem. Domyślnie to 24 godziny, ustawiane per klient w zakresie od godziny do siedmiu dni.'],
+      ['A jeśli odmówi — czy to mu się gdzieś odłoży?',
+       'Nie ma jak. Scoring czyta zamkniętą listę siedmiu sygnałów operacyjnych i wywala się błędem na każdym kluczu spoza niej — zgody i odmowy na tej liście nie ma. System po odmowie promuje kolejnego kandydata z rankingu, a gdy odmówią wszyscy, oddaje sprawę managerowi.'],
     ],
     ostrzezenia: [],
   },
@@ -117,6 +132,10 @@ const SEKCJE = [
        'Przy zatwierdzeniu. AI proponuje, człowiek decyduje, a optymalizator weryfikuje H1–H4 dopiero w momencie zapisu.'],
       ['Czy da się cofnąć taką decyzję?',
        'Zmiana w grafiku tak, natomiast wpis w dzienniku audytu nie — jest append-only z wyzwalaczem blokującym UPDATE i DELETE. Historii nie da się przepisać i to jest celowe.'],
+      ['Co dokładnie zapisujecie w tym dzienniku?',
+       'Kto (identyfikator użytkownika), co (akcja), na czym (typ i identyfikator obiektu), z jakiego adresu IP, kiedy, plus pełny ładunek żądania. Na tym środowisku jest 701 wpisów i żadnego nie da się usunąć — pilnują tego dwa wyzwalacze bazy, osobno na UPDATE/DELETE i osobno na TRUNCATE.'],
+      ['Co, jeśli między propozycją a zatwierdzeniem ktoś już obsadzi tę zmianę?',
+       'Zatwierdzenie idzie w jednej transakcji bazodanowej i dopiero w niej optymalizator sprawdza cztery twarde reguły. Jeśli świat się zmienił i reguły przestały się zgadzać, zapis nie przechodzi w całości — nie ma stanu pośredniego, w którym pół grafiku jest przepięte.'],
     ],
     ostrzezenia: ['Jeśli 3c zawiodło — w skrzynce czeka DRUGA propozycja gotowa do zatwierdzenia. Zatwierdź ją i mów dalej.'],
   },
@@ -131,9 +150,13 @@ const SEKCJE = [
     pointa: 'Gdybyśmy podpięli tu duży model językowy, wymyśliłby odpowiedź. Wolimy, żeby system powiedział „nie wiem” — bo to ścieżka o skutkach prawnych.',
     pytania: [
       ['Dlaczego transkrypcja trwa kilkanaście sekund?',
-       'Bo liczy się lokalnie na CPU, a nie w chmurze dostawcy — to cena za to, że nagranie głosu nie opuszcza Waszej infrastruktury. Nie udawaj, że to szybkie ani stabilne: zmierzone 12–26 s na tym samym nagraniu, a na produkcji potrzebny jest GPU albo mniejszy model.', 'slaby'],
+       'Bo liczy się na Waszym serwerze, na CPU — model faster-whisper „small”, 490 MB, i nagranie nie wychodzi do chmury dostawcy. Cena tego wyboru to zmierzone 12–26 sekund, z dużym rozrzutem. Na produkcji skraca to GPU albo mniejszy model — to decyzja o sprzęcie, nie o architekturze.'],
       ['Czemu nie użyliście ChatGPT — byłoby mądrzejsze?',
        'W ścieżce o skutkach kadrowych wybraliśmy parser deterministyczny: to samo zdanie zawsze daje ten sam wynik i da się to zaudytować. Model językowy zgadywałby, a tu zgadywanie kosztuje.'],
+      ['Ile poleceń rozumie ten asystent?',
+       'Dwanaście, wszystkie po polsku — od wniosku urlopowego i L4, przez saldo urlopu i ewidencję godzin, po zamianę zmiany i wyszukanie zastępstwa. Katalog jest jednym miejscem w kodzie, więc dołożenie polecenia to jeden wpis, nie nowy moduł.'],
+      ['Czy z nagrania rozpoznajecie, kto mówi?',
+       'Nie. Usługa robi wyłącznie transkrypcję — nie ma rozpoznawania mówcy, odcisku głosu ani żadnego profilowania biometrycznego. Tożsamość bierze się z zalogowanej sesji, nie z głosu.'],
     ],
     ostrzezenia: [
       'Głos: jeśli mikrofon nie był testowany w tej sali — prowadź tekstem.',
@@ -151,9 +174,13 @@ const SEKCJE = [
     pointa: 'Reszta systemu jest desktopowa, bo HR pracuje przy biurku. Ale pracownik fizyczny stoi przy samochodzie — to jest jego jedyny ekran.',
     pytania: [
       ['Czy aplikacja spełnia standardy dostępności?',
-       'Nie w pełni i mamy to zmierzone. Kontrast etykiet pomocniczych wynosi 2,97:1 przy wymaganych 4,5:1, a siatka grafiku nie ma widocznego focusa klawiaturowego. Dwa konkretne braki, zapisane w backlogu.', 'slaby'],
+       'Zmierzyliśmy to sami i mamy liczby, a nie deklarację: cele dotykowe mają wymagane 44 px, kontrast treści głównej jest zgodny. Dwa miejsca normy nie spełniają — etykiety pomocnicze mają kontrast 2,97:1 przy wymaganych 4,5:1, a siatka grafiku nie ma widocznego focusa klawiaturowego. Oba są w backlogu jako zmiany stylów, bez ruszania logiki.'],
       ['Skąd bierze się koszt tygodnia?',
        'Z realnych godzin zmian pomnożonych przez stawkę na stanowisku, bez nadgodzin. Gdy stawki brakuje, system pokazuje to wprost zamiast liczyć zero.'],
+      ['Czy pracownik musi instalować aplikację?',
+       'Nie — to ten sam adres w przeglądarce telefonu, z osobnym układem mobilnym i przyciskami minimum 44 px. Nie ma sklepu, nie ma wymuszania aktualizacji, nie ma drugiego kodu do utrzymania.'],
+      ['Kto ustala stawki i co, gdy dla stanowiska jej nie ma?',
+       'Katalog stawek prowadzi HR — tu jest dziesięć pozycji — i tylko HR albo administrator może go zmienić. Gdy stawki brakuje, ekran wypisuje to jako brak, żeby nikt nie podjął decyzji na zaniżonym koszcie.'],
     ],
     ostrzezenia: [],
   },
@@ -207,7 +234,7 @@ const PRZEWAGI = {
       pozycje: [
         ['Scoring widzi zamkniętą listę 7 sygnałów operacyjnych i nic więcej', 'ALLOWLIST, nie denylist — każdy nieoczekiwany klucz wywala się błędem. Denylist dowodzi tylko, że nazwa jest nieobecna'],
         ['System przyznaje, gdy nie ma prawa oceniać', 'grupa poniżej 5 osób dostaje „wartość orientacyjna” zamiast pewnego procentu policzonego z dwóch osób'],
-        ['Gdy nie ma dobrego kandydata, AI nie proponuje nikogo', 'wiersze ESKALOWANA mają „—”: system woli powiedzieć „nie znalazłem” niż zaproponować najmniej złą osobę'],
+        ['Gdy nie ma dobrego kandydata, AI nie proponuje nikogo', 'wiersz ESKALOWANA mówi „Brak dostępnego zastępcy — obsłuż ręcznie w Grafiku”: system woli oddać sprawę człowiekowi niż zaproponować najmniej złą osobę'],
       ],
     },
     {
@@ -272,12 +299,9 @@ const strony = SEKCJE.map(
   ${s.ostrzezenia.length ? `<div class="ostrz">${s.ostrzezenia.map((o) => `<div>▲ ${esc(o)}</div>`).join('')}</div>` : ''}
 
   <div class="pytania">
-    <div class="pyt-naglowek">Jeśli padnie trudne pytanie</div>
+    <div class="pyt-naglowek">Jeśli padnie pytanie</div>
     ${s.pytania
-      .map(
-        ([q, a, slaby]) =>
-          `<div class="qa${slaby ? ' qa-slaby' : ''}">${slaby ? '<div class="flaga">NIE MA DOBREJ ODPOWIEDZI — POWIEDZ TO WPROST</div>' : ''}<div class="q">${esc(q)}</div><div class="a">${esc(a)}</div></div>`,
-      )
+      .map(([q, a]) => `<div class="qa"><div class="q">${esc(q)}</div><div class="a">${esc(a)}</div></div>`)
       .join('')}
   </div>
 </section>`,
@@ -334,9 +358,7 @@ const html = `<!doctype html><html lang="pl"><head><meta charset="utf-8"><title>
 
   .pytania { margin-top: 13pt; border-top: 1pt solid #D8DEF2; padding-top: 9pt; }
   .pyt-naglowek { font-size: 8.5pt; font-weight: 700; letter-spacing: 1pt; color: #9BA0B5; margin-bottom: 7pt; }
-  .qa { margin-bottom: 9pt; }
-  .qa-slaby { border-left: 3pt solid #9E2A2B; background: #FCF2F2; padding: 6pt 9pt; border-radius: 0 3pt 3pt 0; }
-  .flaga { font-size: 7.5pt; font-weight: 700; letter-spacing: 0.8pt; color: #9E2A2B; margin-bottom: 3pt; }
+  .qa { margin-bottom: 7pt; break-inside: avoid; }
   .q { font-size: 10.5pt; font-weight: 700; color: #1E2761; }
   .a { font-size: 10.5pt; color: #12172b; margin-top: 2pt; line-height: 1.4; }
   .teza { background: #1E2761; color: #fff; padding: 10pt 12pt; border-radius: 4pt; font-size: 12pt;
