@@ -21,6 +21,15 @@
   docker exec -i hrobot-postgres-1 psql -U postgres -d hrobot_t_900d948b -c "SELECT state, count(*) FROM ai_proposal GROUP BY state;"
   ```
   Potrzebujesz **co najmniej 1 × `PENDING_EMPLOYEE_CONSENT`** (do zaakceptowania przez pracownicę).
+
+  ⚠️ **PROPOZYCJA WYGASA PO 24 GODZINACH.** Kolumna `ai_proposal.expires_at`; po upływie okna
+  scheduler sam przepina ją na `ESCALATED` i sekcja 3c zostaje pusta — bez żadnego ostrzeżenia
+  i bez niczyjego udziału. Straciliśmy ją tak w nocy 12/13.08: wieczorem stan był zielony,
+  o 01:25 już nie było czego pokazać. **Odtwarzaj dane tego samego dnia, w którym prezentujesz.**
+  Ile godzin zostało, sprawdzisz jedną komendą:
+  ```
+  node scripts/przed-demo.mjs
+  ```
   Stan na 10.08: 1 × `PENDING_EMPLOYEE_CONSENT` + 1 × `PENDING_MANAGER` (rezerwa). Jak odtworzyć — patrz koniec dokumentu.
 - **NIE klikaj wielokrotnie „Generuj grafik"** — re-solve może skasować zaseedowaną zamianę demo.
 - **Asystent obsługuje już zakresy wielodniowe** (naprawione 10.08) — możesz spokojnie powiedzieć „od 20 sierpnia do 21 sierpnia".

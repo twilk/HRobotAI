@@ -168,7 +168,8 @@ const stronaKonta = `
 
   <h2>Zanim wejdzie odbiorca</h2>
   <table class="check">
-    <tr><td class="kbox">☐</td><td><b>Stan danych</b> — musi być co najmniej 1 × <span class="mono">PENDING_EMPLOYEE_CONSENT</span><div class="mono cmd">docker exec -i hrobot-postgres-1 psql -U postgres -d hrobot_t_900d948b -c "SELECT state, count(*) FROM ai_proposal GROUP BY state;"</div></td></tr>
+    <tr><td class="kbox">☐</td><td><b>Jedna komenda zamiast sześciu</b> — sprawdza stan I przechodzi 9 ekranów demo<div class="mono cmd">node scripts/przed-demo.mjs</div><div class="dopisek">Kod 0 = można wpuszczać odbiorcę.</div></td></tr>
+    <tr><td class="kbox">☐</td><td><b>Stan danych</b> — musi być co najmniej 1 × <span class="mono">PENDING_EMPLOYEE_CONSENT</span>. <b>Propozycja WYGASA po 24 h</b> i scheduler sam przepina ją na ESCALATED — odtwarzaj dane TEGO SAMEGO DNIA, w którym prezentujesz<div class="mono cmd">docker exec -i hrobot-postgres-1 psql -U postgres -d hrobot_t_900d948b -c "SELECT state, count(*) FROM ai_proposal GROUP BY state;"</div></td></tr>
     <tr><td class="kbox">☐</td><td><b>Model mowy załadowany</b> — ma zwrócić <span class="mono">"loaded": true</span><div class="mono cmd">curl -s http://localhost:8011/health</div><div class="dopisek">To NIE przyspiesza transkrypcji — ta trwa <b>12–15 s</b> niezależnie od rozgrzania (4 pomiary przez pełną ścieżkę, 11.08). Sprawdzasz tylko, czy usługa w ogóle żyje.</div></td></tr>
     <tr><td class="kbox">☐</td><td><b>Druga karta przeglądarki</b> otwarta na <span class="mono">/analiza</span> — pierwsze wejście liczy ~8 s</td></tr>
     <tr><td class="kbox">☐</td><td><b>Zakładka główna</b> na <span class="mono">http://localhost:8080/login</span></td></tr>
