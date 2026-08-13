@@ -71,10 +71,10 @@ rozwoju"** — tamten ekran (2e) ocenia pojedyncze osoby, ten pokazuje zespoły 
 
 Cztery rzeczy do pokazania, w tej kolejności:
 
-1. **Sześć kafli u góry** — 39 os. · absencja 7,7% · 1376 h · nadwyżka ponad normę 68 h · 11 wniosków
+1. **Sześć kafli u góry** — 39 os. · absencja 7,1% · 1376 h · nadwyżka ponad normę 68 h · 12 wniosków
    w toku · mediana czasu do decyzji 0 h. Każdy z porównaniem do poprzedniego okresu.
 2. **„Na co zwrócić uwagę"** — sygnały porównawcze z wagą, nie surowe tabelki: *„Skok absencji —
-   wskaźnik wzrósł o 3,2 p.p., z 4,5 na 7,7"* (waga Wysoka) oraz *„Wzrost nadwyżki ponad normę o
+   wskaźnik wzrósł o 2,6 p.p., z 4,5 na 7,1"* oraz *„Wzrost nadwyżki ponad normę o
    55,6 h"* (Średnia). Pod spodem stoi zdanie: *„moduł wyłącznie obserwuje i nie podejmuje żadnych
    działań kadrowych"*.
 3. **Proweniencja pod każdym kaflem** — wskaż podpis: każdy podaje **źródło** i **rodzaj** liczby:

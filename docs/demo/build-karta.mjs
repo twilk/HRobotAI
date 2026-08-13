@@ -53,8 +53,8 @@ const SEKCJE = [
     url: '/analityk  (menu: „Analityk HR”)', konto: 'demo / demo-staging-2026',
     opis: 'Operacyjny pulpit wskaźników kadrowych: zatrudnienie, absencje, czas pracy, wykorzystanie urlopów i przepustowość wniosków. Dostęp mają HR, administrator i manager — ten ostatni widzi to samo, ale policzone dla swoich jednostek, i nie ma filtra jednostek, bo nie ma czego przełączać. Pracownik dostaje uprzejmą odmowę, nie komunikat błędu.',
     kroki: [
-      ['Menu → <b>„Analityk HR”</b>', 'sześć kafli: 39 os. · absencja 7,7% · 1376 h · nadwyżka 68 h · 11 wniosków · mediana 0 h'],
-      ['Pokaż <b>„Na co zwrócić uwagę”</b> u góry', 'sygnały porównawcze z wagą: „Skok absencji — wzrost o 3,2 p.p.” (Wysoka)'],
+      ['Menu → <b>„Analityk HR”</b>', 'sześć kafli: 39 os. · absencja 7,1% · 1376 h · nadwyżka 68 h · 12 wniosków · mediana 0 h'],
+      ['Pokaż <b>„Na co zwrócić uwagę”</b> u góry', 'sygnały porównawcze z wagą: „Skok absencji — wzrost o 2,6 p.p., z 4,5 na 7,1”'],
       ['Wskaż podpis pod dowolnym kaflem', 'każdy podaje ŹRÓDŁO i rodzaj: „liczone”, „planowane” albo „odtwarzane”'],
       ['Najedź na kafel <b>„Nadwyżka ponad normę”</b>', 'podpowiedź przyznaje, że wskaźnik ZANIŻA nadgodziny ustawowe w pracy zmianowej'],
       ['Wyloguj, zaloguj jako <b>manager.demo</b> → <b>/analityk</b>', 'ten sam ekran, ale 14 os. zamiast 39 i BRAK filtra jednostek'],
